@@ -236,6 +236,9 @@ src/neurosis/_version.py
 /misc/
 /temp/
 
+# external repos
+/repos/
+
 # wandb
 /wandb/
 
