@@ -15,7 +15,6 @@ from neurosis.utils.module import extract_into_tensor, make_beta_schedule
 
 class AbstractEmbModel(nn.Module):
     input_keys: Optional[List[str]]
-
     legacy_ucg_val: Optional[float]
     ucg_prng: Optional[np.random.RandomState]
 
@@ -26,11 +25,11 @@ class AbstractEmbModel(nn.Module):
         input_key: Optional[str] = None,
     ):
         super().__init__()
-        if not hasattr(self, "is_trainable"):
+        if not hasattr(self, "is_trainable") and is_trainable is not None:
             self.is_trainable = is_trainable
-        if not hasattr(self, "ucg_rate"):
+        if not hasattr(self, "ucg_rate") and ucg_rate is not None:
             self.ucg_rate = ucg_rate
-        if not hasattr(self, "input_key"):
+        if not hasattr(self, "input_key") and input_key is not None:
             self.input_key = input_key
         if not self.is_trainable:
             self.freeze()
@@ -86,7 +85,13 @@ class AbstractEmbModel(nn.Module):
 
 
 class ClassEmbedder(AbstractEmbModel):
-    def __init__(self, embed_dim, n_classes=1000, add_sequence_dim=False, **kwargs):
+    def __init__(
+        self,
+        embed_dim,
+        n_classes=1000,
+        add_sequence_dim=False,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.embedding = nn.Embedding(n_classes, embed_dim)
         self.n_classes = n_classes
@@ -295,8 +300,9 @@ class LowScaleEncoder(nn.Module):
         max_noise_level: int = 250,
         output_size: int = 64,
         scale_factor: float = 1.0,
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         self.max_noise_level = max_noise_level
         self.model = model
         self.augmentation_schedule = self.register_schedule(

@@ -1,5 +1,5 @@
 from os import PathLike
-from typing import Union
+from typing import Optional, Union
 
 import torch
 from torch.amp import autocast
@@ -21,8 +21,9 @@ class FrozenT5Embedder(AbstractEmbModel):
         model_kwargs: dict = {},
         freeze: bool = True,
         apply_mask: bool = True,
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         self.model: T5EncoderModel = T5EncoderModel.from_pretrained(model_name_or_path, **model_kwargs)
         self.tokenizer: T5Tokenizer = T5Tokenizer.from_pretrained(model_name_or_path, **model_kwargs)
 
@@ -67,8 +68,9 @@ class FrozenByT5Embedder(AbstractEmbModel):
         max_length: int = 256,
         model_kwargs: dict = {},
         freeze: bool = True,
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         self.tokenizer: ByT5Tokenizer = ByT5Tokenizer.from_pretrained(model_name_or_path, **model_kwargs)
         self.model: T5EncoderModel = T5EncoderModel.from_pretrained(model_name_or_path, **model_kwargs)
 

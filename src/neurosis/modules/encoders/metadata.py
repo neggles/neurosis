@@ -12,8 +12,8 @@ from neurosis.modules.regularizers import DiagonalGaussianRegularizer
 class ConcatTimestepEmbedderND(AbstractEmbModel):
     """embeds each dimension independently and concatenates them"""
 
-    def __init__(self, outdim):
-        super().__init__()
+    def __init__(self, outdim, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.timestep = Timestep(outdim)
         self.outdim = outdim
 

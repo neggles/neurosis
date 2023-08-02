@@ -297,9 +297,9 @@ class AutoencoderKL(AutoencodingEngine):
         embed_dim: int,
         z_channels: Optional[int] = None,
         loss: nn.Module = None,
+        ddconfig: dict,
         **kwargs,
     ):
-        ddconfig = kwargs.pop("ddconfig")
         ckpt_path = kwargs.pop("ckpt_path", None)
         ignore_keys = kwargs.pop("ignore_keys", ())
         super().__init__(

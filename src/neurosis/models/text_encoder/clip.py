@@ -28,8 +28,10 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         layer: str = "last",
         layer_idx: Optional[int] = None,
         always_return_pooled: bool = False,
-    ):  # clip-vit-base-patch32
-        super().__init__()
+        **kwargs,
+    ):
+        # clip-vit-base-patch32
+        super().__init__(**kwargs)
         assert layer in self.LAYERS
         self.tokenizer: CLIPTokenizer = CLIPTokenizer.from_pretrained(version)
         self.transformer: CLIPTextModel = CLIPTextModel.from_pretrained(version)
@@ -90,8 +92,9 @@ class FrozenOpenCLIPEmbedder(AbstractEmbModel):
         max_length: int = 77,
         freeze: bool = True,
         layer: str = "last",
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         assert layer in self.LAYERS
         model, _, _ = open_clip.create_model_and_transforms(
             arch, device=torch.device("cpu"), pretrained=version
@@ -160,8 +163,9 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         layer: str = "last",
         always_return_pooled: bool = False,
         legacy: bool = True,
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         if layer not in self.LAYERS:
             raise ValueError(f"layer must be one of {self.LAYERS}")
         model, _, _ = open_clip.create_model_and_transforms(
@@ -258,8 +262,9 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
         repeat_to_max_len: bool = False,
         num_image_crops: int = 0,
         output_tokens: bool = False,
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         model, _, _ = open_clip.create_model_and_transforms(
             arch,
             device=torch.device("cpu"),
