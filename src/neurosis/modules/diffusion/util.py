@@ -12,8 +12,8 @@ thanks!
 import math
 
 import torch
-import torch.nn as nn
 from einops import repeat
+from torch import nn
 
 
 def make_beta_schedule(

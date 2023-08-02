@@ -1,4 +1,4 @@
-import torch.nn as nn
+from torch import nn
 
 from neurosis.utils import append_dims, instantiate_from_config
 
