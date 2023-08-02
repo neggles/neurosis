@@ -243,6 +243,7 @@ src/neurosis/_version.py
 /wandb/
 
 # outputs and such
+/logs/
 /cache/
 /outputs/
 /projects/
