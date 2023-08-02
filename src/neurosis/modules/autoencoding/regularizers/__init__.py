@@ -2,8 +2,8 @@ from abc import abstractmethod
 from typing import Any, Tuple
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+from torch.nn import functional as F
 
 from neurosis.modules.distributions import DiagonalGaussianDistribution
 
