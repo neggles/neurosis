@@ -1,6 +1,6 @@
-from .adafactor import Adafactor, AdafactorSchedule
+from .adafactor import Adafactor, AdafactorScheduler
 
 __all__ = [
     "Adafactor",
-    "AdafactorSchedule",
+    "AdafactorScheduler",
 ]

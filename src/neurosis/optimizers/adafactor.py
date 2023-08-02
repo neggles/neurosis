@@ -200,7 +200,7 @@ class Adafactor(Optimizer):
         return loss
 
 
-class AdafactorSchedule(LambdaLR):
+class AdafactorScheduler(LambdaLR):
     """
     Adafactor does its own scheduling, so this is a dummy/proxy scheduler object.
     During startup it will report the initial learning rate, and during training it will
