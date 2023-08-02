@@ -1,41 +1,89 @@
-from typing import Any, Iterator, Optional
+from typing import Any, Union
 
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
 from einops import rearrange
-from torch import ParameterDict, Tensor, nn
-from torch.nn import Parameter
 
-from neurosis.modules.losses.lpips import LPIPS
-from neurosis.modules.losses.patchgan import NLayerDiscriminator, weights_init
-
-
-def adopt_weight(weight: Tensor, global_step: int, threshold: int = 0, value=0.0) -> Tensor:
-    if global_step < threshold:
-        weight = value
-    return weight
-
-
-def hinge_d_loss(logits_real: Tensor, logits_fake: Tensor) -> Tensor:
-    loss_real = torch.mean(F.relu(1.0 - logits_real))
-    loss_fake = torch.mean(F.relu(1.0 + logits_fake))
-    d_loss = torch.mul(0.5, torch.add(loss_real, loss_fake))
-    return d_loss
+from neurosis.modules.losses import (
+    LPIPS,
+    NLayerDiscriminator,
+    adopt_weight,
+    hinge_d_loss,
+    vanilla_d_loss,
+    weights_init,
+)
+from neurosis.utils import instantiate_from_config
 
 
-def vanilla_d_loss(logits_real: Tensor, logits_fake: Tensor) -> Tensor:
-    loss_real = torch.mean(F.softplus(-logits_real))
-    loss_fake = torch.mean(F.softplus(logits_fake))
-    d_loss = torch.mul(0.5, torch.add(loss_real, loss_fake))
-    return d_loss
+class LatentLPIPS(nn.Module):
+    def __init__(
+        self,
+        decoder_config,
+        perceptual_weight=1.0,
+        latent_weight=1.0,
+        scale_input_to_tgt_size=False,
+        scale_tgt_to_input_size=False,
+        perceptual_weight_on_inputs=0.0,
+    ):
+        super().__init__()
+        self.scale_input_to_tgt_size = scale_input_to_tgt_size
+        self.scale_tgt_to_input_size = scale_tgt_to_input_size
+        self.init_decoder(decoder_config)
+        self.perceptual_loss = LPIPS().eval()
+        self.perceptual_weight = perceptual_weight
+        self.latent_weight = latent_weight
+        self.perceptual_weight_on_inputs = perceptual_weight_on_inputs
+
+    def init_decoder(self, config):
+        self.decoder = instantiate_from_config(config)
+        if hasattr(self.decoder, "encoder"):
+            del self.decoder.encoder
+
+    def forward(self, latent_inputs, latent_predictions, image_inputs, split="train"):
+        log = dict()
+        loss = (latent_inputs - latent_predictions) ** 2
+        log[f"{split}/latent_l2_loss"] = loss.mean().detach()
+        image_reconstructions = None
+        if self.perceptual_weight > 0.0:
+            image_reconstructions = self.decoder.decode(latent_predictions)
+            image_targets = self.decoder.decode(latent_inputs)
+            perceptual_loss = self.perceptual_loss(
+                image_targets.contiguous(), image_reconstructions.contiguous()
+            )
+            loss = self.latent_weight * loss.mean() + self.perceptual_weight * perceptual_loss.mean()
+            log[f"{split}/perceptual_loss"] = perceptual_loss.mean().detach()
+
+        if self.perceptual_weight_on_inputs > 0.0:
+            image_reconstructions = image_reconstructions or self.decoder.decode(latent_predictions)
+            if self.scale_input_to_tgt_size:
+                image_inputs = torch.nn.functional.interpolate(
+                    image_inputs,
+                    image_reconstructions.shape[2:],
+                    mode="bicubic",
+                    antialias=True,
+                )
+            elif self.scale_tgt_to_input_size:
+                image_reconstructions = torch.nn.functional.interpolate(
+                    image_reconstructions,
+                    image_inputs.shape[2:],
+                    mode="bicubic",
+                    antialias=True,
+                )
+
+            perceptual_loss2 = self.perceptual_loss(
+                image_inputs.contiguous(), image_reconstructions.contiguous()
+            )
+            loss = loss + self.perceptual_weight_on_inputs * perceptual_loss2.mean()
+            log[f"{split}/perceptual_loss_on_inputs"] = perceptual_loss2.mean().detach()
+        return loss, log
 
 
 class GeneralLPIPSWithDiscriminator(nn.Module):
     def __init__(
         self,
-        disc_start: int = ...,
+        disc_start: int,
         logvar_init: float = 0.0,
-        pixelloss_weight: float = 1.0,
+        pixelloss_weight=1.0,
         disc_num_layers: int = 3,
         disc_in_channels: int = 3,
         disc_factor: float = 1.0,
@@ -45,7 +93,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         scale_input_to_tgt_size: bool = False,
         dims: int = 2,
         learn_logvar: bool = False,
-        regularization_weights: Optional[dict] = None,
+        regularization_weights: Union[None, dict] = None,
     ):
         super().__init__()
         self.dims = dims
@@ -72,7 +120,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         self.discriminator_weight = disc_weight
         self.regularization_weights = regularization_weights or {}
 
-    def get_trainable_parameters(self) -> Iterator[Parameter]:
+    def get_trainable_parameters(self) -> Any:
         return self.discriminator.parameters()
 
     def get_trainable_autoencoder_parameters(self) -> Any:
@@ -95,14 +143,14 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
 
     def forward(
         self,
-        regularization_log: dict,
-        inputs: Tensor,
-        reconstructions: Tensor,
-        optimizer_idx: int,
-        global_step: int,
-        last_layer: Optional[ParameterDict] = None,
-        split: str = "train",
-        weights: Optional[Tensor] = None,
+        regularization_log,
+        inputs,
+        reconstructions,
+        optimizer_idx,
+        global_step,
+        last_layer=None,
+        split="train",
+        weights=None,
     ):
         if self.scale_input_to_tgt_size:
             inputs = torch.nn.functional.interpolate(

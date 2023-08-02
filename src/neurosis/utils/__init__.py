@@ -15,6 +15,7 @@ from .module import (
 from .sgm import (
     append_dims,
     append_zero,
+    autocast,
     count_params,
     disabled_train,
     expand_dims_like,
@@ -47,6 +48,7 @@ __all__ = [
     "zero_module",
     "append_dims",
     "append_zero",
+    "autocast",
     "count_params",
     "disabled_train",
     "expand_dims_like",

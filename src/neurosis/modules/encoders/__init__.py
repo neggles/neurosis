@@ -3,6 +3,7 @@ from .embedding import (
     ClassEmbedder,
     ClassEmbedderForMultiCond,
     GeneralConditioner,
+    IdentityEncoder,
     LowScaleEncoder,
     SpatialRescaler,
 )
@@ -12,6 +13,7 @@ __all__ = [
     "ClassEmbedder",
     "ClassEmbedderForMultiCond",
     "GeneralConditioner",
+    "IdentityEncoder",
     "LowScaleEncoder",
     "SpatialRescaler",
 ]

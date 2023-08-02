@@ -2,7 +2,7 @@ import importlib
 from functools import partial
 from os import PathLike
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Callable, TypeVar
 
 import fsspec
 import numpy as np
@@ -42,6 +42,18 @@ def get_string_from_tuple(s: str):
 
 def is_power_of_two(n) -> bool:
     return False if n <= 0 else bool((n & (n - 1)) == 0)
+
+
+def autocast(f: Callable, enabled=True):
+    def do_autocast(*args, **kwargs):
+        with torch.cuda.amp.autocast(
+            enabled=enabled,
+            dtype=torch.get_autocast_gpu_dtype(),
+            cache_enabled=torch.is_autocast_cache_enabled(),
+        ):
+            return f(*args, **kwargs)
+
+    return do_autocast
 
 
 def load_partial_from_config(config) -> partial[Any]:

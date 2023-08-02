@@ -1,32 +1,12 @@
 from typing import Any, Generator, Iterator, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn import Parameter
 
-from neurosis.modules.losses import LPIPS
+from neurosis.modules.losses.general import adopt_weight, hinge_d_loss, vanilla_d_loss
+from neurosis.modules.losses.lpips import LPIPS
 from neurosis.modules.losses.patchgan import NLayerDiscriminator
-
-
-def adopt_weight(weight: Tensor, global_step: int, threshold: int = 0, value=0.0) -> Tensor:
-    if global_step < threshold:
-        weight = value
-    return weight
-
-
-def hinge_d_loss(logits_real: Tensor, logits_fake: Tensor) -> Tensor:
-    loss_real = torch.mean(F.relu(1.0 - logits_real))
-    loss_fake = torch.mean(F.relu(1.0 + logits_fake))
-    d_loss = torch.mul(0.5, torch.add(loss_real, loss_fake))
-    return d_loss
-
-
-def vanilla_d_loss(logits_real: Tensor, logits_fake: Tensor) -> Tensor:
-    loss_real = torch.mean(F.softplus(-logits_real))
-    loss_fake = torch.mean(F.softplus(logits_fake))
-    d_loss = torch.mul(0.5, torch.add(loss_real, loss_fake))
-    return d_loss
 
 
 class VQLPIPSWithDiscriminator(nn.Module):

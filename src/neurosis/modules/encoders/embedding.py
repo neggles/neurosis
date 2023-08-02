@@ -9,8 +9,8 @@ from omegaconf import ListConfig
 from torch import Tensor, nn
 
 from neurosis.modules.regularizers import DiagonalGaussianDistribution
+from neurosis.utils import count_params, disabled_train, expand_dims_like, instantiate_from_config
 from neurosis.utils.module import extract_into_tensor, make_beta_schedule
-from neurosis.utils.sgm import count_params, disabled_train, expand_dims_like, instantiate_from_config
 
 
 class AbstractEmbModel(nn.Module):
@@ -188,6 +188,14 @@ class ClassEmbedder(AbstractEmbModel):
         uc = torch.ones((bs,), device=device) * uc_class
         uc = {self.key: uc.long()}
         return uc
+
+
+class IdentityEncoder(AbstractEmbModel):
+    def encode(self, x):
+        return x
+
+    def forward(self, x):
+        return x
 
 
 class ClassEmbedderForMultiCond(ClassEmbedder):
