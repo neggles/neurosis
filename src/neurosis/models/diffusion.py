@@ -3,7 +3,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import lightning.pytorch as pl
+import lightning as L
 import torch
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from omegaconf import ListConfig
@@ -25,7 +25,7 @@ from neurosis.modules.encoders.embedding import AbstractEmbModel
 from neurosis.utils import disabled_train, log_txt_as_img
 
 
-class DiffusionEngine(pl.LightningModule):
+class DiffusionEngine(L.LightningModule):
     def __init__(
         self,
         model: UNetModel,
