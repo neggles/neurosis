@@ -1,9 +1,15 @@
+from abc import ABC
+
 import torch
 
 from neurosis.utils import instantiate_from_config
 
 
-class EDMSampling:
+class DiffusionSampler(ABC):
+    pass
+
+
+class EDMSampling(DiffusionSampler):
     def __init__(self, p_mean=-1.2, p_std=1.2):
         self.p_mean = p_mean
         self.p_std = p_std
@@ -13,7 +19,7 @@ class EDMSampling:
         return log_sigma.exp()
 
 
-class DiscreteSampling:
+class DiscreteSampling(DiffusionSampler):
     def __init__(self, discretization_config, num_idx, do_append_zero=False, flip=True):
         self.num_idx = num_idx
         self.sigmas = instantiate_from_config(discretization_config)(

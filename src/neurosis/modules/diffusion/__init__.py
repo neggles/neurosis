@@ -4,7 +4,7 @@ from .loss import StandardDiffusionLoss
 from .model import Decoder, Encoder, Model
 from .openaimodel import UNetModel
 from .sampling import BaseDiffusionSampler
-from .wrappers import OpenAIWrapper
+from .wrappers import IdentityWrapper, OpenAIWrapper
 
 __all__ = [
     "Denoiser",
@@ -15,5 +15,6 @@ __all__ = [
     "Model",
     "UNetModel",
     "BaseDiffusionSampler",
+    "IdentityWrapper",
     "OpenAIWrapper",
 ]

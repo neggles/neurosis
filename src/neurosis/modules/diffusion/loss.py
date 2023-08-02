@@ -1,28 +1,29 @@
 from typing import List, Optional, Union
 
 import torch
-import torch.nn as nn
 from omegaconf import ListConfig
+from torch import Tensor, nn
 
-from neurosis.modules.autoencoding.lpips import LPIPS
-from neurosis.utils import append_dims, instantiate_from_config
+from neurosis.modules.diffusion.sigma_sampling import DiffusionSampler
+from neurosis.modules.losses.lpips import LPIPS
+from neurosis.utils import append_dims
 
 
 class StandardDiffusionLoss(nn.Module):
     def __init__(
         self,
-        sigma_sampler_config,
-        type="l2",
-        offset_noise_level=0.0,
+        sigma_sampler: DiffusionSampler,
+        type: str = "l2",
+        offset_noise_level: float = 0.0,
         batch2model_keys: Optional[Union[str, List[str], ListConfig]] = None,
     ):
         super().__init__()
+        if type not in ["l2", "l1", "lpips"]:
+            raise ValueError(f"Unknown loss type {type}, must be one of ['l2', 'l1', 'lpips']")
 
-        assert type in ["l2", "l1", "lpips"]
+        self.sigma_sampler = sigma_sampler
 
-        self.sigma_sampler = instantiate_from_config(sigma_sampler_config)
-
-        self.type = type
+        self.loss_type = type
         self.offset_noise_level = offset_noise_level
 
         if type == "lpips":
@@ -36,7 +37,7 @@ class StandardDiffusionLoss(nn.Module):
 
         self.batch2model_keys = set(batch2model_keys)
 
-    def __call__(self, network, denoiser, conditioner, input, batch):
+    def __call__(self, network: nn.Module, denoiser, conditioner, input: Tensor, batch: Tensor) -> Tensor:
         cond = conditioner(batch)
         additional_model_inputs = {key: batch[key] for key in self.batch2model_keys.intersection(batch)}
 
@@ -51,11 +52,11 @@ class StandardDiffusionLoss(nn.Module):
         w = append_dims(denoiser.w(sigmas), input.ndim)
         return self.get_loss(model_output, input, w)
 
-    def get_loss(self, model_output, target, w):
-        if self.type == "l2":
+    def get_loss(self, model_output: Tensor, target: Tensor, w: Tensor) -> Tensor:
+        if self.loss_type == "l2":
             return torch.mean((w * (model_output - target) ** 2).reshape(target.shape[0], -1), 1)
-        elif self.type == "l1":
+        elif self.loss_type == "l1":
             return torch.mean((w * (model_output - target).abs()).reshape(target.shape[0], -1), 1)
-        elif self.type == "lpips":
+        elif self.loss_type == "lpips":
             loss = self.lpips(model_output, target).reshape(-1)
             return loss

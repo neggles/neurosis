@@ -1,9 +1,7 @@
 import torch
-import torch.nn as nn
+from torch import nn
 
-from neurosis.modules.losses.lpips import (
-    LPIPS,
-)
+from neurosis.modules.losses.lpips import LPIPS
 from neurosis.utils import instantiate_from_config
 
 

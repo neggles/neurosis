@@ -1,11 +1,10 @@
 from contextlib import nullcontext
 from functools import partial
-from typing import Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import torch
 from einops import rearrange
-from omegaconf import ListConfig
 from torch import Tensor, nn
 
 from neurosis.modules.regularizers import DiagonalGaussianDistribution
@@ -14,11 +13,31 @@ from neurosis.utils.module import extract_into_tensor, make_beta_schedule
 
 
 class AbstractEmbModel(nn.Module):
-    def __init__(self):
+    input_keys: Optional[List[str]]
+
+    legacy_ucg_val: Optional[float]
+    ucg_prng: Optional[np.random.RandomState]
+
+    def __init__(
+        self,
+        is_trainable: Optional[bool] = None,
+        ucg_rate: Optional[float] = None,
+        input_key: Optional[str] = None,
+    ):
         super().__init__()
-        self._is_trainable = None
-        self._ucg_rate = None
-        self._input_key = None
+        if not hasattr(self, "is_trainable"):
+            self.is_trainable = is_trainable
+        if not hasattr(self, "ucg_rate"):
+            self.ucg_rate = ucg_rate
+        if not hasattr(self, "input_key"):
+            self.input_key = input_key
+        if not self.is_trainable:
+            self.freeze()
+
+        if hasattr(self, "legacy_ucg_val") and self.legacy_ucg_val is not None:
+            self.ucg_prng = np.random.RandomState()
+        else:
+            self.ucg_prng = None
 
     @property
     def is_trainable(self) -> bool:
@@ -69,47 +88,31 @@ class GeneralConditioner(nn.Module):
     OUTPUT_DIM2KEYS = {2: "vector", 3: "crossattn", 4: "concat", 5: "concat"}
     KEY2CATDIM = {"vector": 1, "crossattn": 2, "concat": 1}
 
-    def __init__(self, emb_models: Union[List, ListConfig]):
+    def __init__(
+        self,
+        emb_models: list[AbstractEmbModel],
+    ):
         super().__init__()
-        embedders: list[nn.Module] = []
-        for n, embconfig in enumerate(emb_models):
-            embedder: AbstractEmbModel = instantiate_from_config(embconfig)
+        embedders: list[AbstractEmbModel] = []
+        for idx, embedder in enumerate(emb_models):
+            emb_class = embedder.__class__.__name__
             if not isinstance(embedder, AbstractEmbModel):
-                raise ValueError(
-                    f"embedder model #{n} {embedder.__class__.__name__} is not a subclass of AbstractEmbModel"
-                )
-
-            embedder.is_trainable = embconfig.get("is_trainable", False)
-            embedder.ucg_rate = embconfig.get("ucg_rate", 0.0)
-            if not embedder.is_trainable:
-                embedder.eval()
-                if hasattr(embedder, "freeze"):
-                    embedder.freeze()
-                embedder.requires_grad_(False)
+                raise ValueError(f"embedder model #{idx} {emb_class} is not a subclass of AbstractEmbModel")
 
             print(
-                f"Initialized embedder #{n}: {embedder.__class__.__name__} "
-                f"with {count_params(embedder, False)} params. Trainable: {embedder.is_trainable}"
+                f"Initialized embedder #{idx}: {emb_class} "
+                + f"with {count_params(embedder, False)} params. Trainable: {embedder.is_trainable}"
             )
 
-            if "input_key" in embconfig:
-                embedder.input_key = embconfig["input_key"]
-            elif "input_keys" in embconfig:
-                embedder.input_keys = embconfig["input_keys"]
-            else:
-                raise KeyError(
-                    f"need either 'input_key' or 'input_keys' for embedder {embedder.__class__.__name__}"
-                )
+            if not any((hasattr(embedder, "input_key"), hasattr(embedder, "input_keys"))):
+                raise KeyError(f"need either 'input_key' or 'input_keys' for embedder #{idx} {emb_class}")
 
-            embedder.legacy_ucg_val = embconfig.get("legacy_ucg_value", None)
-            if embedder.legacy_ucg_val is not None:
-                embedder.ucg_prng = np.random.RandomState()
-
-            embedders.append(embedder)
         self.embedders = nn.ModuleList(embedders)
 
-    def possibly_get_ucg_val(self, embedder: AbstractEmbModel, batch: Dict) -> Dict:
-        assert embedder.legacy_ucg_val is not None
+    def possibly_get_ucg_val(self, embedder: AbstractEmbModel, batch: dict) -> dict:
+        if embedder.legacy_ucg_val is None:
+            raise ValueError("embedder has no legacy_ucg_val")
+
         p = embedder.ucg_rate
         val = embedder.legacy_ucg_val
         for i in range(len(batch[embedder.input_key])):
@@ -117,10 +120,12 @@ class GeneralConditioner(nn.Module):
                 batch[embedder.input_key][i] = val
         return batch
 
-    def forward(self, batch: Dict, force_zero_embeddings: Optional[List] = None) -> Dict:
+    def forward(self, batch: dict, force_zero_embeddings: Optional[List] = None) -> dict:
         output = dict()
         if force_zero_embeddings is None:
             force_zero_embeddings = []
+
+        embedder: AbstractEmbModel
         for embedder in self.embedders:
             embedding_context = nullcontext if embedder.is_trainable else torch.no_grad
             with embedding_context():
@@ -130,9 +135,10 @@ class GeneralConditioner(nn.Module):
                     emb_out = embedder(batch[embedder.input_key])
                 elif hasattr(embedder, "input_keys"):
                     emb_out = embedder(*[batch[k] for k in embedder.input_keys])
-            assert isinstance(
-                emb_out, (torch.Tensor, list, tuple)
-            ), f"encoder outputs must be tensors or a sequence, but got {type(emb_out)}"
+
+            if not isinstance(emb_out, (torch.Tensor, list, tuple)):
+                raise ValueError(f"encoder outputs must be tensors or a sequence, but got {type(emb_out)}")
+
             if not isinstance(emb_out, (list, tuple)):
                 emb_out = [emb_out]
             for emb in emb_out:
@@ -171,8 +177,8 @@ class GeneralConditioner(nn.Module):
 
 
 class ClassEmbedder(AbstractEmbModel):
-    def __init__(self, embed_dim, n_classes=1000, add_sequence_dim=False):
-        super().__init__()
+    def __init__(self, embed_dim, n_classes=1000, add_sequence_dim=False, **kwargs):
+        super().__init__(**kwargs)
         self.embedding = nn.Embedding(n_classes, embed_dim)
         self.n_classes = n_classes
         self.add_sequence_dim = add_sequence_dim

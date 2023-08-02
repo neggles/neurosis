@@ -5,9 +5,9 @@ from typing import Iterable
 
 import numpy as np
 import torch as th
-import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange
+from torch import nn
+from torch.nn import functional as F
 
 from neurosis.modules.attention import SpatialTransformer
 from neurosis.modules.diffusion.util import (
