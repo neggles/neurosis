@@ -1,14 +1,14 @@
 import torch
-from torch import nn
+from torch import Tensor, nn
 
+from neurosis.modules.diffusion.model import Decoder
 from neurosis.modules.losses.lpips import LPIPS
-from neurosis.utils import instantiate_from_config
 
 
 class LatentLPIPS(nn.Module):
     def __init__(
         self,
-        decoder_config,
+        decoder: Decoder,
         perceptual_weight=1.0,
         latent_weight=1.0,
         scale_input_to_tgt_size=False,
@@ -18,18 +18,16 @@ class LatentLPIPS(nn.Module):
         super().__init__()
         self.scale_input_to_tgt_size = scale_input_to_tgt_size
         self.scale_tgt_to_input_size = scale_tgt_to_input_size
-        self.init_decoder(decoder_config)
+        self.decoder = decoder
+        if hasattr(self.decoder, "encoder"):
+            delattr(self.decoder, "encoder")
+
         self.perceptual_loss = LPIPS().eval()
         self.perceptual_weight = perceptual_weight
         self.latent_weight = latent_weight
         self.perceptual_weight_on_inputs = perceptual_weight_on_inputs
 
-    def init_decoder(self, config):
-        self.decoder = instantiate_from_config(config)
-        if hasattr(self.decoder, "encoder"):
-            del self.decoder.encoder
-
-    def forward(self, latent_inputs, latent_predictions, image_inputs, split="train"):
+    def forward(self, latent_inputs: Tensor, latent_predictions: Tensor, image_inputs: Tensor, split="train"):
         log = dict()
         loss = (latent_inputs - latent_predictions) ** 2
         log[f"{split}/latent_l2_loss"] = loss.mean().detach()

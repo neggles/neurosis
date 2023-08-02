@@ -3,12 +3,13 @@
 """
 
 
-from typing import Dict, Union
+from typing import Optional, Union
 
 import torch
-from omegaconf import ListConfig, OmegaConf
+from torch import Tensor
 from tqdm import tqdm
 
+from neurosis.modules.diffusion.discretizer import Discretization
 from neurosis.modules.diffusion.sampling_utils import (
     get_ancestral_step,
     linear_multistep_coeff,
@@ -16,27 +17,26 @@ from neurosis.modules.diffusion.sampling_utils import (
     to_neg_log_sigma,
     to_sigma,
 )
-from neurosis.utils import append_dims, instantiate_from_config
-
-DEFAULT_GUIDER = {"target": "sgm.modules.diffusionmodules.guiders.IdentityGuider"}
+from neurosis.modules.guidance import DiffusionGuider, IdentityGuider
+from neurosis.utils import append_dims
 
 
 class BaseDiffusionSampler:
     def __init__(
         self,
-        discretization_config: Union[Dict, ListConfig, OmegaConf],
+        discretization: Discretization,
+        guider: Optional[DiffusionGuider] = None,
         num_steps: Union[int, None] = None,
-        guider_config: Union[Dict, ListConfig, OmegaConf, None] = None,
         verbose: bool = False,
         device: str = "cuda",
     ):
         self.num_steps = num_steps
-        self.discretization = instantiate_from_config(discretization_config)
-        self.guider = instantiate_from_config(guider_config or DEFAULT_GUIDER)
+        self.discretization = discretization
+        self.guider = guider if guider is not None else IdentityGuider
         self.verbose = verbose
         self.device = device
 
-    def prepare_sampling_loop(self, x, cond, uc=None, num_steps=None):
+    def prepare_sampling_loop(self, x: Tensor, cond, uc=None, num_steps=None):
         sigmas = self.discretization(self.num_steps if num_steps is None else num_steps, device=self.device)
         uc = uc or cond
 
@@ -47,7 +47,7 @@ class BaseDiffusionSampler:
 
         return x, s_in, sigmas, num_sigmas, cond, uc
 
-    def denoise(self, x, denoiser, sigma, cond, uc):
+    def denoise(self, x: Tensor, denoiser, sigma, cond, uc):
         denoised = denoiser(*self.guider.prepare_inputs(x, sigma, cond, uc))
         denoised = self.guider(denoised, sigma)
         return denoised
@@ -71,7 +71,7 @@ class SingleStepDiffusionSampler(BaseDiffusionSampler):
     def sampler_step(self, sigma, next_sigma, denoiser, x, cond, uc, *args, **kwargs):
         raise NotImplementedError
 
-    def euler_step(self, x, d, dt):
+    def euler_step(self, x: Tensor, d, dt):
         return x + dt * d
 
 

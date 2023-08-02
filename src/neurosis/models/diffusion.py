@@ -21,6 +21,7 @@ from neurosis.modules.diffusion import (
 )
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
+from neurosis.modules.encoders.embedding import AbstractEmbModel
 from neurosis.utils import disabled_train, log_txt_as_img
 
 
@@ -168,6 +169,7 @@ class DiffusionEngine(pl.LightningModule):
 
     def configure_optimizers(self):
         network_params = list(self.model.parameters())
+        embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
             if embedder.is_trainable:
                 network_params.extend(list(embedder.parameters()))
@@ -205,6 +207,7 @@ class DiffusionEngine(pl.LightningModule):
         image_h, image_w = batch[self.input_key].shape[2:]
         log = dict()
 
+        embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
             if ((self.log_keys is None) or (embedder.input_key in self.log_keys)) and not self.no_cond_log:
                 x = batch[embedder.input_key][:n]

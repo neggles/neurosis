@@ -1,14 +1,17 @@
-from torch import nn
+from typing import Callable
 
-from neurosis.utils import append_dims, instantiate_from_config
+from torch import Tensor, nn
+
+from neurosis.modules.diffusion.discretizer import Discretization
+from neurosis.utils import append_dims
 
 
 class Denoiser(nn.Module):
-    def __init__(self, weighting_config, scaling_config):
+    def __init__(self, weighting: Callable, scaling: Callable):
         super().__init__()
 
-        self.weighting = instantiate_from_config(weighting_config)
-        self.scaling = instantiate_from_config(scaling_config)
+        self.weighting = weighting
+        self.scaling = scaling
 
     def possibly_quantize_sigma(self, sigma):
         return sigma
@@ -19,7 +22,7 @@ class Denoiser(nn.Module):
     def w(self, sigma):
         return self.weighting(sigma)
 
-    def __call__(self, network, input, sigma, cond):
+    def __call__(self, network: nn.Module, input: Tensor, sigma: Tensor, cond: Tensor):
         sigma = self.possibly_quantize_sigma(sigma)
         sigma_shape = sigma.shape
         sigma = append_dims(sigma, input.ndim)
@@ -29,34 +32,34 @@ class Denoiser(nn.Module):
 
 
 class DiscreteDenoiser(Denoiser):
+    sigmas: Tensor
+
     def __init__(
         self,
-        weighting_config,
-        scaling_config,
-        num_idx,
-        discretization_config,
-        do_append_zero=False,
-        quantize_c_noise=True,
-        flip=True,
+        weighting: Callable,
+        scaling: Callable,
+        num_idx: int,
+        discretization: Discretization,
+        do_append_zero: bool = False,
+        quantize_c_noise: bool = True,
+        flip: bool = True,
     ):
-        super().__init__(weighting_config, scaling_config)
-        sigmas = instantiate_from_config(discretization_config)(
-            num_idx, do_append_zero=do_append_zero, flip=flip
-        )
+        super().__init__(weighting, scaling)
+        sigmas = discretization(num_idx, do_append_zero=do_append_zero, flip=flip)
         self.register_buffer("sigmas", sigmas)
         self.quantize_c_noise = quantize_c_noise
 
-    def sigma_to_idx(self, sigma):
+    def sigma_to_idx(self, sigma: Tensor) -> Tensor:
         dists = sigma - self.sigmas[:, None]
         return dists.abs().argmin(dim=0).view(sigma.shape)
 
-    def idx_to_sigma(self, idx):
+    def idx_to_sigma(self, idx) -> Tensor:
         return self.sigmas[idx]
 
-    def possibly_quantize_sigma(self, sigma):
+    def possibly_quantize_sigma(self, sigma: Tensor) -> Tensor:
         return self.idx_to_sigma(self.sigma_to_idx(sigma))
 
-    def possibly_quantize_c_noise(self, c_noise):
+    def possibly_quantize_c_noise(self, c_noise: Tensor) -> Tensor:
         if self.quantize_c_noise:
             return self.sigma_to_idx(c_noise)
         else:

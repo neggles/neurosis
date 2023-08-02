@@ -1,8 +1,10 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from functools import partial
+from typing import Union
 
 import numpy as np
 import torch
+from torch import Tensor
 
 from neurosis.modules.diffusion.util import make_beta_schedule
 from neurosis.utils import append_zero
@@ -12,24 +14,35 @@ def generate_roughly_equally_spaced_steps(num_substeps: int, max_step: int) -> n
     return np.linspace(max_step - 1, 0, num_substeps, endpoint=False).astype(int)[::-1]
 
 
-class Discretization:
-    def __call__(self, n, do_append_zero=True, device="cpu", flip=False):
+class Discretization(ABC):
+    def __call__(
+        self,
+        n: int,
+        do_append_zero: bool = True,
+        device: Union[str, torch.device] = "cpu",
+        flip: bool = False,
+    ):
         sigmas = self.get_sigmas(n, device=device)
         sigmas = append_zero(sigmas) if do_append_zero else sigmas
         return sigmas if not flip else torch.flip(sigmas, (0,))
 
     @abstractmethod
-    def get_sigmas(self, n, device):
-        pass
+    def get_sigmas(self, n: int, device: Union[str, torch.device]) -> Tensor:
+        raise NotImplementedError("Abstract base class was called???")
 
 
 class EDMDiscretization(Discretization):
-    def __init__(self, sigma_min=0.02, sigma_max=80.0, rho=7.0):
+    def __init__(
+        self,
+        sigma_min: float = 0.02,
+        sigma_max: float = 80.0,
+        rho: float = 7.0,
+    ):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.rho = rho
 
-    def get_sigmas(self, n, device="cpu"):
+    def get_sigmas(self, n: int, device: Union[str, torch.device] = "cpu") -> Tensor:
         ramp = torch.linspace(0, 1, n, device=device)
         min_inv_rho = self.sigma_min ** (1 / self.rho)
         max_inv_rho = self.sigma_max ** (1 / self.rho)
@@ -51,7 +64,7 @@ class LegacyDDPMDiscretization(Discretization):
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
         self.to_torch = partial(torch.tensor, dtype=torch.float32)
 
-    def get_sigmas(self, n, device="cpu"):
+    def get_sigmas(self, n: int, device: Union[str, torch.device] = "cpu") -> Tensor:
         if n < self.num_timesteps:
             timesteps = generate_roughly_equally_spaced_steps(n, self.num_timesteps)
             alphas_cumprod = self.alphas_cumprod[timesteps]

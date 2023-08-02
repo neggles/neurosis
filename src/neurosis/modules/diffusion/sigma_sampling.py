@@ -2,7 +2,7 @@ from abc import ABC
 
 import torch
 
-from neurosis.utils import instantiate_from_config
+from neurosis.modules.diffusion.discretizer import Discretization
 
 
 class DiffusionSampler(ABC):
@@ -20,11 +20,15 @@ class EDMSampling(DiffusionSampler):
 
 
 class DiscreteSampling(DiffusionSampler):
-    def __init__(self, discretization_config, num_idx, do_append_zero=False, flip=True):
+    def __init__(
+        self,
+        discretization: Discretization,
+        num_idx: int,
+        do_append_zero: bool = False,
+        flip: bool = True,
+    ):
         self.num_idx = num_idx
-        self.sigmas = instantiate_from_config(discretization_config)(
-            num_idx, do_append_zero=do_append_zero, flip=flip
-        )
+        self.sigmas = discretization(num_idx, do_append_zero=do_append_zero, flip=flip)
 
     def idx_to_sigma(self, idx):
         return self.sigmas[idx]

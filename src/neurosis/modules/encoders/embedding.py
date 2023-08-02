@@ -6,9 +6,10 @@ import numpy as np
 import torch
 from einops import rearrange
 from torch import Tensor, nn
+from neurosis.modules.diffusion.model import Encoder
 
 from neurosis.modules.regularizers import DiagonalGaussianDistribution
-from neurosis.utils import count_params, disabled_train, expand_dims_like, instantiate_from_config
+from neurosis.utils import count_params, disabled_train, expand_dims_like
 from neurosis.utils.module import extract_into_tensor, make_beta_schedule
 
 
@@ -275,11 +276,21 @@ class SpatialRescaler(nn.Module):
 
 
 class LowScaleEncoder(nn.Module):
+    # type annotations for the buffers
+    betas: Tensor
+    alphas_cumprod: Tensor
+    alphas_cumprod_prev: Tensor
+    sqrt_alphas_cumprod: Tensor
+    sqrt_one_minus_alphas_cumprod: Tensor
+    log_one_minus_alphas_cumprod: Tensor
+    sqrt_recip_alphas_cumprod: Tensor
+    sqrt_recipm1_alphas_cumprod: Tensor
+
     def __init__(
         self,
-        model_config,
-        linear_start,
-        linear_end,
+        model: Encoder,
+        linear_start: float = 1e-4,
+        linear_end: float = 2e-2,
         timesteps: int = 1000,
         max_noise_level: int = 250,
         output_size: int = 64,
@@ -287,7 +298,7 @@ class LowScaleEncoder(nn.Module):
     ):
         super().__init__()
         self.max_noise_level = max_noise_level
-        self.model = instantiate_from_config(model_config)
+        self.model = model
         self.augmentation_schedule = self.register_schedule(
             timesteps=timesteps, linear_start=linear_start, linear_end=linear_end
         )
@@ -297,10 +308,10 @@ class LowScaleEncoder(nn.Module):
     def register_schedule(
         self,
         beta_schedule="linear",
-        timesteps=1000,
-        linear_start=1e-4,
-        linear_end=2e-2,
-        cosine_s=8e-3,
+        timesteps: int = 1000,
+        linear_start: float = 1e-4,
+        linear_end: float = 2e-2,
+        cosine_s: float = 8e-3,
     ):
         betas = make_beta_schedule(
             beta_schedule,

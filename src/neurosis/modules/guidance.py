@@ -1,9 +1,8 @@
-from functools import partial
+from abc import ABC, abstractmethod
+from typing import Callable, Optional
 
 import torch
 from torch import Tensor
-
-from neurosis.utils import instantiate_from_config
 
 
 class NoDynamicThresholding:
@@ -11,29 +10,39 @@ class NoDynamicThresholding:
         return uncond + scale * (cond - uncond)
 
 
-class VanillaCFG:
+class DiffusionGuider(ABC):
+    @abstractmethod
+    def __call__(self, x: Tensor, sigma) -> Tensor:
+        raise NotImplementedError("Abstract base class was called")
+
+    @abstractmethod
+    def prepare_inputs(self, x: Tensor, s, c, uc):
+        raise NotImplementedError("prepare_inputs() not implemented!")
+
+
+class VanillaCFG(DiffusionGuider):
     """
     implements parallelized CFG
     """
 
-    def __init__(self, scale, dyn_thresh_config=None):
-        def scale_schedule(scale, sigma):
-            return scale  # independent of step
+    def __init__(
+        self,
+        scale: float = 1.0,
+        dyn_thresh: Optional[Callable] = None,
+    ):
+        self.scale = scale
+        self.dyn_thresh = dyn_thresh if dyn_thresh is not None else NoDynamicThresholding()
 
-        self.scale_schedule = partial(scale_schedule, scale)
-        self.dyn_thresh = instantiate_from_config(
-            config=dyn_thresh_config
-            if dyn_thresh_config is not None
-            else {"target": f"{__name__}.NoDynamicThresholding"}
-        )
-
-    def __call__(self, x: Tensor, sigma):
+    def __call__(self, x: Tensor, sigma) -> Tensor:
         x_u, x_c = x.chunk(2)
         scale_value = self.scale_schedule(sigma)
         x_pred = self.dyn_thresh(x_u, x_c, scale_value)
         return x_pred
 
-    def prepare_inputs(self, x, s, c, uc):
+    def scale_schedule(self, sigma) -> float:
+        return self.scale
+
+    def prepare_inputs(self, x: Tensor, s, c, uc):
         c_out = dict()
 
         for k in c:
@@ -45,8 +54,8 @@ class VanillaCFG:
         return torch.cat([x] * 2), torch.cat([s] * 2), c_out
 
 
-class IdentityGuider:
-    def __call__(self, x: Tensor, sigma):
+class IdentityGuider(DiffusionGuider):
+    def __call__(self, x, sigma):
         return x
 
     def prepare_inputs(self, x, s, c, uc):
