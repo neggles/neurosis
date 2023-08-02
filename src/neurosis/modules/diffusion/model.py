@@ -1,6 +1,6 @@
 # pytorch_diffusion + derived encoder decoder
 import math
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Sequence
 
 import numpy as np
 import torch
@@ -437,19 +437,19 @@ class Encoder(nn.Module):
     def __init__(
         self,
         *,
-        ch,
-        out_ch,
-        ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
-        dropout=0.0,
-        resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
-        double_z=True,
-        use_linear_attn=False,
-        attn_type="vanilla",
+        ch: int,
+        out_ch: int,
+        ch_mult: Sequence[int] = (1, 2, 4, 8),
+        num_res_blocks: int,
+        attn_resolutions: Sequence[int],
+        dropout: float = 0.0,
+        resamp_with_conv: bool = True,
+        in_channels: int,
+        resolution: int,
+        z_channels: int,
+        double_z: bool = True,
+        use_linear_attn: bool = False,
+        attn_type: str = "vanilla",
         **ignore_kwargs,
     ):
         super().__init__()
@@ -552,20 +552,20 @@ class Decoder(nn.Module):
     def __init__(
         self,
         *,
-        ch,
-        out_ch,
-        ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
-        dropout=0.0,
-        resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
-        give_pre_end=False,
-        tanh_out=False,
-        use_linear_attn=False,
-        attn_type="vanilla",
+        ch: int,
+        out_ch: int,
+        ch_mult: Sequence[int] = (1, 2, 4, 8),
+        num_res_blocks: int,
+        attn_resolutions: Sequence[int],
+        dropout: float = 0.0,
+        resamp_with_conv: bool = True,
+        in_channels: int,
+        resolution: int,
+        z_channels: int,
+        give_pre_end: bool = False,
+        tanh_out: bool = False,
+        use_linear_attn: bool = False,
+        attn_type: str = "vanilla",
         **ignorekwargs,
     ):
         super().__init__()

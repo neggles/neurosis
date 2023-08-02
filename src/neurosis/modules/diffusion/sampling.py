@@ -69,14 +69,22 @@ class BaseDiffusionSampler:
 
 class SingleStepDiffusionSampler(BaseDiffusionSampler):
     def sampler_step(self, sigma, next_sigma, denoiser, x, cond, uc, *args, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError("Implement in subclass")
 
     def euler_step(self, x: Tensor, d, dt):
         return x + dt * d
 
 
 class EDMSampler(SingleStepDiffusionSampler):
-    def __init__(self, s_churn=0.0, s_tmin=0.0, s_tmax=float("inf"), s_noise=1.0, *args, **kwargs):
+    def __init__(
+        self,
+        s_churn: float = 0.0,
+        s_tmin: float = 0.0,
+        s_tmax: float = float("inf"),
+        s_noise: float = 1.0,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
 
         self.s_churn = s_churn

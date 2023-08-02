@@ -1,0 +1,154 @@
+seed_everything: true
+
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  precision: bf16
+  max_steps: 1000000
+  default_root_dir: ./projects
+  logger: true
+  fast_dev_run: true
+
+model:
+  class_path: neurosis.models.DiffusionEngine
+  init_args:
+    scale_factor: 0.13025
+    disable_first_stage_autocast: true
+    log_keys:
+      - txt
+
+    model:
+      class_path: neurosis.modules.diffusion.UNetModel
+      init_args:
+        adm_in_channels: 2816
+        num_classes: sequential
+        use_checkpoint: true
+        in_channels: 4
+        out_channels: 4
+        model_channels: 320
+        attention_resolutions: [4, 2]
+        num_res_blocks: 2
+        channel_mult: [1, 2, 4]
+        num_head_channels: 64
+        use_spatial_transformer: true
+        use_linear_in_transformer: true
+        transformer_depth: [1, 2, 10] # note: the first is unused (due to attn_res starting at 2) 32, 16, 8 --> 64, 32, 16
+        context_dim: 2048
+        spatial_transformer_attn_type: softmax-xformers
+        legacy: false
+
+    denoiser:
+      class_path: neurosis.modules.diffusion.DiscreteDenoiser
+      init_args:
+        num_idx: 1000
+        weighting:
+          class_path: neurosis.modules.diffusion.EpsWeighting
+        scaling:
+          class_path: neurosis.modules.diffusion.EpsScaling
+        discretization:
+          class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+
+    first_stage_model:
+      class_path: neurosis.models.autoencoder.AutoencoderKLInferenceWrapper
+      init_args:
+        ckpt_path: data/sdxl_vae.safetensors
+        embed_dim: 4
+        monitor: val/rec_loss
+        ddconfig:
+          attn_type: vanilla-xformers
+          double_z: true
+          z_channels: 4
+          resolution: 256
+          in_channels: 3
+          out_ch: 3
+          ch: 128
+          ch_mult: [1, 2, 4, 4]
+          num_res_blocks: 2
+          attn_resolutions: []
+          dropout: 0.0
+        loss:
+          class_path: torch.nn.Identity
+
+    conditioner:
+      class_path: neurosis.modules.encoders.GeneralConditioner
+      init_args:
+        emb_models:
+          # crossattn cond
+          - class_path: neurosis.models.text_encoder.FrozenCLIPEmbedder
+            init_args:
+              layer: hidden
+              layer_idx: 11
+              input_key: txt
+              is_trainable: false
+          # crossattn and vector cond
+          - class_path: neurosis.models.text_encoder.FrozenOpenCLIPEmbedder2
+            init_args:
+              arch: ViT-bigG-14
+              version: laion2b_s39b_b160k
+              freeze: true
+              layer: penultimate
+              always_return_pooled: true
+              legacy: false
+              input_key: txt
+              is_trainable: false
+          # vector cond
+          - class_path: neurosis.modules.encoders.metadata.ConcatTimestepEmbedderND
+            init_args:
+              outdim: 256 # multiplied by two
+              input_key: original_size_as_tuple
+              is_trainable: false
+          # vector cond
+          - class_path: neurosis.modules.encoders.metadata.ConcatTimestepEmbedderND
+            init_args:
+              outdim: 256 # multiplied by two
+              input_key: crop_coords_top_left
+              is_trainable: false
+          # vector cond
+          - class_path: neurosis.modules.encoders.metadata.ConcatTimestepEmbedderND
+            init_args:
+              outdim: 256 # multiplied by two
+              input_key: target_size_as_tuple
+              is_trainable: false
+
+    sampler:
+      class_path: neurosis.modules.diffusion.sampling.EulerEDMSampler
+      init_args:
+        num_steps: 50
+        discretization:
+          class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+        guider:
+          class_path: neurosis.modules.guidance.VanillaCFG
+          init_args:
+            scale: 7.5
+
+    optimizer:
+      class_path: neurosis.optimizers.Adafactor
+      init_args:
+        scale_parameter: true
+        relative_step: true
+        warmup_init: true
+
+    scheduler:
+      class_path: neurosis.optimizers.AdafactorScheduler
+      init_args:
+        initial_lr: 4e-7
+
+    loss_fn:
+      class_path: neurosis.modules.diffusion.StandardDiffusionLoss
+      init_args:
+        sigma_sampler:
+          class_path: neurosis.modules.diffusion.sigma_sampling.DiscreteSampling
+          init_args:
+            num_idx: 1000
+            discretization:
+              class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+
+data:
+  class_path: neurosis.dataset.huggingface.HFDatasetModule
+  init_args:
+    dataset: "neggles/ine"
+    resolution: 1024
+    streaming: false
+    num_proc: 4
+    batch_size: 1

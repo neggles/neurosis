@@ -15,14 +15,14 @@ from neurosis.models.autoencoder import AutoencodingEngine
 from neurosis.modules.diffusion import (
     BaseDiffusionSampler,
     Denoiser,
-    IdentityWrapper,
     StandardDiffusionLoss,
     UNetModel,
 )
+from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.utils import disabled_train, log_txt_as_img
+from neurosis.utils import disabled_train, get_obj_from_str, log_txt_as_img
 
 
 class DiffusionEngine(L.LightningModule):
@@ -36,7 +36,7 @@ class DiffusionEngine(L.LightningModule):
         optimizer: OptimizerCallable,
         scheduler: LRSchedulerCallable,
         loss_fn: Optional[StandardDiffusionLoss],
-        network_wrapper: IdentityWrapper,
+        network_wrapper: Optional[str] = None,
         ckpt_path: Optional[PathLike] = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
@@ -52,6 +52,7 @@ class DiffusionEngine(L.LightningModule):
         self.log_keys = log_keys
         self.input_key = input_key
 
+        network_wrapper = get_obj_from_str(network_wrapper) if network_wrapper is not None else OpenAIWrapper
         self.model = network_wrapper(model, compile_model=compile_model)
         self.denoiser = denoiser
         self.sampler = sampler
@@ -73,7 +74,7 @@ class DiffusionEngine(L.LightningModule):
             self.model_ema = None
 
         self.scale_factor: float = scale_factor
-        self.disable_first_stage_autocast: bool = disable_first_stage_autocast
+        self.first_stage_autocast: bool = not disable_first_stage_autocast
         self.no_cond_log: bool = no_cond_log
 
         if ckpt_path is not None:
@@ -81,13 +82,13 @@ class DiffusionEngine(L.LightningModule):
 
     def init_from_ckpt(self, path: Path) -> None:
         if path.suffix == ".safetensors":
-            state_dict = load_safetensors(path)
+            sd = load_safetensors(path)
         elif path.suffix in CHECKPOINT_EXTNS:
-            state_dict = torch.load(path, map_location="cpu")["state_dict"]
+            sd = torch.load(path, map_location="cpu")["state_dict"]
         else:
             raise NotImplementedError(f"Unknown checkpoint extension {path.suffix}")
 
-        missing, unexpected = self.load_state_dict(state_dict, strict=False)
+        missing, unexpected = self.load_state_dict(sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
             print(f"Missing Keys: {missing}")
@@ -108,13 +109,13 @@ class DiffusionEngine(L.LightningModule):
     @torch.no_grad()
     def decode_first_stage(self, z):
         z = 1.0 / self.scale_factor * z
-        with torch.autocast("cuda", enabled=not self.disable_first_stage_autocast):
+        with torch.autocast("cuda", enabled=self.first_stage_autocast):
             out = self.first_stage_model.decode(z)
         return out
 
     @torch.no_grad()
     def encode_first_stage(self, x):
-        with torch.autocast("cuda", enabled=not self.disable_first_stage_autocast):
+        with torch.autocast("cuda", enabled=self.first_stage_autocast):
             z = self.first_stage_model.encode(x)
         z = self.scale_factor * z
         return z
@@ -252,7 +253,7 @@ class DiffusionEngine(L.LightningModule):
             ucg_keys = conditioner_input_keys
         log = dict()
 
-        x = self.get_input(batch)
+        x: Tensor = self.get_input(batch)
 
         c, uc = self.conditioner.get_unconditional_conditioning(
             batch,
@@ -264,7 +265,7 @@ class DiffusionEngine(L.LightningModule):
         N = min(x.shape[0], N)
         x = x.to(self.device)[:N]
         log["inputs"] = x
-        z = self.encode_first_stage(x)
+        z: Tensor = self.encode_first_stage(x)
         log["reconstructions"] = self.decode_first_stage(z)
         log.update(self.log_conditionings(batch, N))
 

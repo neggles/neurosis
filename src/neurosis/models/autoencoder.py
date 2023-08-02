@@ -1,6 +1,7 @@
 import re
 from abc import abstractmethod
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 import lightning as L
@@ -11,11 +12,11 @@ from packaging import version
 from safetensors.torch import load_file as load_safetensors
 from torch import Tensor, nn
 
-from neurosis.modules.autoencoding import AbstractRegularizer
-from neurosis.modules.diffusion import Decoder, Encoder, StandardDiffusionLoss
+from neurosis.constants import CHECKPOINT_EXTNS
+from neurosis.modules.autoencoding import AbstractRegularizer, GeneralLPIPSWithDiscriminator
+from neurosis.modules.diffusion import Decoder, Encoder
 from neurosis.modules.distributions import DiagonalGaussianDistribution
 from neurosis.modules.ema import LitEma
-from neurosis.modules.losses import GeneralLPIPSWithDiscriminator
 
 
 class AbstractAutoencoder(L.LightningModule):
@@ -56,13 +57,13 @@ class AbstractAutoencoder(L.LightningModule):
         except Exception:
             return 1
 
-    def init_from_ckpt(self, path: str, ignore_keys: Union[Tuple, list, ListConfig] = tuple()) -> None:
-        if path.endswith("ckpt"):
-            sd = torch.load(path, map_location="cpu")["state_dict"]
-        elif path.endswith("safetensors"):
+    def init_from_ckpt(self, path: Path, ignore_keys: Union[Tuple, list, ListConfig] = tuple()) -> None:
+        if path.suffix == ".safetensors":
             sd = load_safetensors(path)
+        elif path.suffix in CHECKPOINT_EXTNS:
+            sd = torch.load(path, map_location="cpu")["state_dict"]
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Unknown checkpoint extension {path.suffix}")
 
         keys = list(sd.keys())
         for k in keys:
@@ -70,6 +71,7 @@ class AbstractAutoencoder(L.LightningModule):
                 if re.match(ik, k):
                     print("Deleting key {} from state_dict.".format(k))
                     del sd[k]
+
         missing, unexpected = self.load_state_dict(sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
@@ -126,8 +128,8 @@ class AutoencodingEngine(AbstractAutoencoder):
         *args,
         encoder: Encoder,
         decoder: Decoder,
-        loss: GeneralLPIPSWithDiscriminator,
-        regularizer: AbstractRegularizer,
+        loss: nn.Module,
+        regularizer: Optional[AbstractRegularizer] = None,
         optimizer: Union[Dict, None] = None,
         lr_g_factor: float = 1.0,
         **kwargs,
@@ -289,15 +291,22 @@ class AutoencodingEngine(AbstractAutoencoder):
 
 
 class AutoencoderKL(AutoencodingEngine):
-    def __init__(self, embed_dim: int, z_channels: Optional[int] = None, **kwargs):
+    def __init__(
+        self,
+        *,
+        embed_dim: int,
+        z_channels: Optional[int] = None,
+        loss: nn.Module = None,
+        **kwargs,
+    ):
         ddconfig = kwargs.pop("ddconfig")
         ckpt_path = kwargs.pop("ckpt_path", None)
         ignore_keys = kwargs.pop("ignore_keys", ())
         super().__init__(
-            encoder_config={"target": "torch.nn.Identity"},
-            decoder_config={"target": "torch.nn.Identity"},
-            regularizer_config={"target": "torch.nn.Identity"},
-            loss_config=kwargs.pop("lossconfig"),
+            encoder=nn.Identity,
+            decoder=nn.Identity,
+            regularizer=nn.Identity,
+            loss=loss,
             **kwargs,
         )
 
