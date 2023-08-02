@@ -6,14 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import lightning.pytorch as pl
 import torch
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
-from omegaconf import ListConfig, OmegaConf
+from omegaconf import ListConfig
 from safetensors.torch import load_file as load_safetensors
-from torch import Tensor, nn
-from torch.optim.lr_scheduler import LambdaLR, LRScheduler
+from torch import Tensor
 
 from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.models.autoencoder import AutoencodingEngine
-from neurosis.modules import UNCONDITIONAL_CONFIG
 from neurosis.modules.diffusion import (
     BaseDiffusionSampler,
     Denoiser,
@@ -21,10 +19,9 @@ from neurosis.modules.diffusion import (
     StandardDiffusionLoss,
     UNetModel,
 )
-from neurosis.modules.diffusion.wrappers import OPENAIUNETWRAPPER
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
-from neurosis.utils import disabled_train, get_obj_from_str, instantiate_from_config, log_txt_as_img
+from neurosis.utils import disabled_train, log_txt_as_img
 
 
 class DiffusionEngine(pl.LightningModule):
