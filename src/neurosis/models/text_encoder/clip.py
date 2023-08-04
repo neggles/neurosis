@@ -156,7 +156,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
     def __init__(
         self,
         arch: str = "ViT-H-14",
-        version: str = "laion2b_s32b_b79k",
+        version: Optional[str] = "laion2b_s32b_b79k",
         device: Union[str, torch.device] = "cuda",
         max_length: int = 77,
         freeze: bool = True,

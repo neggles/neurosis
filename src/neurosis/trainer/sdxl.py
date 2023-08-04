@@ -1,22 +1,30 @@
 import logging
 from os import isatty
 from pathlib import Path
-from typing import Annotated, List, NoReturn, Optional
+from typing import Annotated, List, Optional
 
+import jsonargparse
 import torch
 import typer
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.cli import ArgsType, LightningArgumentParser, LightningCLI
-from lightning_utilities.core.imports import module_available
 from rich.logging import RichHandler
 from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
 from neurosis import __version__, console
 from neurosis.models.diffusion import DiffusionEngine
+from neurosis.trainer.callbacks.image_logger import ImageLogger
+from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
+
+# set up rich if we're in a tty/interactive
+if isatty(1):
+    _ = install_pretty(console=console), install_traceback(console=console, suppress=[jsonargparse])
+del install_pretty, install_traceback
 
 train_app: typer.Typer = typer.Typer(
     context_settings=dict(help_option_names=["-h", "--help"]),
-    rich_markup_mode="rich",
+    rich_markup_mode="rich" if isatty(1) else None,
 )
 
 logging.basicConfig(handlers=[RichHandler(console=console)], level=logging.INFO)
@@ -24,7 +32,19 @@ logger = logging.getLogger(__name__)
 
 
 class DiffusionTrainerCli(LightningCLI):
-    pass
+    def add_arguments_to_parser(self, parser: LightningArgumentParser) -> None:
+        parser.add_lightning_class_args(
+            lightning_class=ModelCheckpoint,
+            nested_key="model_checkpoint",
+        )
+        parser.add_lightning_class_args(
+            lightning_class=ImageLogger,
+            nested_key="image_logger",
+        )
+        parser.add_lightning_class_args(
+            lightning_class=LearningRateMonitor,
+            nested_key="learning_rate_logger",
+        )
 
 
 @train_app.command(add_help_option=False)
@@ -37,8 +57,6 @@ def main(
     """
     Main entrypoint for training Stable Diffusion models.
     """
-    if isatty(1):
-        _, _ = install_pretty(console=console), install_traceback(console=console)
 
     if Path.cwd().joinpath("configs/lightning/defaults.yaml").exists():
         default_config_files: List[str] = ["configs/lightning/defaults.yaml"]
@@ -57,6 +75,7 @@ def main(
         parser_kwargs=dict(
             default_config_files=default_config_files,
         ),
+        save_config_callback=LoggerSaveConfigCallback,
     )
 
 

@@ -1,3 +1,4 @@
+import logging
 from contextlib import nullcontext
 from functools import partial
 from typing import List, Optional, Union
@@ -11,6 +12,8 @@ from neurosis.modules.diffusion.model import Encoder
 from neurosis.modules.regularizers import DiagonalGaussianDistribution
 from neurosis.utils import count_params, disabled_train, expand_dims_like
 from neurosis.utils.module import extract_into_tensor, make_beta_schedule
+
+logger = logging.getLogger(__name__)
 
 
 class AbstractEmbModel(nn.Module):
@@ -31,8 +34,6 @@ class AbstractEmbModel(nn.Module):
             self.ucg_rate = ucg_rate
         if not hasattr(self, "input_key") and input_key is not None:
             self.input_key = input_key
-        if not self.is_trainable:
-            self.freeze()
 
         if hasattr(self, "legacy_ucg_val") and self.legacy_ucg_val is not None:
             self.ucg_prng = np.random.RandomState()
@@ -137,7 +138,7 @@ class GeneralConditioner(nn.Module):
             if not isinstance(embedder, AbstractEmbModel):
                 raise ValueError(f"embedder model #{idx} {emb_class} is not a subclass of AbstractEmbModel")
 
-            print(
+            logger.info(
                 f"Initialized embedder #{idx}: {emb_class} "
                 + f"with {count_params(embedder, False)} params. Trainable: {embedder.is_trainable}"
             )
@@ -250,7 +251,9 @@ class SpatialRescaler(nn.Module):
         self.interpolator = partial(torch.nn.functional.interpolate, mode=method)
         self.remap_output = out_channels is not None or remap_output
         if self.remap_output:
-            print(f"Spatial Rescaler mapping from {in_channels} to {out_channels} channels after resizing.")
+            logger.info(
+                f"Spatial Rescaler mapping from {in_channels} to {out_channels} channels after resizing."
+            )
             self.channel_mapper = nn.Conv2d(
                 in_channels,
                 out_channels,

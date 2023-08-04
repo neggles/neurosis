@@ -7,19 +7,43 @@ except ImportError:
     __version__ = "unknown (no version information available)"
     version_tuple = (0, 0, "unknown", "noinfo")
 
+from functools import lru_cache
 from os import getenv
+from pathlib import Path
 
 from einops._torch_specific import allow_ops_in_compiled_graph
+from PIL import Image
 from rich.console import Console
 from rich.traceback import install as _install_traceback
+
+# make PIL be quiet about Big Images
+Image.MAX_IMAGE_PIXELS = None
+del Image
+
+PACKAGE = __package__.replace("_", "-")
+PACKAGE_ROOT = Path(__file__).parent.parent
 
 is_debug = getenv("NEUROSIS_DEBUG", None) is not None
 
 _ = _install_traceback(show_locals=is_debug, width=120, word_wrap=True)
+
+allow_ops_in_compiled_graph()
+del allow_ops_in_compiled_graph
+
 console = Console(highlight=True)
 
 if is_debug:
     console.log("[bold red]NEUROSIS_DEBUG[/bold red] is set")
     console.log("Enabling use of einops functions in TorchDynamo graphs...")
 
-allow_ops_in_compiled_graph()
+
+@lru_cache(maxsize=4)
+def get_dir(dirname: str = "data") -> Path:
+    if PACKAGE_ROOT.name == "src":
+        # we're installed in editable mode from within the repo
+        dirpath = PACKAGE_ROOT.parent.joinpath(dirname)
+    else:
+        # we're installed normally, so we just use the current working directory
+        dirpath = Path.cwd().joinpath(dirname)
+    dirpath.mkdir(parents=True, exist_ok=True)
+    return dirpath.absolute()

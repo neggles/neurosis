@@ -32,7 +32,7 @@ class AbstractAutoencoder(L.LightningModule):
         monitor: Union[None, str] = None,
         input_key: str = "jpg",
         ckpt_path: Union[None, str] = None,
-        ignore_keys: Union[Tuple, list, ListConfig] = (),
+        ignore_keys: Union[Tuple, list, ListConfig] = tuple(),
     ):
         super().__init__()
         self.input_key = input_key
@@ -58,6 +58,7 @@ class AbstractAutoencoder(L.LightningModule):
             return 1
 
     def init_from_ckpt(self, path: Path, ignore_keys: Union[Tuple, list, ListConfig] = tuple()) -> None:
+        path = Path(path)
         if path.suffix == ".safetensors":
             sd = load_safetensors(path)
         elif path.suffix in CHECKPOINT_EXTNS:
@@ -66,10 +67,21 @@ class AbstractAutoencoder(L.LightningModule):
             raise NotImplementedError(f"Unknown checkpoint extension {path.suffix}")
 
         keys = list(sd.keys())
+
+        if self.use_ema is False:
+            if ignore_keys is None:
+                ignore_keys = ("model_ema", "model_ema.ema_decay", "model_ema.ema_buffer")
+            else:
+                ignore_keys = tuple(ignore_keys) + (
+                    "model_ema",
+                    "model_ema.ema_decay",
+                    "model_ema.ema_buffer",
+                )
+
         for k in keys:
             for ik in ignore_keys:
-                if re.match(ik, k):
-                    print("Deleting key {} from state_dict.".format(k))
+                if re.search(ik, k):
+                    print(f"Deleting key {k} from state_dict.")
                     del sd[k]
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
@@ -301,7 +313,7 @@ class AutoencoderKL(AutoencodingEngine):
         **kwargs,
     ):
         ckpt_path = kwargs.pop("ckpt_path", None)
-        ignore_keys = kwargs.pop("ignore_keys", ())
+        ignore_keys = kwargs.pop("ignore_keys", tuple())
         super().__init__(
             encoder=nn.Identity,
             decoder=nn.Identity,

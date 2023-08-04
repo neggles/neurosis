@@ -3,8 +3,9 @@ from pathlib import Path
 from typing import Optional
 
 import wandb
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
-from lightning.pytorch.loggers import WandbLogger
+from lightning import LightningModule, Trainer
+from lightning.pytorch.cli import SaveConfigCallback
+from lightning.pytorch.loggers import Logger, WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 
 __run = None
@@ -59,3 +60,10 @@ def get_wandb_logger(
             offline=debug,
         )
     return __logger
+
+
+class LoggerSaveConfigCallback(SaveConfigCallback):
+    def save_config(self, trainer: Trainer, pl_module: LightningModule, stage: str):
+        if isinstance(trainer.logger, Logger):
+            config = self.parser.dump(self.config, skip_none=False)  # Required for proper reproducibility
+            trainer.logger.log_hyperparams({"config": config})
