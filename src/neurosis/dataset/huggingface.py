@@ -1,3 +1,4 @@
+import logging
 from os import PathLike
 from typing import Callable, Optional, Tuple, Union
 
@@ -12,6 +13,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms as T
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
+
+logger = logging.getLogger(__name__)
 
 
 class HFDatasetBase(Dataset):
@@ -43,7 +46,14 @@ class HFDatasetBase(Dataset):
         if isinstance(tokenizer, PreTrainedTokenizer):
             self.tokenizer: PreTrainedTokenizer = tokenizer
         elif isinstance(tokenizer, (str, PathLike)):
-            self.tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(tokenizer, **tokenizer_kwargs)
+            try:
+                self.tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer, **tokenizer_kwargs
+                )
+            except OSError:
+                self.tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer, subfolder="tokenizer", **tokenizer_kwargs
+                )
         else:
             self.tokenizer = None
 
@@ -154,7 +164,7 @@ class HFDatasetModule(L.LightningDataModule):
         **kwargs,
     ):
         super().__init__()
-        self._dataset = dataset
+        self._dataset = dataset if isinstance(dataset, HFDataset) else str(dataset).lstrip("\\~/.")
         self._resolution = resolution
         self._tokenizer = tokenizer
         self._streaming = streaming
@@ -162,36 +172,79 @@ class HFDatasetModule(L.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
 
+        self._train_dataset = None
+        self._hf_train = None
+        self._val_dataset = None
+        self._hf_val = None
+        self._test_dataset = None
+        self._hf_test = None
+        self._predict_dataset = None
+        self._hf_predict = None
+
     def prepare_data(self):
         if not isinstance(self._dataset, HFDataset):
             self._dataset = load_dataset(self._dataset, streaming=self._streaming, **self._kwargs)
 
-        if "train" in self._dataset:
-            self._train_dataset = self._dataset["train"]
-
-        if "validation" in self._dataset:
-            self._val_dataset = self._dataset["validation"]
-        elif "val" in self._dataset:
-            self._val_dataset = self._dataset["val"]
-        elif "test" in self._dataset:
-            self._val_dataset = self._dataset["test"]
+        for key in self._dataset.keys():
+            match key:
+                case val if key in ["train", "training", "fit"]:
+                    self._train_dataset = self._dataset[val]
+                case val if key in ["val", "validate", "eval", "evaluation"]:
+                    self._val_dataset = self._dataset[val]
+                    self._test_dataset = self._test_dataset or self._dataset[val]
+                    self._predict_dataset = self._predict_dataset or self._dataset[val]
+                case val if key in ["test", "testing"]:
+                    self._test_dataset = self._dataset[val]
+                    self._val_dataset = self._val_dataset or self._dataset[val]
+                    self._predict_dataset = self._predict_dataset or self._dataset[val]
+                case val if val in ["predict", "prediction", "infer", "inference"]:
+                    self._predict_dataset = self._dataset[val]
+                    self._val_dataset = self._val_dataset or self._dataset[val]
+                    self._test_dataset = self._test_dataset or self._dataset[val]
+                case _:
+                    raise ValueError(f"Unknown dataset split: {key}")
+        if self._test_dataset is None:
+            logger.warning("No test dataset found, using training dataset instead")
+            self._test_dataset = self._train_dataset
+        if self._val_dataset is None:
+            self._val_dataset = self._train_dataset
+        if self._predict_dataset is None:
+            self._predict_dataset = self._train_dataset
 
     def setup(self, stage: Optional[str] = None):
-        self.hf_train = HFDatasetTrain(
+        self._hf_train = HFDatasetTrain(
             dataset=self._train_dataset,
             resolution=self._resolution,
             tokenizer=self._tokenizer,
             streaming=self._streaming,
         )
-        self.hf_val = HFDatasetValidation(
+        self._hf_val = HFDatasetValidation(
             dataset=self._val_dataset,
             resolution=self._resolution,
             tokenizer=self._tokenizer,
             streaming=self._streaming,
         )
+        self._hf_test = HfDatasetEvaluation(
+            dataset=self._test_dataset,
+            resolution=self._resolution,
+            tokenizer=self._tokenizer,
+            streaming=self._streaming,
+        )
+        self._hf_predict = HfDatasetEvaluation(
+            dataset=self._predict_dataset,
+            resolution=self._resolution,
+            tokenizer=self._tokenizer,
+            streaming=self._streaming,
+        )
 
-    def train_dataloader(self) -> HFDatasetBase:
-        return DataLoader(self.hf_train, batch_size=self.batch_size, num_workers=self.num_workers)
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(self._hf_train, batch_size=self.batch_size, num_workers=self.num_workers)
 
-    def val_dataloader(self) -> HFDatasetBase:
-        return DataLoader(self.hf_val, batch_size=self.batch_size, num_workers=self.num_workers)
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(self._hf_val, batch_size=self.batch_size, num_workers=self.num_workers)
+
+    def test_dataloader(self) -> DataLoader:
+        return DataLoader(self._hf_test, batch_size=self.batch_size, num_workers=self.num_workers)
+
+    def predict_dataloader(self) -> DataLoader:
+        return DataLoader(self._hf_predict, batch_size=self.batch_size, num_workers=self.num_workers)
