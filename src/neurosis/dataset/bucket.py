@@ -32,7 +32,7 @@ class AspectBucket:
         return (self.width, self.height)
 
     def __repr__(self) -> str:
-        return f"AspectBucket({self.width}, {self.height}) ({self.aspect:.2f}:1, {self.pixels // 1000}Kpx)"
+        return f"AspectBucket({self.width}, {self.height}) ({self.aspect:.2f}:1, {self.pixels // 1000}K px)"
 
     def __hash__(self) -> int:
         return hash((self.width, self.height))
