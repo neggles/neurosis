@@ -3,12 +3,39 @@ seed_everything: true
 trainer:
   accelerator: auto
   strategy: auto
-  devices: auto
+  devices: 1
+  num_nodes: 1
   precision: bf16
-  max_steps: 1000000
+
+  max_epochs: 25
+  accumulate_grad_batches: 4
+
   default_root_dir: ./projects
-  logger: true
+  use_distributed_sampler: true
+
   fast_dev_run: true
+
+  logger:
+    class_path: lightning.pytorch.loggers.wandb.WandbLogger
+    init_args:
+      name: wdxl-test
+      project: neurosis-test
+      save_dir: ./projects
+      tags: [sdxl, wdxl, test]
+
+model_checkpoint:
+  save_last: true
+  save_top_k: 0
+  every_n_epochs: null
+  every_n_train_steps: null
+
+image_logger:
+  batch_frequency: 1000
+  max_images: 4
+  clamp: true
+
+learning_rate_logger:
+  logging_interval: "step"
 
 model:
   class_path: neurosis.models.DiffusionEngine
@@ -16,7 +43,12 @@ model:
     scale_factor: 0.13025
     disable_first_stage_autocast: true
     log_keys:
-      - txt
+      - caption
+    ckpt_path: "/path/to/stable/diffusion/base/model.safetensors"
+    use_ema: false
+    input_key: "image"
+    no_cond_log: false
+    compile_model: false
 
     model:
       class_path: neurosis.modules.diffusion.UNetModel
@@ -79,18 +111,18 @@ model:
             init_args:
               layer: hidden
               layer_idx: 11
-              input_key: txt
+              input_key: caption
               is_trainable: false
           # crossattn and vector cond
           - class_path: neurosis.models.text_encoder.FrozenOpenCLIPEmbedder2
             init_args:
               arch: ViT-bigG-14
-              version: laion2b_s39b_b160k
+              version: null
               freeze: true
               layer: penultimate
               always_return_pooled: true
               legacy: false
-              input_key: txt
+              input_key: caption
               is_trainable: false
           # vector cond
           - class_path: neurosis.modules.encoders.metadata.ConcatTimestepEmbedderND
@@ -148,7 +180,8 @@ data:
   class_path: neurosis.dataset.huggingface.HFDatasetModule
   init_args:
     dataset: "neggles/ine"
+    batch_size: 1
+    num_workers: 4
     resolution: 1024
     streaming: false
-    num_proc: 4
-    batch_size: 1
+    tokenizer: "stabilityai/stable-diffusion-xl-base-1.0"
