@@ -133,25 +133,6 @@ class HfDatasetEvaluation(HFDatasetBase):
         super().__init__(dataset, "eval", tokenizer, transform, streaming, **kwargs)
 
 
-class HFDatasetValidation(HFDatasetBase):
-    def __init__(
-        self,
-        dataset: Union[str, HFDataset],
-        resolution: Union[Tuple[int, int], int] = 256,
-        tokenizer: Optional[Union[str, PathLike, PreTrainedTokenizer]] = None,
-        streaming: bool = False,
-        **kwargs,
-    ) -> None:
-        transform = T.Compose(
-            [
-                T.Resize(resolution),
-                T.CenterCrop(resolution),
-                T.ToTensor(),
-            ]
-        )
-        super().__init__(dataset, "val", tokenizer, transform, streaming, **kwargs)
-
-
 class HFDatasetModule(L.LightningDataModule):
     def __init__(
         self,
@@ -174,8 +155,6 @@ class HFDatasetModule(L.LightningDataModule):
 
         self._train_dataset = None
         self._hf_train = None
-        self._val_dataset = None
-        self._hf_val = None
         self._test_dataset = None
         self._hf_test = None
         self._predict_dataset = None
@@ -190,19 +169,12 @@ class HFDatasetModule(L.LightningDataModule):
                 case val if key in ["train", "training", "fit"]:
                     self._train_dataset = self._dataset[val]
                 case val if key in ["val", "validate", "eval", "evaluation"]:
-                    self._val_dataset = self._dataset[val]
                     self._test_dataset = self._test_dataset or self._dataset[val]
-                    self._predict_dataset = self._predict_dataset or self._dataset[val]
                 case val if key in ["test", "testing"]:
                     self._test_dataset = self._dataset[val]
-                    self._val_dataset = self._val_dataset or self._dataset[val]
-                    self._predict_dataset = self._predict_dataset or self._dataset[val]
-                case val if val in ["predict", "prediction", "infer", "inference"]:
-                    self._predict_dataset = self._dataset[val]
-                    self._val_dataset = self._val_dataset or self._dataset[val]
-                    self._test_dataset = self._test_dataset or self._dataset[val]
                 case _:
-                    raise ValueError(f"Unknown dataset split: {key}")
+                    logger.exception(f"Unknown dataset split {key} will be ignored!")
+
         if self._test_dataset is None:
             logger.warning("No test dataset found, using training dataset instead")
             self._test_dataset = self._train_dataset
@@ -214,12 +186,6 @@ class HFDatasetModule(L.LightningDataModule):
     def setup(self, stage: Optional[str] = None):
         self._hf_train = HFDatasetTrain(
             dataset=self._train_dataset,
-            resolution=self._resolution,
-            tokenizer=self._tokenizer,
-            streaming=self._streaming,
-        )
-        self._hf_val = HFDatasetValidation(
-            dataset=self._val_dataset,
             resolution=self._resolution,
             tokenizer=self._tokenizer,
             streaming=self._streaming,
@@ -241,10 +207,11 @@ class HFDatasetModule(L.LightningDataModule):
         return DataLoader(self._hf_train, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(self._hf_val, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self._hf_test, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def test_dataloader(self) -> DataLoader:
         return DataLoader(self._hf_test, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def predict_dataloader(self) -> DataLoader:
-        return DataLoader(self._hf_predict, batch_size=self.batch_size, num_workers=self.num_workers)
+        """Returns a dataloader for prediction. This is just the training dataloader but only text embeds."""
+        return DataLoader(self._hf_train, batch_size=self.batch_size, num_workers=self.num_workers)
