@@ -1,17 +1,28 @@
 from collections import UserList
 from dataclasses import dataclass, field
 from itertools import product
+from math import sqrt
 from typing import Optional
 
 import numpy as np
-from torchvision import transforms as T
+
+
+def percent_diff(v1: int, v2: int) -> float:
+    return round((v1 - v2) / ((v1 + v2) / 2) * 100, 2)
 
 
 @dataclass
 class AspectBucket:
     width: int
     height: int
-    indices: list[int] = field(default_factory=list)
+    square_px: Optional[int] = field(default=None, repr=False)
+    error: Optional[float] = field(init=False, default=None)
+
+    def __post_init__(self) -> None:
+        if self.width % 32 != 0 or self.height % 32 != 0:
+            raise ValueError(f"width and height must be multiples of 32, got {self.width} and {self.height}")
+        if self.square_px:
+            self.error = percent_diff(self.width * self.height, self.square_px**2)
 
     @property
     def aspect(self) -> float:
@@ -32,7 +43,12 @@ class AspectBucket:
         return (self.width, self.height)
 
     def __repr__(self) -> str:
-        return f"AspectBucket({self.width}, {self.height}) ({self.aspect:.2f}:1, {self.pixels // 1000}K px)"
+        return (
+            f"AspectBucket({self.width}, {self.height}) "
+            + f"({self.aspect:.2f}:1, {self.pixels // 1000}K px"
+            + f"{f', {self.error:.2f}% error' if self.error else ''}"
+            + ")"
+        )
 
     def __hash__(self) -> int:
         return hash((self.width, self.height))
@@ -85,6 +101,7 @@ class AspectBucketList(UserList):
         self.max_aspect = max_aspect if max_aspect > 0.0 else float("inf")
         self.max_pixels = int(tgt_pixels * (1.0 + (oversize_pct / 100)))
         self.min_pixels = min_pixels if min_pixels is not None else (edge_min + edge_step) ** 2
+        self._square_px = int(sqrt(tgt_pixels)) if sqrt(tgt_pixels).is_integer() else None
 
         self.data: list[AspectBucket] = []
         self._generate()
@@ -95,7 +112,7 @@ class AspectBucketList(UserList):
 
         # Generate all potentially-valid buckets
         valid_buckets = [
-            AspectBucket(x, y)
+            AspectBucket(x, y, square_px=self._square_px)
             for x, y in product(valid_edge_px, valid_edge_px)
             if all((x >= y, self.min_pixels <= (x * y) <= self.max_pixels, x / y <= self.max_aspect))
         ]
@@ -160,49 +177,94 @@ class AspectBucketList(UserList):
 class SDXLBucketList(AspectBucketList):
     """Hard-coded bucket list matching original SDXL training configuration"""
 
+    _TRAIN_RES = 1024
+
     def __init__(self):
         self.data: list[AspectBucket] = [
-            AspectBucket(512, 2048),
-            AspectBucket(512, 1984),
-            AspectBucket(512, 1920),
-            AspectBucket(512, 1856),
-            AspectBucket(576, 1792),
-            AspectBucket(576, 1728),
-            AspectBucket(576, 1664),
-            AspectBucket(640, 1600),
-            AspectBucket(640, 1536),
-            AspectBucket(704, 1472),
-            AspectBucket(704, 1408),
-            AspectBucket(704, 1344),
-            AspectBucket(768, 1344),
-            AspectBucket(768, 1280),
-            AspectBucket(832, 1216),
-            AspectBucket(832, 1152),
-            AspectBucket(896, 1152),
-            AspectBucket(896, 1088),
-            AspectBucket(960, 1088),
-            AspectBucket(960, 1024),
+            AspectBucket(512, 2048, self._TRAIN_RES),
+            AspectBucket(512, 1984, self._TRAIN_RES),
+            AspectBucket(512, 1920, self._TRAIN_RES),
+            AspectBucket(512, 1856, self._TRAIN_RES),
+            AspectBucket(576, 1792, self._TRAIN_RES),
+            AspectBucket(576, 1728, self._TRAIN_RES),
+            AspectBucket(576, 1664, self._TRAIN_RES),
+            AspectBucket(640, 1600, self._TRAIN_RES),
+            AspectBucket(640, 1536, self._TRAIN_RES),
+            AspectBucket(704, 1472, self._TRAIN_RES),
+            AspectBucket(704, 1408, self._TRAIN_RES),
+            AspectBucket(704, 1344, self._TRAIN_RES),
+            AspectBucket(768, 1344, self._TRAIN_RES),
+            AspectBucket(768, 1280, self._TRAIN_RES),
+            AspectBucket(832, 1216, self._TRAIN_RES),
+            AspectBucket(832, 1152, self._TRAIN_RES),
+            AspectBucket(896, 1152, self._TRAIN_RES),
+            AspectBucket(896, 1088, self._TRAIN_RES),
+            AspectBucket(960, 1088, self._TRAIN_RES),
+            AspectBucket(960, 1024, self._TRAIN_RES),
             # 2nd half of list
-            AspectBucket(1024, 1024),
-            AspectBucket(1024, 960),
-            AspectBucket(1088, 960),
-            AspectBucket(1088, 896),
-            AspectBucket(1152, 896),
-            AspectBucket(1152, 832),
-            AspectBucket(1216, 832),
-            AspectBucket(1280, 768),
-            AspectBucket(1344, 768),
-            AspectBucket(1408, 704),
-            AspectBucket(1472, 704),
-            AspectBucket(1536, 640),
-            AspectBucket(1600, 640),
-            AspectBucket(1664, 576),
-            AspectBucket(1728, 576),
-            AspectBucket(1792, 576),
-            AspectBucket(1856, 512),
-            AspectBucket(1920, 512),
-            AspectBucket(1984, 512),
-            AspectBucket(2048, 512),
+            AspectBucket(1024, 1024, self._TRAIN_RES),
+            AspectBucket(1024, 960, self._TRAIN_RES),
+            AspectBucket(1088, 960, self._TRAIN_RES),
+            AspectBucket(1088, 896, self._TRAIN_RES),
+            AspectBucket(1152, 896, self._TRAIN_RES),
+            AspectBucket(1152, 832, self._TRAIN_RES),
+            AspectBucket(1216, 832, self._TRAIN_RES),
+            AspectBucket(1280, 768, self._TRAIN_RES),
+            AspectBucket(1344, 768, self._TRAIN_RES),
+            AspectBucket(1408, 704, self._TRAIN_RES),
+            AspectBucket(1472, 704, self._TRAIN_RES),
+            AspectBucket(1536, 640, self._TRAIN_RES),
+            AspectBucket(1600, 640, self._TRAIN_RES),
+            AspectBucket(1664, 576, self._TRAIN_RES),
+            AspectBucket(1728, 576, self._TRAIN_RES),
+            AspectBucket(1792, 576, self._TRAIN_RES),
+            AspectBucket(1856, 512, self._TRAIN_RES),
+            AspectBucket(1920, 512, self._TRAIN_RES),
+            AspectBucket(1984, 512, self._TRAIN_RES),
+            AspectBucket(2048, 512, self._TRAIN_RES),
+        ]
+
+        self.n_buckets = len(self.data)
+        self.edge_min = 512
+        self.edge_max = 2048
+        self.edge_step = 64
+        self.max_aspect = 4.0
+        self.max_pixels = max((bucket.pixels for bucket in self.data))
+        self.min_pixels = min((bucket.pixels for bucket in self.data))
+
+
+class WDXLBucketList(AspectBucketList):
+    """Hard-coded bucket list matching original WDXL training configuration"""
+
+    _TRAIN_RES = 1024
+
+    def __init__(self):
+        self.data: list[AspectBucket] = [
+            AspectBucket(512, 2048, self._TRAIN_RES),
+            AspectBucket(512, 1984, self._TRAIN_RES),
+            AspectBucket(576, 1920, self._TRAIN_RES),
+            AspectBucket(576, 1792, self._TRAIN_RES),
+            AspectBucket(576, 1728, self._TRAIN_RES),
+            # mahouko
+            AspectBucket(704, 1472, self._TRAIN_RES),
+            AspectBucket(768, 1408, self._TRAIN_RES),
+            AspectBucket(768, 1344, self._TRAIN_RES),
+            AspectBucket(832, 1280, self._TRAIN_RES),
+            AspectBucket(896, 1216, self._TRAIN_RES),
+            AspectBucket(896, 1152, self._TRAIN_RES),
+            AspectBucket(960, 1152, self._TRAIN_RES),
+            AspectBucket(960, 1088, self._TRAIN_RES),
+            AspectBucket(1024, 1024, self._TRAIN_RES),
+            AspectBucket(1088, 960, self._TRAIN_RES),
+            AspectBucket(1088, 960, self._TRAIN_RES),
+            AspectBucket(1152, 960, self._TRAIN_RES),
+            AspectBucket(1152, 896, self._TRAIN_RES),
+            AspectBucket(1216, 896, self._TRAIN_RES),
+            AspectBucket(1280, 832, self._TRAIN_RES),
+            AspectBucket(1280, 832, self._TRAIN_RES),
+            AspectBucket(1344, 768, self._TRAIN_RES),
+            AspectBucket(1408, 768, self._TRAIN_RES),
+            AspectBucket(1472, 704, self._TRAIN_RES),
         ]
 
         self.n_buckets = len(self.data)
