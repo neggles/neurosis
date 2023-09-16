@@ -34,7 +34,7 @@ class Discretization(ABC):
 class EDMDiscretization(Discretization):
     def __init__(
         self,
-        sigma_min: float = 0.02,
+        sigma_min: float = 0.002,
         sigma_max: float = 80.0,
         rho: float = 7.0,
     ):
