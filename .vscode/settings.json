@@ -7,6 +7,16 @@
     "files.associations": {
         "*.yaml": "yaml"
     },
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/.ruff_cache": true,
+        "**/__pycache__": true
+    },
 
     "[python]": {
         "editor.wordBasedSuggestions": false,
