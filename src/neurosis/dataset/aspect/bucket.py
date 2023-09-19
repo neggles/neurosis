@@ -1,5 +1,6 @@
 from collections import UserList
 from dataclasses import dataclass, field
+from functools import lru_cache
 from itertools import product
 from math import sqrt
 from typing import Optional
@@ -80,8 +81,9 @@ class AspectBucketList(UserList):
         edge_step: int = 64,
         max_aspect: float = 2.5,
         tgt_pixels: int = 1024 * 1024,
-        min_pixels: Optional[int] = None,
-        oversize_pct: float = 2.5,
+        tolerance: float = 5,
+        bias_square: bool = True,
+        use_atan: bool = False,
     ):
         if n_buckets < 1 or n_buckets > 100:
             raise ValueError(f"n_buckets must be in [1, 100], got {n_buckets}")
@@ -94,19 +96,26 @@ class AspectBucketList(UserList):
         if edge_max // edge_min < max_aspect:
             raise ValueError(f"max_aspect must be less than edge_max / edge_min, got {max_aspect}")
 
+        self.data: list[AspectBucket]
         self.n_buckets = n_buckets
         self.edge_min = edge_min
         self.edge_max = edge_max
         self.edge_step = edge_step
         self.max_aspect = max_aspect if max_aspect > 0.0 else float("inf")
-        self.max_pixels = int(tgt_pixels * (1.0 + (oversize_pct / 100)))
-        self.min_pixels = min_pixels if min_pixels is not None else (edge_min + edge_step) ** 2
+        self.max_pixels = int(tgt_pixels * (1.0 + (tolerance / 100)))
+        self.min_pixels = int(tgt_pixels * (1.0 - (tolerance / 100)))
+        self.bias_square = bias_square
+        self.use_atan = use_atan
         self._square_px = int(sqrt(tgt_pixels)) if sqrt(tgt_pixels).is_integer() else None
 
-        self.data: list[AspectBucket] = []
+        # don't generate buckets if we're a predefined list subclass
         self._generate()
 
     def _generate(self) -> None:
+        # make sure this isn't a reroll
+        if hasattr(self, "data") and self.data is not None:
+            raise ValueError("Buckets were predefined or have already been generated!")
+
         # Get all valid edge lengths
         valid_edge_px = [x for x in range(self.edge_min, self.edge_max + 1, self.edge_step)]
 
@@ -165,112 +174,49 @@ class AspectBucketList(UserList):
 
     def bucket(self, ratio: float) -> AspectBucket:
         """Returns the bucket with the closest aspect ratio to the given ratio"""
-        if ratio < 0.0 or ratio > self.max_aspect:
-            raise ValueError(f"ratio must be in [0.0, {self.max_aspect}], got {ratio}")
-        return min(self.data, key=lambda x: abs(x.aspect - ratio))
+        if ratio < 0.0:
+            raise ValueError(f"ratio must be > 0, got {ratio}")
+        return self.__bucket(round(ratio, 4))
+
+    @lru_cache(maxsize=64)
+    def __bucket(self, ratio: float):
+        """Get the actual bucket.
+        This is a cached version of the public method; in the public method we round to 4
+        decimal places to avoid floating point errors, and to improve the hit rate of the cache.
+        """
+        # if square just return the square bucket
+        if ratio == 1.0:
+            return next((x for x in self.data if x.aspect == 1.0))
+
+        # optionally use arctan rather than raw aspect ratio
+        find_ratio = np.arctan(ratio) if self.use_atan else ratio
+        aspect_list = self.arctans if self.use_atan else self.ratios
+
+        if self.bias_square:
+            # Choose closest bucket, biasing towards aspect 1.0 (square) so the bucket will
+            # always fit within the rescaled image dimensions
+            side = "left" if ratio > 1.0 else "right"
+            return self.data[np.searchsorted(aspect_list, find_ratio, side=side) - 1]
+        else:
+            # This avoids the incorrect aspect ratio bias used by the original NAI implementation.
+            return self.data[np.interp(find_ratio, aspect_list, self.indices).round().astype(int)]
 
     @property
     def ratios(self) -> list[float]:
         return [bucket.aspect for bucket in self.data]
 
+    @property
+    def arctans(self) -> list[float]:
+        return [bucket.aspect for bucket in self.data]
 
-class SDXLBucketList(AspectBucketList):
-    """Hard-coded bucket list matching original SDXL training configuration"""
-
-    _TRAIN_RES = 1024
-
-    def __init__(self):
-        self.data: list[AspectBucket] = [
-            AspectBucket(512, 2048, self._TRAIN_RES),
-            AspectBucket(512, 1984, self._TRAIN_RES),
-            AspectBucket(512, 1920, self._TRAIN_RES),
-            AspectBucket(512, 1856, self._TRAIN_RES),
-            AspectBucket(576, 1792, self._TRAIN_RES),
-            AspectBucket(576, 1728, self._TRAIN_RES),
-            AspectBucket(576, 1664, self._TRAIN_RES),
-            AspectBucket(640, 1600, self._TRAIN_RES),
-            AspectBucket(640, 1536, self._TRAIN_RES),
-            AspectBucket(704, 1472, self._TRAIN_RES),
-            AspectBucket(704, 1408, self._TRAIN_RES),
-            AspectBucket(704, 1344, self._TRAIN_RES),
-            AspectBucket(768, 1344, self._TRAIN_RES),
-            AspectBucket(768, 1280, self._TRAIN_RES),
-            AspectBucket(832, 1216, self._TRAIN_RES),
-            AspectBucket(832, 1152, self._TRAIN_RES),
-            AspectBucket(896, 1152, self._TRAIN_RES),
-            AspectBucket(896, 1088, self._TRAIN_RES),
-            AspectBucket(960, 1088, self._TRAIN_RES),
-            AspectBucket(960, 1024, self._TRAIN_RES),
-            # 2nd half of list
-            AspectBucket(1024, 1024, self._TRAIN_RES),
-            AspectBucket(1024, 960, self._TRAIN_RES),
-            AspectBucket(1088, 960, self._TRAIN_RES),
-            AspectBucket(1088, 896, self._TRAIN_RES),
-            AspectBucket(1152, 896, self._TRAIN_RES),
-            AspectBucket(1152, 832, self._TRAIN_RES),
-            AspectBucket(1216, 832, self._TRAIN_RES),
-            AspectBucket(1280, 768, self._TRAIN_RES),
-            AspectBucket(1344, 768, self._TRAIN_RES),
-            AspectBucket(1408, 704, self._TRAIN_RES),
-            AspectBucket(1472, 704, self._TRAIN_RES),
-            AspectBucket(1536, 640, self._TRAIN_RES),
-            AspectBucket(1600, 640, self._TRAIN_RES),
-            AspectBucket(1664, 576, self._TRAIN_RES),
-            AspectBucket(1728, 576, self._TRAIN_RES),
-            AspectBucket(1792, 576, self._TRAIN_RES),
-            AspectBucket(1856, 512, self._TRAIN_RES),
-            AspectBucket(1920, 512, self._TRAIN_RES),
-            AspectBucket(1984, 512, self._TRAIN_RES),
-            AspectBucket(2048, 512, self._TRAIN_RES),
-        ]
-
-        self.n_buckets = len(self.data)
-        self.edge_min = 512
-        self.edge_max = 2048
-        self.edge_step = 64
-        self.max_aspect = 4.0
-        self.max_pixels = max((bucket.pixels for bucket in self.data))
-        self.min_pixels = min((bucket.pixels for bucket in self.data))
+    @property
+    def indices(self) -> list[float]:
+        return list(range(len(self.ratios)))
 
 
-class WDXLBucketList(AspectBucketList):
-    """Hard-coded bucket list matching original WDXL training configuration"""
-
-    _TRAIN_RES = 1024
-
-    def __init__(self):
-        self.data: list[AspectBucket] = [
-            AspectBucket(512, 2048, self._TRAIN_RES),
-            AspectBucket(512, 1984, self._TRAIN_RES),
-            AspectBucket(576, 1920, self._TRAIN_RES),
-            AspectBucket(576, 1792, self._TRAIN_RES),
-            AspectBucket(576, 1728, self._TRAIN_RES),
-            # mahouko
-            AspectBucket(704, 1472, self._TRAIN_RES),
-            AspectBucket(768, 1408, self._TRAIN_RES),
-            AspectBucket(768, 1344, self._TRAIN_RES),
-            AspectBucket(832, 1280, self._TRAIN_RES),
-            AspectBucket(896, 1216, self._TRAIN_RES),
-            AspectBucket(896, 1152, self._TRAIN_RES),
-            AspectBucket(960, 1152, self._TRAIN_RES),
-            AspectBucket(960, 1088, self._TRAIN_RES),
-            AspectBucket(1024, 1024, self._TRAIN_RES),
-            AspectBucket(1088, 960, self._TRAIN_RES),
-            AspectBucket(1088, 960, self._TRAIN_RES),
-            AspectBucket(1152, 960, self._TRAIN_RES),
-            AspectBucket(1152, 896, self._TRAIN_RES),
-            AspectBucket(1216, 896, self._TRAIN_RES),
-            AspectBucket(1280, 832, self._TRAIN_RES),
-            AspectBucket(1280, 832, self._TRAIN_RES),
-            AspectBucket(1344, 768, self._TRAIN_RES),
-            AspectBucket(1408, 768, self._TRAIN_RES),
-            AspectBucket(1472, 704, self._TRAIN_RES),
-        ]
-
-        self.n_buckets = len(self.data)
-        self.edge_min = 512
-        self.edge_max = 2048
-        self.edge_step = 64
-        self.max_aspect = 4.0
-        self.max_pixels = max((bucket.pixels for bucket in self.data))
-        self.min_pixels = min((bucket.pixels for bucket in self.data))
+class AspectBucketMapper:
+    def __init__(
+        self,
+        buckets: AspectBucketList,
+    ):
+        self.buckets = buckets
