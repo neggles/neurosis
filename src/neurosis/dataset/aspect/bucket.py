@@ -207,7 +207,7 @@ class AspectBucketList(UserList):
 
     @property
     def arctans(self) -> list[float]:
-        return [bucket.aspect for bucket in self.data]
+        return [np.arctan(bucket.aspect) for bucket in self.data]
 
     @property
     def indices(self) -> list[float]:
