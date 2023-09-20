@@ -18,6 +18,12 @@
         "**/__pycache__": true
     },
 
+    "[shellscript]": {
+        "files.eol": "\n",
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false
+    },
+
     "[python]": {
         "editor.wordBasedSuggestions": false,
         "editor.formatOnSave": true,
@@ -32,10 +38,18 @@
     "python.linting.enabled": false,
 
     "[json]": {
-        "editor.tabSize": 2,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
         "editor.detectIndentation": false,
+        "editor.formatOnSaveMode": "file",
         "editor.formatOnSave": true,
-        "editor.formatOnSaveMode": "file"
+        "editor.tabSize": 2
+    },
+    "[jsonc]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.detectIndentation": false,
+        "editor.formatOnSaveMode": "file",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2
     },
 
     "[toml]": {
@@ -52,12 +66,21 @@
         "editor.detectIndentation": false,
         "editor.tabSize": 2,
         "editor.formatOnSave": true,
-        "editor.formatOnSaveMode": "file"
+        "editor.formatOnSaveMode": "file",
+        "diffEditor.ignoreTrimWhitespace": false
     },
+
     "yaml.format.bracketSpacing": true,
     "yaml.format.proseWrap": "preserve",
     "yaml.format.singleQuote": false,
     "yaml.format.printWidth": 110,
+
+    "[hcl]": {
+        "editor.detectIndentation": false,
+        "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "file",
+        "editor.defaultFormatter": "fredwangwang.vscode-hcl-format"
+    },
 
     "[markdown]": {
         "files.trimTrailingWhitespace": false
