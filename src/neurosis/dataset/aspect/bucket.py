@@ -109,7 +109,8 @@ class AspectBucketList(UserList):
         self._square_px = int(sqrt(tgt_pixels)) if sqrt(tgt_pixels).is_integer() else None
 
         # don't generate buckets if we're a predefined list subclass
-        self._generate()
+        if not hasattr(self, "data"):
+            self._generate()
 
     def _generate(self) -> None:
         # make sure this isn't a reroll
