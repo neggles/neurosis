@@ -16,12 +16,16 @@ trainer:
   fast_dev_run: true
 
   logger:
-    class_path: lightning.pytorch.loggers.wandb.WandbLogger
-    init_args:
-      name: wdxl-test
-      project: neurosis-test
-      save_dir: ./projects
-      tags: [sdxl, wdxl, test]
+    - class_path: lightning.pytorch.loggers.wandb.WandbLogger
+      init_args:
+        name: wdxl-test
+        project: neurosis-test
+        save_dir: ./projects
+        tags: [sdxl, wdxl, test]
+    # - class_path: lightning.pytorch.loggers.TensorBoardLogger
+    #   init_args:
+    #     save_dir: ./projects
+    #     name: wdxl-test
 
 model_checkpoint:
   save_last: true
