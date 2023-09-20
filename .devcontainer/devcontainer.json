@@ -1,0 +1,20 @@
+{
+  "name": "NGC PyTorch",
+
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.extend.yml"],
+  "service": "neurosis",
+  "shutdownAction": "stopCompose",
+
+  "workspaceFolder": "/workspace",
+  "containerEnv": {
+    "NVIDIA_VISIBLE_DEVICES": "0"
+  },
+
+  "postCreateCommand": "python -m pip install -e '.[dev]'",
+
+  "forwardPorts": [6006]
+
+  // "customizations": {},
+
+  // "remoteUser": "root"
+}
