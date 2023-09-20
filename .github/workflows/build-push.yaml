@@ -119,7 +119,7 @@ jobs:
           CUDA_VERSION: ${{ matrix.cuda-ver }}
           TORCH_VERSION: ${{ matrix.torch-ver }}
         with:
-          targets: ${{ matrix.target }}-${{ matrix.cuda-ver }}-${{ matrix.torch-ver }}
+          targets: ${{ matrix.target }}
           files: |
             ./docker-bake.hcl
             ${{ steps.meta.outputs.bake-file }}

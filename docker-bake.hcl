@@ -43,7 +43,7 @@ target "common" {
   context    = "."
   dockerfile = "docker/Dockerfile"
   args = {
-    BASE_IMAGE           = "${BASE_IMAGE}:${cuda_version}-${torch_version}"
+    BASE_IMAGE           = "${BASE_IMAGE}:${CUDA_VERSION}-${TORCH_VERSION}"
     TORCH_CUDA_ARCH_LIST = TORCH_CUDA_ARCH_LIST
   }
   platforms = ["linux/amd64"]
