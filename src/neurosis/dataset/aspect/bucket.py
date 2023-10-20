@@ -173,14 +173,22 @@ class AspectBucketList(UserList):
         # Save buckets for later.
         self.data = buckets
 
-    def bucket(self, ratio: float) -> AspectBucket:
+    def __getitem__(self, index) -> AspectBucket:
+        return self.data[index]
+
+    def bucket_idx(self, ratio: float) -> int:
+        """Returns the index of the bucket with the closest aspect ratio to the given ratio"""
+        return self.__bucket(ratio=round(ratio, 4), with_index=True)[1]
+
+    def bucket(self, ratio: float, with_index: bool = False) -> AspectBucket | tuple[AspectBucket, int]:
         """Returns the bucket with the closest aspect ratio to the given ratio"""
         if ratio < 0.0:
             raise ValueError(f"ratio must be > 0, got {ratio}")
-        return self.__bucket(round(ratio, 4))
+
+        return self.__bucket(ratio=round(ratio, 4), with_index=with_index)
 
     @lru_cache(maxsize=64)
-    def __bucket(self, ratio: float):
+    def __bucket(self, ratio: float, with_index: bool = False) -> AspectBucket | tuple[AspectBucket, int]:
         """Get the actual bucket.
         This is a cached version of the public method; in the public method we round to 4
         decimal places to avoid floating point errors, and to improve the hit rate of the cache.
@@ -197,10 +205,12 @@ class AspectBucketList(UserList):
             # Choose closest bucket, biasing towards aspect 1.0 (square) so the bucket will
             # always fit within the rescaled image dimensions
             side = "left" if ratio > 1.0 else "right"
-            return self.data[np.searchsorted(aspect_list, find_ratio, side=side) - 1]
+            bucket_idx = np.searchsorted(aspect_list, find_ratio, side=side) - 1
         else:
             # This avoids the incorrect aspect ratio bias used by the original NAI implementation.
-            return self.data[np.interp(find_ratio, aspect_list, self.indices).round().astype(int)]
+            bucket_idx = np.interp(find_ratio, aspect_list, self.indices).round().astype(int)
+
+        return (self.data[bucket_idx], bucket_idx) if with_index else self.data[bucket_idx]
 
     @property
     def ratios(self) -> list[float]:
@@ -211,7 +221,7 @@ class AspectBucketList(UserList):
         return [np.arctan(bucket.aspect) for bucket in self.data]
 
     @property
-    def indices(self) -> list[float]:
+    def indices(self) -> list[int]:
         return list(range(len(self.ratios)))
 
 
