@@ -7,7 +7,7 @@ class SDXLBucketList(AspectBucketList):
     _TRAIN_RES = 1024
 
     def __init__(self):
-        data: list[AspectBucket] = [
+        self.data: list[AspectBucket] = [
             AspectBucket(512, 2048, self._TRAIN_RES),
             AspectBucket(512, 1984, self._TRAIN_RES),
             AspectBucket(512, 1920, self._TRAIN_RES),
@@ -51,7 +51,7 @@ class SDXLBucketList(AspectBucketList):
             AspectBucket(2048, 512, self._TRAIN_RES),
         ]
         super().__init__(
-            n_buckets=len(data),
+            n_buckets=len(self.data),
             edge_min=512,
             edge_max=2048,
             edge_step=64,
