@@ -24,3 +24,7 @@ known-first-party = ["neurosis"]
 [tool.pyright]
 include = ['src/**']
 exclude = ['/usr/lib/**']
+
+[tool.mypy]
+python_version = '3.10'
+plugins = ['numpy.typing.mypy_plugin']
