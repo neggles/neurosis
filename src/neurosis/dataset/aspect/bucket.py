@@ -128,7 +128,7 @@ class AspectBucketList(UserList):
         ]
 
         # Group buckets by aspect ratio (rounding to 2 decimal places)
-        buckets_by_aspect = {}
+        buckets_by_aspect: dict[float, list[AspectBucket]] = {}
         for bucket in valid_buckets:
             aspect = round(bucket.aspect, 2)
             if aspect not in buckets_by_aspect:
@@ -173,8 +173,8 @@ class AspectBucketList(UserList):
         # Save buckets for later.
         self.data = buckets
 
-    def __getitem__(self, index) -> AspectBucket:
-        return self.data[index]
+    def __getitem__(self, i: int | slice) -> AspectBucket | "AspectBucketList":
+        return self.data[i]
 
     def bucket_idx(self, ratio: float) -> int:
         """Returns the index of the bucket with the closest aspect ratio to the given ratio"""
@@ -188,7 +188,7 @@ class AspectBucketList(UserList):
             raise ValueError(f"ratio must be > 0, got {ratio}")
         return self.__bucket(ratio, return_index=False)
 
-    def __bucket(self, ratio: float, return_index: bool = False) -> AspectBucket | tuple[AspectBucket, int]:
+    def __bucket(self, ratio: float, return_index: bool = False):
         """Get the actual bucket, or just the index of it."""
         # if square just return the square bucket
         if ratio == 1.0:
