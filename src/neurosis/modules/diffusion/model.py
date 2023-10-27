@@ -7,6 +7,7 @@ import torch
 from einops import rearrange
 from packaging import version
 from torch import nn
+from torch.nn import functional as F
 
 try:
     import xformers
@@ -37,7 +38,7 @@ def get_timestep_embedding(timesteps, embedding_dim):
     emb = timesteps.float()[:, None] * emb[None, :]
     emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
     if embedding_dim % 2 == 1:  # zero pad
-        emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
+        emb = F.pad(emb, (0, 1, 0, 0))
     return emb
 
 
@@ -58,7 +59,7 @@ class Upsample(nn.Module):
             self.conv = torch.nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x):
-        x = torch.nn.functional.interpolate(x, scale_factor=2.0, mode="nearest")
+        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
         if self.with_conv:
             x = self.conv(x)
         return x
@@ -69,16 +70,18 @@ class Downsample(nn.Module):
         super().__init__()
         self.with_conv = with_conv
         if self.with_conv:
-            # no asymmetric padding in torch conv, must do it ourselves
+            # asymmetric pad layer
+            self.padding = nn.ConstantPad2d((0, 1, 0, 1), 0)
             self.conv = torch.nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=0)
+        else:
+            self.pooler = nn.AvgPool2d(kernel_size=2, stride=2)
 
     def forward(self, x):
         if self.with_conv:
-            pad = (0, 1, 0, 1)
-            x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
+            x = self.padding(x)
             x = self.conv(x)
         else:
-            x = torch.nn.functional.avg_pool2d(x, kernel_size=2, stride=2)
+            x = self.pooler(x)
         return x
 
 
@@ -164,7 +167,7 @@ class AttnBlock(nn.Module):
 
         b, c, h, w = q.shape
         q, k, v = map(lambda x: rearrange(x, "b c h w -> b 1 (h w) c").contiguous(), (q, k, v))
-        h_ = torch.nn.functional.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
+        h_ = F.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
         # compute attention
 
         return rearrange(h_, "b 1 (h w) c -> b c h w", h=h, w=w, c=c, b=b)
