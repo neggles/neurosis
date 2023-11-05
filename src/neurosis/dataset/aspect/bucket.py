@@ -1,11 +1,12 @@
 from collections import UserList
 from dataclasses import dataclass, field
-from functools import lru_cache
 from itertools import product
 from math import sqrt
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
+from PIL import Image, ImageOps
+from torchvision import transforms as T
 
 
 def percent_diff(v1: int, v2: int) -> float:
@@ -68,6 +69,9 @@ class AspectBucket:
             return buckets[0]  # Only one bucket, return it
         else:
             raise ValueError("Cannot select from empty list of buckets")
+
+    def resize(self, image: Image.Image, method: Image.Resampling = Image.Resampling.BICUBIC):
+        return ImageOps.cover(image, self.size, method=method)
 
 
 class AspectBucketList(UserList):
@@ -173,7 +177,7 @@ class AspectBucketList(UserList):
         # Save buckets for later.
         self.data = buckets
 
-    def __getitem__(self, i: int | slice) -> AspectBucket | "AspectBucketList":
+    def __getitem__(self, i: int | slice) -> Union[AspectBucket, "AspectBucketList"]:
         return self.data[i]
 
     def bucket_idx(self, ratio: float) -> int:
