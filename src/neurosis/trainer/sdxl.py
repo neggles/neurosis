@@ -87,6 +87,7 @@ def main(
             default_config_files=default_config_files,
         ),
         save_config_callback=LoggerSaveConfigCallback,
+        save_config_kwargs={"overwrite": True},
     )
 
 
