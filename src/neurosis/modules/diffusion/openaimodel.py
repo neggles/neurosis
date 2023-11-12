@@ -1,7 +1,8 @@
+import logging
 import math
 from abc import abstractmethod
 from functools import partial
-from typing import Iterable
+from typing import Iterable, Optional
 
 import numpy as np
 import torch as th
@@ -19,6 +20,8 @@ from neurosis.modules.diffusion.util import (
     timestep_embedding,
     zero_module,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # dummy replace
@@ -166,13 +169,13 @@ class Downsample(nn.Module):
         self.dims = dims
         stride = 2 if dims != 3 else ((1, 2, 2) if not third_down else (2, 2, 2))
         if use_conv:
-            print(f"Building a Downsample layer with {dims} dims.")
-            print(
+            logger.debug(f"Building a Downsample layer with {dims} dims.")
+            logger.debug(
                 f"  --> settings are: \n in-chn: {self.channels}, out-chn: {self.out_channels}, "
                 f"kernel-size: 3, stride: {stride}, padding: {padding}"
             )
             if dims == 3:
-                print(f"  --> Downsampling third axis (time): {third_down}")
+                logger.debug(f"  --> Downsampling third axis (time): {third_down}")
             self.op = conv_nd(
                 dims,
                 self.channels,
@@ -257,7 +260,7 @@ class ResBlock(TimestepBlock):
         self.skip_t_emb = skip_t_emb
         self.emb_out_channels = 2 * self.out_channels if use_scale_shift_norm else self.out_channels
         if self.skip_t_emb:
-            print(f"Skipping timestep embedding in {self.__class__.__name__}")
+            logger.debug(f"Skipping timestep embedding in {self.__class__.__name__}")
             assert not self.use_scale_shift_norm
             self.emb_layers = None
             self.exchange_temb_dims = False
@@ -509,37 +512,39 @@ class UNetModel(nn.Module):
 
     def __init__(
         self,
-        in_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
-        attention_resolutions,
-        dropout=0,
-        channel_mult=(1, 2, 4, 8),
-        conv_resample=True,
-        dims=2,
-        num_classes=None,
-        use_checkpoint=False,
-        use_fp16=False,
-        num_heads=-1,
-        num_head_channels=-1,
-        num_heads_upsample=-1,
-        use_scale_shift_norm=False,
-        resblock_updown=False,
-        use_new_attention_order=False,
-        use_spatial_transformer=False,  # custom transformer support
-        transformer_depth=1,  # custom transformer support
-        context_dim=None,  # custom transformer support
-        n_embed=None,  # custom support for prediction of discrete ids into codebook of first stage vq model
-        legacy=True,
+        in_channels: int,
+        model_channels: int,
+        out_channels: int,
+        num_res_blocks: int,
+        attention_resolutions: list[int],
+        dropout: float = 0.0,
+        channel_mult: tuple[int, ...] = (1, 2, 4, 8),
+        conv_resample: bool = True,
+        dims: int = 2,
+        num_classes: Optional[int | str] = None,
+        use_checkpoint: bool = False,
+        use_fp16: bool = False,
+        num_heads: int = -1,
+        num_head_channels: int = -1,
+        num_heads_upsample: int = -1,
+        use_scale_shift_norm: bool = False,
+        resblock_updown: bool = False,
+        use_new_attention_order: bool = False,
+        # custom transformer support
+        use_spatial_transformer: bool = False,
+        transformer_depth: int | list[int] = 1,
+        context_dim: Optional[int | list[int]] = None,
+        # custom support for prediction of discrete ids into codebook of first stage vq model
+        n_embed: Optional[int] = None,
+        legacy: bool = True,
         disable_self_attentions=None,
-        num_attention_blocks=None,
-        disable_middle_self_attn=False,
-        use_linear_in_transformer=False,
-        spatial_transformer_attn_type="softmax",
+        num_attention_blocks: int = None,
+        disable_middle_self_attn: bool = False,
+        use_linear_in_transformer: bool = False,
+        spatial_transformer_attn_type: str = "softmax",
         adm_in_channels=None,
-        use_fairscale_checkpoint=False,
-        offload_to_cpu=False,
+        use_fairscale_checkpoint: bool = False,
+        offload_to_cpu: bool = False,
         transformer_depth_middle=None,
     ):
         super().__init__()
@@ -596,7 +601,7 @@ class UNetModel(nn.Module):
                     range(len(num_attention_blocks)),
                 )
             )
-            print(
+            logger.warn(
                 f"Constructor of UNetModel received num_attention_blocks={num_attention_blocks}. "
                 f"This option has LESS priority than attention_resolutions {attention_resolutions}, "
                 f"i.e., in cases where num_attention_blocks[i] > 0 but 2**i not in attention_resolutions, "
@@ -610,7 +615,7 @@ class UNetModel(nn.Module):
         self.num_classes = num_classes
         self.use_checkpoint = use_checkpoint
         if use_fp16:
-            print("WARNING: use_fp16 was dropped and has no effect anymore.")
+            logger.debug("WARNING: use_fp16 was dropped and has no effect anymore.")
         # self.dtype = th.float16 if use_fp16 else th.float32
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
@@ -639,7 +644,7 @@ class UNetModel(nn.Module):
             if isinstance(self.num_classes, int):
                 self.label_emb = nn.Embedding(num_classes, time_embed_dim)
             elif self.num_classes == "continuous":
-                print("setting up linear c_adm embedding layer")
+                logger.debug("setting up linear c_adm embedding layer")
                 self.label_emb = nn.Linear(1, time_embed_dim)
             elif self.num_classes == "timestep":
                 self.label_emb = checkpoint_wrapper_fn(
@@ -931,9 +936,8 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
+        if (y is not None) and (self.num_classes is None):
+            raise ValueError(f"y must be None for non-class-conditional models, got {y=}")
         hs = []
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
@@ -1202,4 +1206,4 @@ if __name__ == "__main__":
     x = th.randn(11, 4, 64, 64).cuda()
     t = th.randint(low=0, high=10, size=(11,), device="cuda")
     o = model(x, t)
-    print("done.")
+    logger.debug("done.")

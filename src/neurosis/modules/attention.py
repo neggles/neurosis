@@ -1,3 +1,4 @@
+import logging
 import math
 from inspect import isfunction
 from typing import Any, Optional
@@ -7,6 +8,10 @@ from einops import rearrange, repeat
 from packaging import version
 from torch import nn
 from torch.nn import functional as F
+
+from .diffusion.util import checkpoint
+
+logger = logging.getLogger(__name__)
 
 if version.parse(torch.__version__) >= version.parse("2.0.0"):
     SDP_IS_AVAILABLE = True
@@ -36,7 +41,7 @@ else:
     SDP_IS_AVAILABLE = False
     sdp_kernel = nullcontext
     BACKEND_MAP = {}
-    print(
+    logger.warn(
         f"No SDP backend available, likely because you are running in pytorch versions < 2.0. In fact, "
         f"you are using PyTorch {torch.__version__}. You might want to consider upgrading."
     )
@@ -49,8 +54,6 @@ try:
 except Exception:
     XFORMERS_IS_AVAILABLE = False
     print("no module 'xformers'. Processing without...")
-
-from .diffusion.util import checkpoint
 
 
 def exists(val):
@@ -255,7 +258,7 @@ class MemoryEfficientCrossAttention(nn.Module):
     # https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0, **kwargs):
         super().__init__()
-        print(
+        logger.debug(
             f"Setting up {self.__class__.__name__}. Query dim is {query_dim}, context_dim is {context_dim} and using "
             f"{heads} heads with a dimension of {dim_head}."
         )
@@ -286,7 +289,7 @@ class MemoryEfficientCrossAttention(nn.Module):
             # add additional token
             x = torch.cat([additional_tokens, x], dim=1)
         q = self.to_q(x)
-        context = context or x
+        context = context if context is not None else x
         k = self.to_k(context)
         v = self.to_v(context)
 
@@ -395,7 +398,7 @@ class BasicTransformerBlock(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
         self.checkpoint = checkpoint
         if self.checkpoint:
-            print(f"{self.__class__.__name__} is using checkpointing")
+            logger.debug(f"{self.__class__.__name__} is using checkpointing")
 
     def forward(self, x, context=None, additional_tokens=None, n_times_crossframe_attn_in_self=0):
         kwargs = {"x": x}
@@ -497,7 +500,7 @@ class SpatialTransformer(nn.Module):
         sdp_backend=None,
     ):
         super().__init__()
-        print(
+        logger.debug(
             f"constructing {self.__class__.__name__} of depth {depth} w/ {in_channels} channels and {n_heads} heads"
         )
         from omegaconf import ListConfig
@@ -506,8 +509,8 @@ class SpatialTransformer(nn.Module):
             context_dim = [context_dim]
         if exists(context_dim) and isinstance(context_dim, list):
             if depth != len(context_dim):
-                print(
-                    f"WARNING: {self.__class__.__name__}: Found context dims {context_dim} of depth {len(context_dim)}, "
+                logger.info(
+                    f"{self.__class__.__name__}: Found context dims {context_dim} of depth {len(context_dim)}, "
                     f"which does not match the specified 'depth' of {depth}. Setting context_dim to {depth * [context_dim[0]]} now."
                 )
                 # depth does not match context dims.

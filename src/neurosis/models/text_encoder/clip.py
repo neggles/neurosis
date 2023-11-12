@@ -1,6 +1,7 @@
 from typing import Any, Optional, Union
 
 import kornia
+import numpy as np
 import open_clip
 import torch
 from einops import rearrange, repeat
@@ -10,8 +11,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.tokenization_utils import BatchEncoding
 
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.utils import autocast, checkpoint, expand_dims_like
-from neurosis.utils.sgm import disabled_train
+from neurosis.utils import autocast, checkpoint, expand_dims_like, np_text_decode
 
 
 class FrozenCLIPEmbedder(AbstractEmbModel):
@@ -52,6 +52,8 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
 
     @autocast
     def forward(self, text: Union[str, list[str]]):
+        text = np_text_decode(text)
+
         batch_encoding: BatchEncoding = self.tokenizer(
             text,
             truncation=True,
@@ -119,6 +121,7 @@ class FrozenOpenCLIPEmbedder(AbstractEmbModel):
         super().freeze()
 
     def forward(self, text: Union[str, list[str]]) -> Tensor:
+        text = np_text_decode(text)
         tokens = open_clip.tokenize(text)
         z = self.encode_with_transformer(tokens.to(self.device))
         return z
@@ -196,6 +199,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
 
     @autocast
     def forward(self, text: Union[str, list[str]]) -> Tensor | tuple[Tensor, Tensor]:
+        text = np_text_decode(text)
         tokens: Tensor = open_clip.tokenize(text)
         z: Tensor = self.encode_with_transformer(tokens.to(self.device))
         if not self.return_pooled and self.legacy:

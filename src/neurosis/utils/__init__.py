@@ -33,6 +33,9 @@ from .sgm import (
     make_path_absolute,
     mean_flat,
 )
+from .text import (
+    np_text_decode,
+)
 
 __all__ = [
     "CheckpointFunction",
@@ -65,4 +68,5 @@ __all__ = [
     "log_txt_as_img",
     "make_path_absolute",
     "mean_flat",
+    "np_text_decode",
 ]

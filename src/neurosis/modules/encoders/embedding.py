@@ -24,7 +24,7 @@ class AbstractEmbModel(nn.Module):
     def __init__(
         self,
         is_trainable: Optional[bool] = None,
-        ucg_rate: Optional[float] = None,
+        ucg_rate: Optional[float] = 0.0,
         input_key: Optional[str] = None,
     ):
         super().__init__()

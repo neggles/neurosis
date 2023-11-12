@@ -13,7 +13,7 @@ from safetensors.torch import load_file as load_safetensors
 from torch import Tensor, nn
 
 from neurosis.constants import CHECKPOINT_EXTNS
-from neurosis.modules.autoencoding import AbstractRegularizer, GeneralLPIPSWithDiscriminator
+from neurosis.modules.autoencoding import AbstractRegularizer
 from neurosis.modules.diffusion import Decoder, Encoder
 from neurosis.modules.distributions import DiagonalGaussianDistribution
 from neurosis.modules.ema import LitEma
@@ -335,7 +335,8 @@ class AutoencoderKL(AutoencodingEngine):
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys)
 
     def encode(self, x) -> DiagonalGaussianDistribution:
-        assert not self.training, f"{self.__class__.__name__} only supports inference currently"
+        if self.training:
+            raise NotImplementedError(f"{self.__class__.__name__} does not support training yet.")
         h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)

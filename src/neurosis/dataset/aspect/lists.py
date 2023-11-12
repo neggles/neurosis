@@ -6,7 +6,11 @@ class SDXLBucketList(AspectBucketList):
 
     _TRAIN_RES = 1024
 
-    def __init__(self):
+    def __init__(
+        self,
+        bias_square: bool = True,
+        use_atan: bool = False,
+    ):
         self.data: list[AspectBucket] = [
             AspectBucket(512, 2048, self._TRAIN_RES),
             AspectBucket(512, 1984, self._TRAIN_RES),
@@ -58,7 +62,8 @@ class SDXLBucketList(AspectBucketList):
             max_aspect=4.0,
             tgt_pixels=self._TRAIN_RES**2,
             tolerance=5,
-            bias_square=True,
+            bias_square=bias_square,
+            use_atan=use_atan,
         )
 
 
@@ -67,7 +72,11 @@ class WDXLBucketList(AspectBucketList):
 
     _TRAIN_RES = 1024
 
-    def __init__(self):
+    def __init__(
+        self,
+        bias_square: bool = True,
+        use_atan: bool = False,
+    ):
         self.data: list[AspectBucket] = [
             AspectBucket(512, 2048, self._TRAIN_RES),
             AspectBucket(512, 1984, self._TRAIN_RES),
@@ -101,5 +110,6 @@ class WDXLBucketList(AspectBucketList):
             max_aspect=4.0,
             tgt_pixels=self._TRAIN_RES**2,
             tolerance=5,
-            bias_square=True,
+            bias_square=bias_square,
+            use_atan=use_atan,
         )

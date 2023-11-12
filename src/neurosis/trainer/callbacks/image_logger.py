@@ -56,7 +56,9 @@ class ImageLogger(Callback):
         batch_idx: int,
         pl_module: Optional[LightningModule] = None,
     ):
-        root = Path(save_dir) / "images" / split
+        if save_dir is None:
+            return
+        root = Path(save_dir).joinpath("images", split)
         root.mkdir(exist_ok=True, parents=True)
 
         for k in images:
@@ -85,13 +87,12 @@ class ImageLogger(Callback):
                 img = Image.fromarray(grid)
                 img.save(path)
                 if pl_module is not None:
-                    if not isinstance(pl_module.logger, WandbLogger):
-                        raise ValueError("logger_log_image only supports WandbLogger currently")
-                    pl_module.logger.log_image(
-                        key=f"{split}/{k}",
-                        images=[img],
-                        step=pl_module.global_step,
-                    )
+                    if isinstance(pl_module.logger, WandbLogger):
+                        pl_module.logger.log_image(
+                            key=f"{split}/{k}",
+                            images=[img],
+                            step=pl_module.global_step,
+                        )
 
     @rank_zero_only
     def log_img(
@@ -129,8 +130,17 @@ class ImageLogger(Callback):
                     if self.clamp and not isheatmap(images[k]):
                         images[k] = torch.clamp(images[k], -1.0, 1.0)
 
+            if pl_module.logger.save_dir:
+                local_dir = Path(pl_module.logger.save_dir)
+            elif pl_module.logger.log_dir:
+                local_dir = Path(pl_module.logger.log_dir)
+            elif pl_module.trainer.log_dir:
+                local_dir = Path(pl_module.trainer.log_dir).joinpath("imagelogger")
+            else:
+                local_dir = None
+
             self.log_local(
-                pl_module.logger.save_dir,
+                local_dir,
                 split,
                 images,
                 pl_module.global_step,

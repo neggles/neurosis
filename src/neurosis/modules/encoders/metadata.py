@@ -1,5 +1,6 @@
 from typing import Tuple
 
+import torch
 from einops import rearrange
 from torch import Tensor
 
@@ -17,7 +18,10 @@ class ConcatTimestepEmbedderND(AbstractEmbModel):
         self.timestep = Timestep(outdim)
         self.outdim = outdim
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor | list[Tensor]):
+        if isinstance(x, list):
+            x = torch.stack(x, dim=-1)
+
         if x.ndim == 1:
             x = x[:, None]
         assert len(x.shape) == 2

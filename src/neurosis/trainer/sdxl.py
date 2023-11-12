@@ -1,5 +1,6 @@
 import logging
-from os import isatty
+import os
+from os import getenv, isatty
 from pathlib import Path
 from typing import Annotated, List, Optional
 
@@ -12,14 +13,21 @@ from rich.logging import RichHandler
 from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
-from neurosis import __version__, console
+from neurosis import __version__, console, is_debug
 from neurosis.models.diffusion import DiffusionEngine
 from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
 
 # set up rich if we're in a tty/interactive
 if isatty(1):
-    _ = install_pretty(console=console), install_traceback(console=console, suppress=[jsonargparse])
+    _ = install_pretty(console=console)
+    _ = install_traceback(
+        console=console,
+        suppress=[jsonargparse, torch],
+        show_locals=is_debug,
+        locals_max_length=3,
+        locals_max_string=64,
+    )
 del install_pretty, install_traceback
 
 train_app: typer.Typer = typer.Typer(
@@ -27,7 +35,10 @@ train_app: typer.Typer = typer.Typer(
     rich_markup_mode="rich" if isatty(1) else None,
 )
 
-logging.basicConfig(handlers=[RichHandler(console=console)], level=logging.INFO)
+logging.basicConfig(
+    handlers=[RichHandler(console=console)],
+    level=logging.INFO,
+)
 logger = logging.getLogger(__name__)
 
 

@@ -1,18 +1,22 @@
 import logging
 from os import PathLike
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
+import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image, ImageOps
 from torch import Tensor
+from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 
 from neurosis.constants import IMAGE_EXTNS
 from neurosis.dataset.aspect import AspectBucketList, SDXLBucketList
 from neurosis.dataset.aspect.base import AspectBucketDataset
 from neurosis.dataset.aspect.bucket import AspectBucket
+from neurosis.dataset.aspect.sampler import AspectBucketSampler
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +52,13 @@ class ImageFolderDataset(AspectBucketDataset):
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
         self._preload()
+        # transforms
+        self.transforms: Callable = T.Compose(
+            [
+                T.ToImage(),
+                T.ToDtype(torch.float32, scale=True),
+            ]
+        )
 
     def __len__(self):
         return len(self.samples)
@@ -58,7 +69,7 @@ class ImageFolderDataset(AspectBucketDataset):
         image, crop_coords = self.__load_and_crop(sample.image_path, bucket)
 
         return {
-            self.image_key: image,
+            self.image_key: self.transforms(image),
             self.caption_key: sample.caption,
             "original_size_as_tuple": (
                 min(sample.resolution[0], bucket.width) if self.clamp_orig else sample.resolution[0],
@@ -167,8 +178,63 @@ class ImageFolderDataset(AspectBucketDataset):
             while len(batch) < self.batch_size:
                 k = index_sched[b_offs]
                 if k < b_len:
-                    batch.append(indices[k])
+                    batch.append(indices[k].item())
                 b_offs += 1
 
             bucket_dict[idx] = (indices, b_len, b_offs)
-            yield batch, self.buckets[idx] if return_bucket else batch
+            yield (batch, self.buckets[idx]) if return_bucket else batch
+
+
+class ImageFolderModule(LightningDataModule):
+    def __init__(
+        self,
+        folder: PathLike,
+        buckets: AspectBucketList = SDXLBucketList(),
+        batch_size: int = 1,
+        image_key: str = "image",
+        caption_key: str = "caption",
+        caption_ext: str = ".txt",
+        tag_sep: str = ", ",
+        word_sep: str = " ",
+        recursive: bool = False,
+        pil_resample: Image.Resampling = Image.Resampling.BICUBIC,
+        clamp_orig: bool = True,
+        num_workers: int = 0,
+    ):
+        super().__init__()
+        self.folder = Path(folder).resolve()
+        self.num_workers = num_workers
+
+        if not self.folder.exists():
+            raise FileNotFoundError(f"Folder {self.folder} does not exist.")
+        if not self.folder.is_dir():
+            raise ValueError(f"Folder {self.folder} is not a directory.")
+
+        self.dataset = ImageFolderDataset(
+            folder=self.folder,
+            recursive=recursive,
+            buckets=buckets,
+            batch_size=batch_size,
+            image_key=image_key,
+            caption_key=caption_key,
+            caption_ext=caption_ext,
+            tag_sep=tag_sep,
+            word_sep=word_sep,
+            pil_resample=pil_resample,
+            clamp_orig=clamp_orig,
+        )
+        self.sampler = AspectBucketSampler(self.dataset)
+
+    def prepare_data(self) -> None:
+        pass
+
+    def setup(self, stage: str):
+        pass
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.dataset,
+            batch_sampler=self.sampler,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )

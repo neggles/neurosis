@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import lightning as L
+import numpy as np
 import torch
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from omegaconf import ListConfig
@@ -22,7 +23,7 @@ from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.utils import disabled_train, get_obj_from_str, log_txt_as_img
+from neurosis.utils import disabled_train, get_obj_from_str, log_txt_as_img, np_text_decode
 
 
 class DiffusionEngine(L.LightningModule):
@@ -137,7 +138,9 @@ class DiffusionEngine(L.LightningModule):
         loss, loss_dict = self.shared_step(batch)
 
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
-        self.log("global_step", self.global_step, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+        self.log(
+            "global_step", float(self.global_step), prog_bar=True, logger=True, on_step=True, on_epoch=False
+        )
 
         if self.scheduler is not None:
             lr = self.optimizers().param_groups[0]["lr"]
@@ -224,6 +227,8 @@ class DiffusionEngine(L.LightningModule):
                     else:
                         raise NotImplementedError()
                 elif isinstance(x, (List, ListConfig)):
+                    if isinstance(x[0], np.bytes_):
+                        x = np_text_decode(x)
                     if isinstance(x[0], str):
                         # strings
                         xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
