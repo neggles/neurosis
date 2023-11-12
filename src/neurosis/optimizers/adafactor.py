@@ -105,7 +105,6 @@ class Adafactor(Optimizer):
         c_factor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
         return torch.mul(r_factor, c_factor)
 
-    @torch.no_grad()
     def step(self, closure: Optional[Callable] = None):
         """Performs a single optimization step.
 
