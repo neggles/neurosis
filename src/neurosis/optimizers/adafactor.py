@@ -1,55 +1,57 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# parent directory of this file as LICENSE.adafactor
-
 import math
-from typing import Callable, Iterable, Optional
+from typing import Optional
 
 import torch
 from torch import Tensor
 from torch.nn import Parameter
-from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.optimizer import Optimizer
+
+from .types import OptLossClosure, ParamGroup, Params, State
 
 
 class Adafactor(Optimizer):
     """Implements Adafactor algorithm.
 
-    This implementation is based on:
-    `Adafactor: Adaptive Learning Rates with Sublinear Memory Cost`
-    (see https://arxiv.org/abs/1804.04235)
+    It has been proposed in: `Adafactor: Adaptive Learning Rates with
+    Sublinear Memory Cost`__.
 
-    Note that this optimizer internally adjusts the learning rate
-    depending on the *scale_parameter*, *relative_step* and
-    *warmup_init* options. To use a manual (external) learning rate
-    schedule you should set `scale_parameter=False` and
-    `relative_step=False`.
-
-    Args:
-        params (iterable): iterable of parameters to optimize or dicts defining
+    Arguments:
+        params: iterable of parameters to optimize or dicts defining
             parameter groups
-        lr (float, optional): external learning rate (default: None)
-        eps (tuple[float, float]): regularization constans for square gradient
+        lr: external learning rate (default: None)
+        eps: regularization constans for square gradient
             and parameter scale respectively (default: (1e-30, 1e-3))
-        clip_threshold (float): threshold of root mean square of
+        clip_threshold: threshold of root mean square of
             final gradient update (default: 1.0)
-        decay_rate (float): coefficient used to compute running averages of square
+        decay_rate: coefficient used to compute running averages of square
             gradient (default: -0.8)
-        beta1 (float): coefficient used for computing running averages of gradient
+        beta1: coefficient used for computing running averages of gradient
             (default: None)
-        weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
-        scale_parameter (bool): if True, learning rate is scaled by root mean square of
-            parameter (default: True)
-        relative_step (bool): if True, time-dependent learning rate is computed
+        weight_decay: weight decay (L2 penalty) (default: 0)
+        scale_parameter: if true, learning rate is scaled by root mean square
+            of parameter (default: True)
+        relative_step: if true, time-dependent learning rate is computed
             instead of external learning rate (default: True)
-        warmup_init (bool): time-dependent learning rate computation depends on
+        warmup_init: time-dependent learning rate computation depends on
             whether warm-up initialization is being used (default: False)
+
+    Example:
+        >>> import torch_optimizer as optim
+        >>> optimizer = optim.Adafactor(model.parameters())
+        >>> optimizer.zero_grad()
+        >>> loss_fn(model(input), target).backward()
+        >>> optimizer.step()
+
+    __ https://arxiv.org/abs/1804.04235
+
+    Note:
+        Reference code: https://github.com/pytorch/fairseq/blob/master/fairseq/optim/adafactor.py  # noqa
     """
 
     def __init__(
         self,
-        params: Iterable[Parameter],
+        params: Params,
         lr: Optional[float] = None,
         eps: tuple[float, float] = (1e-30, 1e-3),
         clip_threshold: float = 1.0,
@@ -60,10 +62,10 @@ class Adafactor(Optimizer):
         relative_step: bool = True,
         warmup_init: bool = False,
     ):
-        if relative_step is True and lr is not None:
-            raise ValueError("relative_step requires automatic LR computation")
-        if relative_step is False and warmup_init is True:
-            raise ValueError("warmup_init requires relative_step=True")
+        if lr is not None and lr <= 0.0:
+            raise ValueError("Invalid learning rate: {}".format(lr))
+        if weight_decay < 0.0:
+            raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
 
         defaults = dict(
             lr=lr,
@@ -79,10 +81,10 @@ class Adafactor(Optimizer):
         super().__init__(params, defaults)
 
     @staticmethod
-    def _get_lr(param_group, param_state):
+    def _get_lr(param_group: ParamGroup, param_state: State) -> float:
         rel_step_sz = param_group["lr"]
         if param_group["relative_step"]:
-            min_step = 1e-6 * param_state["step"] if param_group["warmup_init"] else 1e-2
+            min_step = param_group["lr"] * param_state["step"] if param_group["warmup_init"] else 1e-2
             rel_step_sz = min(min_step, 1.0 / math.sqrt(param_state["step"]))
         param_scale = 1.0
         if param_group["scale_parameter"]:
@@ -90,13 +92,13 @@ class Adafactor(Optimizer):
         return param_scale * rel_step_sz
 
     @staticmethod
-    def _get_options(param_group, param_shape) -> tuple[bool, bool]:
+    def _get_options(param_group: ParamGroup, param_shape: tuple[int, ...]) -> tuple[bool, bool]:
         factored = len(param_shape) >= 2
         use_first_moment = param_group["beta1"] is not None
         return factored, use_first_moment
 
     @staticmethod
-    def _rms(tensor: Tensor) -> Tensor:
+    def _rms(tensor: Tensor) -> float:
         return torch.div(tensor.norm(2), (tensor.numel() ** 0.5)).item()
 
     @staticmethod
@@ -105,7 +107,7 @@ class Adafactor(Optimizer):
         c_factor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
         return torch.mul(r_factor, c_factor)
 
-    def step(self, closure: Optional[Callable] = None):
+    def step(self, closure: OptLossClosure = None) -> Optional[float]:
         """Performs a single optimization step.
 
         Args:
@@ -137,12 +139,12 @@ class Adafactor(Optimizer):
 
                     if use_first_moment:
                         # Exponential moving average of gradient values
-                        state["exp_avg"] = torch.zeros_like(grad)
+                        state["exp_avg"] = torch.zeros_like(grad, memory_format=torch.preserve_format)
                     if factored:
-                        state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1]).to(grad)
-                        state["exp_avg_sq_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).to(grad)
+                        state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1]).type_as(grad)
+                        state["exp_avg_sq_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).type_as(grad)
                     else:
-                        state["exp_avg_sq"] = torch.zeros_like(grad)
+                        state["exp_avg_sq"] = torch.zeros_like(grad, memory_format=torch.preserve_format)
 
                     state["RMS"] = 0
                 else:
@@ -178,9 +180,9 @@ class Adafactor(Optimizer):
                     exp_avg_sq = state["exp_avg_sq"]
 
                     exp_avg_sq.mul_(beta2t).add_(update, alpha=1.0 - beta2t)
-                    update = exp_avg_sq.rsqrt().mul_(grad)
+                    torch.rsqrt(exp_avg_sq, out=update).mul_(grad)
 
-                update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
+                update.div_(max(1.0, self._rms(update) / group["clip_threshold"]))
                 update.mul_(group["lr"])
 
                 if use_first_moment:
