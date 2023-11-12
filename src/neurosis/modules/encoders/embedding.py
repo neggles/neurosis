@@ -146,6 +146,12 @@ class GeneralConditioner(nn.Module):
             if not any((hasattr(embedder, "input_key"), hasattr(embedder, "input_keys"))):
                 raise KeyError(f"need either 'input_key' or 'input_keys' for embedder #{idx} {emb_class}")
 
+            embedder.legacy_ucg_val = getattr(embedder, "legacy_ucg_value", None)
+            if embedder.legacy_ucg_val is not None:
+                embedder.ucg_prng = np.random.RandomState()
+
+            embedders.append(embedder)
+
         self.embedders = nn.ModuleList(embedders)
 
     def possibly_get_ucg_val(self, embedder: AbstractEmbModel, batch: dict) -> dict:
