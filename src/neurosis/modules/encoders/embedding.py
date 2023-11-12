@@ -152,6 +152,9 @@ class GeneralConditioner(nn.Module):
 
             embedders.append(embedder)
 
+        if len(embedders) == 0:
+            raise ValueError("no embedders were added! what is my purpose? why am I here? check your config!")
+
         self.embedders = nn.ModuleList(embedders)
 
     def possibly_get_ucg_val(self, embedder: AbstractEmbModel, batch: dict) -> dict:
