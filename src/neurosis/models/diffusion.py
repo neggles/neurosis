@@ -3,10 +3,11 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import lightning as L
+import lightning.pytorch as L
 import numpy as np
 import torch
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
+from lightning.pytorch.loggers.wandb import WandbLogger
 from omegaconf import ListConfig
 from safetensors.torch import load_file as load_safetensors
 from torch import Tensor
@@ -81,6 +82,22 @@ class DiffusionEngine(L.LightningModule):
         if ckpt_path is not None:
             self.init_from_ckpt(Path(ckpt_path))
 
+        self.save_hyperparameters(
+            ignore=[
+                "model",
+                "denoiser",
+                "first_stage_model",
+                "conditioner",
+                "sampler",
+                "loss_fn",
+                "optimizer",
+                "scheduler",
+            ]
+        )
+        for logger in self.loggers:
+            if isinstance(logger, WandbLogger):
+                logger.experiment.config.update(self.hparams)
+
     def init_from_ckpt(self, path: Path) -> None:
         if path.suffix == ".safetensors":
             sd = load_safetensors(path)
@@ -124,7 +141,7 @@ class DiffusionEngine(L.LightningModule):
     def forward(self, x, batch) -> tuple[Tensor, dict[str, Tensor]]:
         loss = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
         loss_mean = loss.mean()
-        loss_dict = {"loss": loss_mean}
+        loss_dict = {"train/loss": loss_mean}
         return loss_mean, loss_dict
 
     def shared_step(self, batch: dict) -> Any:
@@ -138,13 +155,10 @@ class DiffusionEngine(L.LightningModule):
         loss, loss_dict = self.shared_step(batch)
 
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
-        self.log(
-            "global_step", float(self.global_step), prog_bar=True, logger=True, on_step=True, on_epoch=False
-        )
 
         if self.scheduler is not None:
             lr = self.optimizers().param_groups[0]["lr"]
-            self.log("lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+            self.log("train/lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
         return loss
 

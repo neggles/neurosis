@@ -1,3 +1,4 @@
+import logging
 from os import PathLike
 from pathlib import Path
 from typing import Optional, Union
@@ -14,11 +15,13 @@ from torch import Tensor
 
 from neurosis.utils import isheatmap
 
+logger = logging.getLogger(__name__)
+
 
 class ImageLogger(Callback):
     def __init__(
         self,
-        batch_frequency: int = 1000,
+        every_n_train_steps: int = 1000,
         max_images: int = 4,
         clamp: bool = True,
         increase_log_steps: bool = True,
@@ -33,11 +36,10 @@ class ImageLogger(Callback):
         super().__init__()
         self.enable_autocast = enable_autocast
         self.rescale = rescale
-        self.batch_freq = batch_frequency
+        self.train_steps = every_n_train_steps
         self.max_images = max_images
-        self.log_steps = [2**n for n in range(int(np.log2(self.batch_freq)) + 1)]
         if not increase_log_steps:
-            self.log_steps = [self.batch_freq]
+            self.log_steps = [self.train_steps]
         self.clamp = clamp
         self.disabled = disabled
         self.log_on_batch_idx = log_on_batch_idx
@@ -105,7 +107,7 @@ class ImageLogger(Callback):
         check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
         if (
             self.check_frequency(check_idx)
-            and hasattr(pl_module, "log_images")  # batch_idx % self.batch_freq == 0
+            and hasattr(pl_module, "log_images")
             and callable(pl_module.log_images)
             and self.max_images > 0
         ):
@@ -153,15 +155,19 @@ class ImageLogger(Callback):
                 pl_module.train()
 
     def check_frequency(self, check_idx: int):
-        if ((check_idx % self.batch_freq) == 0 or (check_idx in self.log_steps)) and (
-            check_idx > 0 or self.log_first_step
-        ):
-            try:
-                self.log_steps.pop(0)
-            except IndexError as e:
-                print(e)
-                pass
+        if check_idx == 0:
+            return True if self.log_first_step else False
+
+        if not (check_idx % self.train_steps):
             return True
+
+        if check_idx in self.log_steps:
+            try:
+                self.log_steps.remove(check_idx)
+            except ValueError:
+                logger.warning(f"Failed to remove {check_idx} from log_steps")
+            return True
+
         return False
 
     @rank_zero_only
