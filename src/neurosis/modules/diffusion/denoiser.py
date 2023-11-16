@@ -46,7 +46,7 @@ class DiscreteDenoiser(Denoiser):
     ):
         super().__init__(weighting, scaling)
         sigmas = discretization(num_idx, do_append_zero=do_append_zero, flip=flip)
-        self.register_buffer("sigmas", sigmas)
+        self.register_buffer("sigmas", sigmas, persistent=False)
         self.quantize_c_noise = quantize_c_noise
 
     def sigma_to_idx(self, sigma: Tensor) -> Tensor:
