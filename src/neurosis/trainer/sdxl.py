@@ -1,6 +1,5 @@
 import logging
-import os
-from os import getenv, isatty
+from os import isatty
 from pathlib import Path
 from typing import Annotated, List, Optional
 
@@ -76,7 +75,7 @@ def main(
 
     torch.set_float32_matmul_precision("high")  # it whines if we don't do this
 
-    cli = DiffusionTrainerCli(
+    cli = DiffusionTrainerCli(  # type: ignore
         datamodule_class=None,
         model_class=DiffusionEngine,
         subclass_mode_data=True,
@@ -85,9 +84,12 @@ def main(
         args=args,
         parser_kwargs=dict(
             default_config_files=default_config_files,
+            parser_mode="omegaconf",
         ),
         save_config_callback=LoggerSaveConfigCallback,
-        save_config_kwargs={"overwrite": True},
+        save_config_kwargs=dict(
+            overwrite=True,
+        ),
     )
 
 
