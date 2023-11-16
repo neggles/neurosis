@@ -21,6 +21,16 @@ def pil_ensure_rgb(image: Image.Image) -> Image.Image:
     return image
 
 
+def pil_pad_square(image: Image.Image):
+    w, h = image.size
+    # get the largest dimension so we can pad to a square
+    px = max(image.size)
+    # pad to square with white background
+    canvas = Image.new("RGB", (px, px), (255, 255, 255))
+    canvas.paste(image, ((px - w) // 2, (px - h) // 2))
+    return canvas
+
+
 def pil_crop_bucket(
     image: Image.Image,
     bucket: AspectBucket,

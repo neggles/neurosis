@@ -33,6 +33,9 @@ from .sgm import (
     make_path_absolute,
     mean_flat,
 )
+from .system import (
+    maybe_collect,
+)
 from .text import (
     np_text_decode,
 )
@@ -68,5 +71,6 @@ __all__ = [
     "log_txt_as_img",
     "make_path_absolute",
     "mean_flat",
+    "maybe_collect",
     "np_text_decode",
 ]
