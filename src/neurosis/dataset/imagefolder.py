@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 from lightning.pytorch import LightningDataModule
-from PIL import Image, ImageOps
+from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
@@ -17,6 +17,7 @@ from neurosis.dataset.aspect import AspectBucketList, SDXLBucketList
 from neurosis.dataset.aspect.base import AspectBucketDataset
 from neurosis.dataset.aspect.bucket import AspectBucket
 from neurosis.dataset.aspect.sampler import AspectBucketSampler
+from neurosis.dataset.aspect.utils import load_bucket_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class ImageFolderDataset(AspectBucketDataset):
         tag_sep: str = ", ",
         word_sep: str = " ",
         recursive: bool = False,
-        pil_resample: Image.Resampling = Image.Resampling.BICUBIC,
+        resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
     ):
         super().__init__(buckets, batch_size, image_key, caption_key)
@@ -46,7 +47,7 @@ class ImageFolderDataset(AspectBucketDataset):
         self.tag_sep = tag_sep
         self.word_sep = word_sep
         self.recursive = recursive
-        self.pil_resample = pil_resample
+        self.resampling = resampling
         self.clamp_orig = clamp_orig
 
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
@@ -66,7 +67,7 @@ class ImageFolderDataset(AspectBucketDataset):
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         sample: pd.Series = self.samples.iloc[index]
         bucket: AspectBucket = self.buckets[sample.bucket_idx]
-        image, crop_coords = self.__load_and_crop(sample.image_path, bucket)
+        image, crop_coords = load_bucket_image_file(sample.image_path, bucket, self.resampling)
 
         return {
             self.image_key: self.transforms(image),
@@ -126,35 +127,6 @@ class ImageFolderDataset(AspectBucketDataset):
             index=["image_path", "caption", "aspect", "resolution", "bucket_idx"],
         )
 
-    def __load_and_crop(
-        self, image_path: PathLike | bytes, bucket: AspectBucket
-    ) -> tuple[Tensor, tuple[int, int]]:
-        if isinstance(image_path, bytes):
-            image_path = image_path.decode("utf-8")
-        # resolve path
-        image_path = Path(image_path).resolve()
-        # load image
-        image = Image.open(image_path)
-        # convert to RGB/RGBA if not already (deals with palette images etc.)
-        if image.mode not in ["RGB", "RGBA"]:
-            image = image.convert("RGBA") if "transparency" in image.info else image.convert("RGB")
-        # convert RGBA to RGB with white background
-        if image.mode == "RGBA":
-            canvas = Image.new("RGBA", image.size, (255, 255, 255))
-            canvas.alpha_composite(image)
-            image = canvas.convert("RGB")
-        # resize to cover bucket
-        image = ImageOps.cover(image, bucket.size, method=self.pil_resample)
-
-        # crop to bucket
-        min_edge = min(image.size)
-        delta_w, delta_h = image.size[0] - min_edge, image.size[1] - min_edge
-        if all([delta_w, delta_h]):
-            raise ValueError(f"Failed to crop {image_path} short edge to match {bucket}!")
-        top, left = np.random.randint(delta_h + 1), np.random.randint(delta_w + 1)
-        image = T.functional.crop(image, top=top, left=left, height=bucket.height, width=bucket.width)
-        return image, (top, left)
-
     def get_batch_iterator(self, return_bucket: bool = False):
         max_bucket_len = self.samples.groupby("bucket_idx").size().max()
         index_sched = np.array(range(max_bucket_len), np.int32)
@@ -197,7 +169,7 @@ class ImageFolderModule(LightningDataModule):
         tag_sep: str = ", ",
         word_sep: str = " ",
         recursive: bool = False,
-        pil_resample: Image.Resampling = Image.Resampling.BICUBIC,
+        resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
         num_workers: int = 0,
     ):
@@ -220,7 +192,7 @@ class ImageFolderModule(LightningDataModule):
             caption_ext=caption_ext,
             tag_sep=tag_sep,
             word_sep=word_sep,
-            pil_resample=pil_resample,
+            resampling=resampling,
             clamp_orig=clamp_orig,
         )
         self.sampler = AspectBucketSampler(self.dataset)
