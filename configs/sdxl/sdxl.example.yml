@@ -88,6 +88,7 @@ model:
     first_stage_model:
       class_path: neurosis.models.autoencoder.AutoencoderKLInferenceWrapper
       init_args:
+        # recommend using https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/blob/main/sdxl_vae.safetensors
         ckpt_path: data/sdxl_vae.safetensors
         embed_dim: 4
         monitor: val/rec_loss

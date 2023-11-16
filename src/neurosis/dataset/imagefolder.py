@@ -17,7 +17,7 @@ from neurosis.dataset.aspect import AspectBucketList, SDXLBucketList
 from neurosis.dataset.aspect.base import AspectBucketDataset
 from neurosis.dataset.aspect.bucket import AspectBucket
 from neurosis.dataset.aspect.sampler import AspectBucketSampler
-from neurosis.dataset.aspect.utils import load_bucket_image_file
+from neurosis.dataset.utils import load_bucket_image_file
 
 logger = logging.getLogger(__name__)
 
