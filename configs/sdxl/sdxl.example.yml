@@ -1,4 +1,4 @@
-seed_everything: true
+seed_everything: 42
 
 trainer:
   accelerator: auto
@@ -19,11 +19,11 @@ trainer:
     - class_path: lightning.pytorch.loggers.wandb.WandbLogger
       init_args:
         project: neurosis-test
-        save_dir: ./projects
+        save_dir: ${trainer.default_root_dir}
         tags: [sdxl, test]
     - class_path: lightning.pytorch.loggers.TensorBoardLogger
       init_args:
-        save_dir: ./projects
+        save_dir: ${trainer.default_root_dir}
         name: neurosis-test
 
 model_checkpoint:
