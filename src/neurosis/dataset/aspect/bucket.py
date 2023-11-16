@@ -7,7 +7,6 @@ from typing import Optional, Union
 
 import numpy as np
 from PIL import Image, ImageOps
-from torchvision import transforms as T
 
 logger = logging.getLogger(__name__)
 
