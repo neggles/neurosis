@@ -5,9 +5,9 @@ trainer:
   strategy: auto
   devices: 1
   num_nodes: 1
-  precision: bf16
+  precision: bf16-mixed
 
-  max_epochs: 25
+  max_epochs: 1
   accumulate_grad_batches: 4
 
   default_root_dir: ./projects
@@ -18,25 +18,25 @@ trainer:
   logger:
     - class_path: lightning.pytorch.loggers.wandb.WandbLogger
       init_args:
-        name: wdxl-test
         project: neurosis-test
         save_dir: ./projects
-        tags: [sdxl, wdxl, test]
-    # - class_path: lightning.pytorch.loggers.TensorBoardLogger
-    #   init_args:
-    #     save_dir: ./projects
-    #     name: wdxl-test
+        tags: [sdxl, test]
+    - class_path: lightning.pytorch.loggers.TensorBoardLogger
+      init_args:
+        save_dir: ./projects
+        name: neurosis-test
 
 model_checkpoint:
   save_last: true
   save_top_k: 0
-  every_n_epochs: null
-  every_n_train_steps: null
+  every_n_epochs: 0
+  every_n_train_steps: 1000
 
 image_logger:
-  batch_frequency: 1000
+  every_n_train_steps: 50
   max_images: 4
   clamp: true
+  increase_log_steps: false
 
 learning_rate_logger:
   logging_interval: "step"
@@ -48,7 +48,7 @@ model:
     disable_first_stage_autocast: true
     log_keys:
       - caption
-    ckpt_path: "/path/to/stable/diffusion/base/model.safetensors"
+    ckpt_path: "data/sd_xl_base_1.0_0.9vae.safetensors"
     use_ema: false
     input_key: "image"
     no_cond_log: false
@@ -181,11 +181,16 @@ model:
               class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
 
 data:
-  class_path: neurosis.dataset.huggingface.HFDatasetModule
+  class_path: neurosis.dataset.imagefolder.ImageFolderModule
   init_args:
-    dataset: "neggles/ine"
-    batch_size: 1
+    folder: "data/dataset/folder"
+    recursive: true
+    buckets:
+      class_path: neurosis.dataset.aspect.WDXLBucketList
+      init_args:
+        bias_square: true
+        use_atan: false
+    batch_size: 2
     num_workers: 4
-    resolution: 1024
-    streaming: false
-    tokenizer: "stabilityai/stable-diffusion-xl-base-1.0"
+    tag_sep: ", "
+    word_sep: " "
