@@ -1,7 +1,7 @@
 import logging
 import time
 from datetime import timedelta
-from functools import lru_cache
+from functools import wraps
 from os import PathLike
 from pathlib import Path
 from typing import Any, Optional
@@ -17,7 +17,7 @@ from lightning.pytorch.utilities.types import STEP_OUTPUT
 logger = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=4)
+@wraps(ModelCheckpoint)
 def get_checkpoint_logger(ckpt_dir: PathLike, monitor: Optional[str] = None) -> ModelCheckpoint:
     ckpt_dir = Path(ckpt_dir)
     ckpt_dir.mkdir(exist_ok=True, parents=True)

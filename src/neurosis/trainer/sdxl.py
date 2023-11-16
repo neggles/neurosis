@@ -14,6 +14,7 @@ from rich.traceback import install as install_traceback
 
 from neurosis import __version__, console, is_debug
 from neurosis.models.diffusion import DiffusionEngine
+from neurosis.trainer.callbacks.checkpoint import HFHubCheckpoint
 from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
 
@@ -46,14 +47,22 @@ class DiffusionTrainerCli(LightningCLI):
         parser.add_lightning_class_args(
             lightning_class=ModelCheckpoint,
             nested_key="model_checkpoint",
+            required=False,
+        )
+        parser.add_lightning_class_args(
+            lightning_class=HFHubCheckpoint,
+            nested_key="hf_hub_checkpoint",
+            required=False,
         )
         parser.add_lightning_class_args(
             lightning_class=ImageLogger,
             nested_key="image_logger",
+            required=False,
         )
         parser.add_lightning_class_args(
             lightning_class=LearningRateMonitor,
             nested_key="learning_rate_logger",
+            required=False,
         )
 
 

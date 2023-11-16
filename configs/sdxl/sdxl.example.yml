@@ -27,10 +27,13 @@ trainer:
         name: neurosis-test
 
 model_checkpoint:
+  filename: "{epoch:03d}-{step:08d}"
   save_last: true
-  save_top_k: 0
+  save_on_train_epoch_end: true
+  save_top_k: 1
   every_n_epochs: 0
   every_n_train_steps: 1000
+  verbose: true
 
 image_logger:
   every_n_train_steps: 50
