@@ -3,6 +3,7 @@ import logging
 from torch.utils.data import Sampler
 
 from neurosis.dataset.aspect.base import AspectBucketDataset
+from neurosis.dataset.loaders import S3ImageLoader
 
 logger = logging.getLogger(__name__)
 
