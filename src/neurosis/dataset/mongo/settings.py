@@ -1,10 +1,10 @@
+import logging
 from functools import lru_cache
 from os import PathLike
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import parse_qs
 
-from gridfs import GridFS
 from pydantic import BaseModel, Field, MongoDsn, Protocol
 from pymongo import MongoClient
 from pymongo.database import Database
@@ -12,6 +12,7 @@ from pymongo.database import Database
 from neurosis import get_dir
 
 DEFAULT_MONGO_CONFIG = get_dir("configs").joinpath("mongo", "default.json")
+logger = logging.getLogger(__name__)
 
 
 class Query(BaseModel):
@@ -26,7 +27,6 @@ class MongoSettings(BaseModel):
     password: Optional[str] = Field(None)
     database: str = Field(..., description="Database to pull from", env="MONGO_DATABASE")
     collection: str = Field(..., description="Collection to pull from", env="MONGO_COLLECTION")
-    gridfs_prefix: str = Field(default="fs", description="GridFS prefix", env="MONGO_GRIDFS_PREFIX")
     queries: list[Query] = Field(default_factory=list)
 
     _client: Optional[MongoClient] = Field(None, allow_mutation=True, init=False, repr=False)
@@ -58,11 +58,15 @@ class MongoSettings(BaseModel):
         client = self.get_client()
         return client[self.database]
 
-    def get_fsclient(self) -> GridFS:
-        return GridFS(self.get_database(), self.gridfs_prefix)
+    def get_queries(self) -> list[Query]:
+        return self.queries or []
 
 
 @lru_cache(maxsize=4)
 def get_mongo_settings(path: PathLike = DEFAULT_MONGO_CONFIG) -> MongoSettings:
     path = Path(path)
-    return MongoSettings.parse_file(path, proto=Protocol.json)
+    if path.exists() and path.is_file:
+        return MongoSettings.parse_file(path, proto=Protocol.json)
+    else:
+        logger.info(f"Mongo config file {path} does not exist, using env")
+        return MongoSettings()
