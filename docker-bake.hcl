@@ -24,11 +24,11 @@ variable "TORCH_VERSION" {
 }
 
 variable "XFORMERS_VERSION" {
-  default = "xformers==0.0.21"
+  default = "xformers>=0.0.22"
 }
 
 variable "BNB_VERSION" {
-  default = "bitsandbytes==0.41.1"
+  default = "bitsandbytes>=0.41.1"
 }
 
 variable "TORCH_CUDA_ARCH_LIST" {
