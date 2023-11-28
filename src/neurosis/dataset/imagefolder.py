@@ -13,11 +13,14 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 
 from neurosis.constants import IMAGE_EXTNS
-from neurosis.dataset.aspect import AspectBucketList, SDXLBucketList
-from neurosis.dataset.aspect.base import AspectBucketDataset
-from neurosis.dataset.aspect.bucket import AspectBucket
-from neurosis.dataset.aspect.sampler import AspectBucketSampler
-from neurosis.dataset.utils import load_bucket_image_file
+from neurosis.dataset.aspect import (
+    AspectBucket,
+    AspectBucketDataset,
+    AspectBucketList,
+    AspectBucketSampler,
+    SDXLBucketList,
+)
+from neurosis.dataset.utils import clean_word, load_bucket_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,9 @@ class ImageFolderDataset(AspectBucketDataset):
         recursive: bool = False,
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
+        process_tags: bool = True,
+        shuffle_tags: bool = True,
+        shuffle_keep: int = 0,
     ):
         super().__init__(buckets, batch_size, image_key, caption_key)
         self.folder = Path(folder).resolve()
@@ -49,6 +55,9 @@ class ImageFolderDataset(AspectBucketDataset):
         self.recursive = recursive
         self.resampling = resampling
         self.clamp_orig = clamp_orig
+        self.process_tags = process_tags
+        self.shuffle_tags = shuffle_tags
+        self.shuffle_keep = shuffle_keep
 
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
@@ -72,10 +81,7 @@ class ImageFolderDataset(AspectBucketDataset):
         return {
             self.image_key: self.transforms(image),
             self.caption_key: sample.caption,
-            "original_size_as_tuple": (
-                min(sample.resolution[0], bucket.width) if self.clamp_orig else sample.resolution[0],
-                min(sample.resolution[1], bucket.height) if self.clamp_orig else sample.resolution[1],
-            ),
+            "original_size_as_tuple": self._get_osize(sample.resolution, bucket),
             "crop_coords_top_left": crop_coords,
             "target_size_as_tuple": bucket.size,
         }
@@ -103,27 +109,40 @@ class ImageFolderDataset(AspectBucketDataset):
             self._bucket2idx = None
             self._idx2bucket = None
 
-    def __clean_caption(self, caption: str) -> str:
-        def clean_word(word: str) -> str:
-            if "_" in word:
-                word = word.replace("_", self.word_sep)
-            if " " in word:
-                word = word.replace(" ", self.word_sep)
-            return word.strip()
+    def _get_osize(self, resolution: tuple[int, int], bucket: AspectBucket) -> tuple[int, int]:
+        return (
+            min(resolution[0], bucket.width) if self.clamp_orig else resolution[0],
+            min(resolution[1], bucket.height) if self.clamp_orig else resolution[1],
+        )
 
-        caption = [clean_word(x) for x in caption.split(", ")]
-        return self.tag_sep.join(caption).strip()
+    def __clean_caption(self, caption: str) -> str:
+        if self.process_tags:
+            caption = [clean_word(self.word_sep, x) for x in caption.split(", ")]
+
+            if self.shuffle_tags:
+                if self.shuffle_keep > 0:
+                    caption = (
+                        caption[: self.shuffle_keep]
+                        + np.random.permutation(caption[self.shuffle_keep :]).tolist()
+                    )
+                else:
+                    caption = np.random.permutation(caption).tolist()
+
+            return self.tag_sep.join(caption).strip()
+        else:
+            return caption.strip()
 
     def __load_meta(self, image_path: Path) -> pd.Series:
         caption_file = image_path.with_suffix(self.caption_ext)
         if not caption_file.exists():
             raise FileNotFoundError(f"Caption {self.caption_ext} for image {image_path} does not exist.")
+
         caption = self.__clean_caption(caption_file.read_text(encoding="utf-8"))
         resolution = np.array(Image.open(image_path).size, np.int32)
         aspect = np.float32(resolution[0] / resolution[1])
-        bucket = self.buckets.bucket_idx(aspect)
+        bucket_idx = self.buckets.bucket_idx(aspect)
         return pd.Series(
-            data=[image_path, caption, aspect, resolution, bucket],
+            data=[image_path, caption, aspect, resolution, bucket_idx],
             index=["image_path", "caption", "aspect", "resolution", "bucket_idx"],
         )
 

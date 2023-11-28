@@ -2,6 +2,7 @@ from os import PathLike
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from PIL import Image, ImageOps
 from torch import Tensor
 from torchvision.transforms import v2 as T
@@ -38,6 +39,7 @@ def pil_crop_bucket(
     image: Image.Image,
     bucket: AspectBucket,
     resampling: Image.Resampling = Image.Resampling.BICUBIC,
+    return_dict: bool = False,
 ) -> tuple[Image.Image, tuple[int, int]]:
     # resize short edge to match bucket short edge
     image = ImageOps.cover(image, bucket.size, method=resampling)
@@ -53,7 +55,8 @@ def pil_crop_bucket(
     top = np.random.randint(delta_h + 1)
     left = np.random.randint(delta_w + 1)
     image = T.functional.crop(image, top, left, bucket.height, bucket.width)
-    return image, (top, left)
+
+    return {"image": image, "crop_coords_top_left": (top, left)} if return_dict else (image, (top, left))
 
 
 def load_bucket_image_file(
@@ -69,3 +72,9 @@ def load_bucket_image_file(
     image = pil_ensure_rgb(image)
     image, (top, left) = pil_crop_bucket(image, bucket, resampling)
     return image, (top, left)
+
+
+def clean_word(word_sep: str, word: str) -> str:
+    word = word.replace("_", word_sep)
+    word = word.replace(" ", word_sep)
+    return word.strip()
