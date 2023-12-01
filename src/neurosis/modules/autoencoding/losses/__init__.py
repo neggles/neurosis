@@ -1,5 +1,5 @@
-from .general import GeneralLPIPSWithDiscriminator
-from .latent import LatentLPIPS
+from .discriminator_loss import GeneralLPIPSWithDiscriminator
+from .lpips import LatentLPIPS
 from .vqperceptual import VQLPIPSWithDiscriminator
 
 __all__ = [

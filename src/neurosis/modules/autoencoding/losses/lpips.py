@@ -1,3 +1,5 @@
+from typing import Any
+
 from torch import Tensor, nn
 from torch.nn import functional as F
 
@@ -27,11 +29,13 @@ class LatentLPIPS(nn.Module):
         self.latent_weight = latent_weight
         self.perceptual_weight_on_inputs = perceptual_weight_on_inputs
 
-    def forward(self, latent_inputs: Tensor, latent_predictions: Tensor, image_inputs: Tensor, split="train"):
+    def forward(
+        self, latent_inputs: Tensor, latent_predictions: Tensor, image_inputs: Tensor, split="train"
+    ) -> tuple[Tensor, dict[str, Any]]:
         log = dict()
         loss = (latent_inputs - latent_predictions) ** 2
         log[f"{split}/latent_l2_loss"] = loss.mean().detach()
-        image_reconstructions = None
+        image_reconstructions: Tensor = None
         if self.perceptual_weight > 0.0:
             image_reconstructions = self.decoder.decode(latent_predictions)
             image_targets = self.decoder.decode(latent_inputs)
