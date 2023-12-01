@@ -3,8 +3,8 @@ from torch import Tensor, nn
 
 
 class LitEma(nn.Module):
-    decay: torch.Tensor
-    num_updates: torch.Tensor
+    decay: Tensor
+    num_updates: Tensor
 
     def __init__(self, model: nn.Module, decay=0.9999, use_num_upates=True):
         super().__init__()

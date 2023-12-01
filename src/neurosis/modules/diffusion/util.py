@@ -13,7 +13,7 @@ import math
 
 import torch
 from einops import repeat
-from torch import nn
+from torch import Tensor, nn
 
 
 def make_beta_schedule(
@@ -46,10 +46,10 @@ def mixed_checkpoint(func, inputs: dict, params, flag):
     :param flag: if False, disable gradient checkpointing.
     """
     if flag:
-        tensor_keys = [key for key in inputs if isinstance(inputs[key], torch.Tensor)]
-        tensor_inputs = [inputs[key] for key in inputs if isinstance(inputs[key], torch.Tensor)]
-        non_tensor_keys = [key for key in inputs if not isinstance(inputs[key], torch.Tensor)]
-        non_tensor_inputs = [inputs[key] for key in inputs if not isinstance(inputs[key], torch.Tensor)]
+        tensor_keys = [key for key in inputs if isinstance(inputs[key], Tensor)]
+        tensor_inputs = [inputs[key] for key in inputs if isinstance(inputs[key], Tensor)]
+        non_tensor_keys = [key for key in inputs if not isinstance(inputs[key], Tensor)]
+        non_tensor_inputs = [inputs[key] for key in inputs if not isinstance(inputs[key], Tensor)]
         args = tuple(tensor_inputs) + tuple(non_tensor_inputs) + tuple(params)
         return MixedCheckpointFunction.apply(
             func,
@@ -96,7 +96,7 @@ class MixedCheckpointFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *output_grads):
-        # additional_args = {key: ctx.input_tensors[key] for key in ctx.input_tensors if not isinstance(ctx.input_tensors[key],torch.Tensor)}
+        # additional_args = {key: ctx.input_tensors[key] for key in ctx.input_tensors if not isinstance(ctx.input_tensors[key],Tensor)}
         ctx.input_tensors = {
             key: ctx.input_tensors[key].detach().requires_grad_(True) for key in ctx.input_tensors
         }

@@ -42,7 +42,7 @@ class DiagonalGaussianDistribution(object):
 
     def kl(self, other: Optional[Tensor] = None) -> Tensor:
         if self.deterministic:
-            return torch.Tensor([0.0])
+            return torch.tensor([0.0])
         else:
             if other is None:
                 return 0.5 * torch.sum(
@@ -61,7 +61,7 @@ class DiagonalGaussianDistribution(object):
 
     def nll(self, sample: Tensor, dims=[1, 2, 3]) -> Tensor:
         if self.deterministic:
-            return Tensor([0.0])
+            return torch.tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
         return 0.5 * torch.sum(
             logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
@@ -81,7 +81,7 @@ def normal_kl(mean1, logvar1, mean2, logvar2):
     """
     tensor = None
     for obj in (mean1, logvar1, mean2, logvar2):
-        if isinstance(obj, torch.Tensor):
+        if isinstance(obj, Tensor):
             tensor = obj
             break
     assert tensor is not None, "at least one argument must be a Tensor"
@@ -89,7 +89,7 @@ def normal_kl(mean1, logvar1, mean2, logvar2):
     # Force variances to be Tensors. Broadcasting helps convert scalars to
     # Tensors, but it does not work for torch.exp().
     logvar1, logvar2 = [
-        x if isinstance(x, torch.Tensor) else torch.tensor(x).to(tensor) for x in (logvar1, logvar2)
+        x if isinstance(x, Tensor) else torch.tensor(x).to(tensor) for x in (logvar1, logvar2)
     ]
 
     return 0.5 * (
