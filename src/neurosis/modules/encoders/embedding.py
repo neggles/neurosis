@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from einops import rearrange
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 from neurosis.modules.diffusion.model import Encoder
 from neurosis.modules.regularizers import DiagonalGaussianDistribution
@@ -53,11 +54,11 @@ class AbstractEmbModel(nn.Module):
         del self._is_trainable
 
     @property
-    def ucg_rate(self) -> Union[float, torch.Tensor]:
+    def ucg_rate(self) -> Union[float, Tensor]:
         return self._ucg_rate
 
     @ucg_rate.setter
-    def ucg_rate(self, value: Union[float, torch.Tensor]):
+    def ucg_rate(self, value: Union[float, Tensor]):
         self._ucg_rate = value
 
     @ucg_rate.deleter
@@ -184,7 +185,7 @@ class GeneralConditioner(nn.Module):
                 elif hasattr(embedder, "input_keys"):
                     emb_out = embedder(*[batch[k] for k in embedder.input_keys])
 
-            if not isinstance(emb_out, (torch.Tensor, list, tuple)):
+            if not isinstance(emb_out, (Tensor, list, tuple)):
                 raise ValueError(f"encoder outputs must be tensors or a sequence, but got {type(emb_out)}")
 
             if not isinstance(emb_out, (list, tuple)):
@@ -257,7 +258,7 @@ class SpatialRescaler(nn.Module):
             "area",
         ]
         self.multiplier = multiplier
-        self.interpolator = partial(torch.nn.functional.interpolate, mode=method)
+        self.interpolator = partial(F.interpolate, mode=method)
         self.remap_output = out_channels is not None or remap_output
         if self.remap_output:
             logger.info(
@@ -376,7 +377,7 @@ class LowScaleEncoder(nn.Module):
         noise_level = torch.randint(0, self.max_noise_level, (x.shape[0],), device=x.device).long()
         z = self.q_sample(z, noise_level)
         if self.out_size is not None:
-            z = torch.nn.functional.interpolate(z, size=self.out_size, mode="nearest")
+            z = F.interpolate(z, size=self.out_size, mode="nearest")
         # z = z.repeat_interleave(2, -2).repeat_interleave(2, -1)
         return z, noise_level
 

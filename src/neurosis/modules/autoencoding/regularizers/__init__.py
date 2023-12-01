@@ -2,7 +2,7 @@ from abc import abstractmethod
 from typing import Any, Tuple
 
 import torch
-from torch import nn
+from torch import Tensor, nn
 from torch.nn import functional as F
 
 from neurosis.modules.distributions import DiagonalGaussianDistribution
@@ -12,7 +12,7 @@ class AbstractRegularizer(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+    def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
         raise NotImplementedError()
 
     @abstractmethod
@@ -28,7 +28,7 @@ class DiagonalGaussianRegularizer(AbstractRegularizer):
     def get_trainable_parameters(self) -> Any:
         yield from ()
 
-    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+    def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
         log = dict()
         posterior = DiagonalGaussianDistribution(z)
         if self.sample:

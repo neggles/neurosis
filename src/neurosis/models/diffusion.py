@@ -229,7 +229,7 @@ class DiffusionEngine(L.LightningModule):
         for embedder in self.conditioner.embedders:
             if ((self.log_keys is None) or (embedder.input_key in self.log_keys)) and not self.no_cond_log:
                 x = batch[embedder.input_key][:n]
-                if isinstance(x, torch.Tensor):
+                if isinstance(x, Tensor):
                     if x.dim() == 1:
                         # class-conditional, convert integer to string
                         x = [str(x[i].item()) for i in range(x.shape[0])]
@@ -289,7 +289,7 @@ class DiffusionEngine(L.LightningModule):
         log.update(self.log_conditionings(batch, N))
 
         for k in c:
-            if isinstance(c[k], torch.Tensor):
+            if isinstance(c[k], Tensor):
                 c[k], uc[k] = map(lambda y: y[k][:N].to(self.device), (c, uc))
 
         if sample:

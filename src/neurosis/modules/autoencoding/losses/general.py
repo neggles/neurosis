@@ -3,7 +3,7 @@ from typing import Any, Iterator, Optional
 import torch
 from einops import rearrange
 from torch import ParameterDict, Tensor, nn
-from torch.nn import Parameter
+from torch.nn import functional as F
 
 from neurosis.modules.losses.functions import adopt_weight, hinge_d_loss, vanilla_d_loss
 from neurosis.modules.losses.lpips import LPIPS
@@ -52,7 +52,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         self.discriminator_weight = disc_weight
         self.regularization_weights = regularization_weights or {}
 
-    def get_trainable_parameters(self) -> Iterator[Parameter]:
+    def get_trainable_parameters(self) -> Iterator[nn.Parameter]:
         return self.discriminator.parameters()
 
     def get_trainable_autoencoder_parameters(self) -> Any:
@@ -85,9 +85,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         weights: Optional[Tensor] = None,
     ):
         if self.scale_input_to_tgt_size:
-            inputs = torch.nn.functional.interpolate(
-                inputs, reconstructions.shape[2:], mode="bicubic", antialias=True
-            )
+            inputs = F.interpolate(inputs, reconstructions.shape[2:], mode="bicubic", antialias=True)
 
         if self.dims > 2:
             inputs, reconstructions = map(

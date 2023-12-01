@@ -1,5 +1,5 @@
-import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 from neurosis.modules.diffusion.model import Decoder
 from neurosis.modules.losses.lpips import LPIPS
@@ -44,14 +44,14 @@ class LatentLPIPS(nn.Module):
         if self.perceptual_weight_on_inputs > 0.0:
             image_reconstructions = image_reconstructions or self.decoder.decode(latent_predictions)
             if self.scale_input_to_tgt_size:
-                image_inputs = torch.nn.functional.interpolate(
+                image_inputs = F.interpolate(
                     image_inputs,
                     image_reconstructions.shape[2:],
                     mode="bicubic",
                     antialias=True,
                 )
             elif self.scale_tgt_to_input_size:
-                image_reconstructions = torch.nn.functional.interpolate(
+                image_reconstructions = F.interpolate(
                     image_reconstructions,
                     image_inputs.shape[2:],
                     mode="bicubic",

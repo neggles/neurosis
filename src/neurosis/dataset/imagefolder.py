@@ -180,6 +180,7 @@ class ImageFolderModule(LightningDataModule):
     def __init__(
         self,
         folder: PathLike,
+        *,
         buckets: AspectBucketList = SDXLBucketList(),
         batch_size: int = 1,
         image_key: str = "image",

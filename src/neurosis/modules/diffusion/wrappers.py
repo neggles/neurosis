@@ -1,6 +1,6 @@
 import torch
 from packaging import version
-from torch import nn
+from torch import Tensor, nn
 
 
 class IdentityWrapper(nn.Module):
@@ -18,8 +18,8 @@ class IdentityWrapper(nn.Module):
 
 
 class OpenAIWrapper(IdentityWrapper):
-    def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs) -> torch.Tensor:
-        x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
+    def forward(self, x: Tensor, t: Tensor, c: dict, **kwargs) -> Tensor:
+        x = torch.cat((x, c.get("concat", Tensor([]).type_as(x))), dim=1)
         return self.diffusion_model(
             x,
             timesteps=t,

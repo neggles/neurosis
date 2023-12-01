@@ -127,7 +127,7 @@ class ImageLogger(Callback):
                 num_imgs = min(images[k].shape[0], self.max_images)
                 if not isheatmap(images[k]):
                     images[k] = images[k][:num_imgs]
-                if isinstance(images[k], torch.Tensor):
+                if isinstance(images[k], Tensor):
                     images[k] = images[k].detach().float().cpu()
                     if self.clamp and not isheatmap(images[k]):
                         images[k] = torch.clamp(images[k], -1.0, 1.0)
