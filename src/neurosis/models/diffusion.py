@@ -1,7 +1,8 @@
+import logging
 from contextlib import contextmanager
 from os import PathLike
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import lightning.pytorch as L
 import numpy as np
@@ -26,6 +27,8 @@ from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
 from neurosis.utils import disabled_train, get_obj_from_str, log_txt_as_img, np_text_decode
 
+logger = logging.getLogger(__name__)
+
 
 class DiffusionEngine(L.LightningModule):
     def __init__(
@@ -45,7 +48,7 @@ class DiffusionEngine(L.LightningModule):
         scale_factor: float = 1.0,
         disable_first_stage_autocast: bool = False,
         input_key: str = "jpg",
-        log_keys: Union[List, None] = None,
+        log_keys: Union[list, None] = None,
         no_cond_log: bool = False,
         compile_model: bool = False,
     ):
@@ -107,11 +110,11 @@ class DiffusionEngine(L.LightningModule):
             raise NotImplementedError(f"Unknown checkpoint extension {path.suffix}")
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
-        print(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
+        logger.info(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
-            print(f"Missing Keys: {missing}")
+            logger.warn(f"Missing Keys: {missing}")
         if len(unexpected) > 0:
-            print(f"Unexpected Keys: {unexpected}")
+            logger.info(f"Unexpected Keys: {unexpected}")
 
     def _init_first_stage(self, model: AutoencodingEngine):
         model.eval()
@@ -202,10 +205,10 @@ class DiffusionEngine(L.LightningModule):
     @torch.no_grad()
     def sample(
         self,
-        cond: Dict,
-        uc: Union[Dict, None] = None,
+        cond: dict,
+        uc: Union[dict, None] = None,
         batch_size: int = 16,
-        shape: Union[None, Tuple, List] = None,
+        shape: Union[None, Tuple, list] = None,
         **kwargs,
     ):
         randn = torch.randn(batch_size, *shape).to(self.device)
@@ -217,7 +220,7 @@ class DiffusionEngine(L.LightningModule):
         return samples
 
     @torch.no_grad()
-    def log_conditionings(self, batch: Dict, n: int) -> Dict:
+    def log_conditionings(self, batch: dict, n: int) -> dict:
         """
         Defines heuristics to log different conditionings.
         These can be lists of strings (text-to-image), tensors, ints, ...
@@ -240,7 +243,7 @@ class DiffusionEngine(L.LightningModule):
                         xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
                     else:
                         raise NotImplementedError()
-                elif isinstance(x, (List, ListConfig)):
+                elif isinstance(x, (list, ListConfig)):
                     if isinstance(x[0], np.bytes_):
                         x = np_text_decode(x)
                     if isinstance(x[0], str):
@@ -256,12 +259,12 @@ class DiffusionEngine(L.LightningModule):
     @torch.no_grad()
     def log_images(
         self,
-        batch: Dict,
+        batch: dict,
         N: int = 8,
         sample: bool = True,
-        ucg_keys: List[str] = None,
+        ucg_keys: list[str] = None,
         **kwargs,
-    ) -> Dict:
+    ) -> dict:
         conditioner_input_keys = [e.input_key for e in self.conditioner.embedders]
         if ucg_keys:
             assert all(map(lambda x: x in conditioner_input_keys, ucg_keys)), (

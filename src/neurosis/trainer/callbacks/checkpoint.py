@@ -37,7 +37,7 @@ def get_checkpoint_logger(ckpt_dir: PathLike, monitor: Optional[str] = None) -> 
 class HFHubCheckpoint(Checkpoint):
     def __init__(
         self,
-        repo_id: str = ...,
+        repo_id: str,
         token: Optional[bool | str] = None,
         ckpt_name: str = "model",
         save_last: bool = False,

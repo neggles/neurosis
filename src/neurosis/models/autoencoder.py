@@ -144,16 +144,49 @@ class AutoencodingEngine(AbstractAutoencoder):
         regularizer: Optional[AbstractRegularizer] = None,
         optimizer: Union[Dict, None] = None,
         lr_g_factor: float = 1.0,
+        trainable_ae_params: Optional[list[list[str]]] = None,
+        ae_optimizer_args: Optional[list[dict]] = None,
+        trainable_disc_params: Optional[list[list[str]]] = None,
+        disc_optimizer_args: Optional[list[dict]] = None,
+        disc_start_iter: int = 0,
+        diff_boost_factor: float = 3.0,
+        ckpt_engine: Union[None, str, dict] = None,
+        ckpt_path: Optional[str] = None,
+        additional_decode_keys: Optional[list[str]] = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         # todo: add options to freeze encoder/decoder
+
+        self.automatic_optimization = False  # pytorch lightning
+
         self.encoder = encoder
         self.decoder = decoder
         self.loss = loss
         self.regularization = regularizer
         self.optimizer = optimizer
+
+        self.diff_boost_factor = diff_boost_factor
+        self.disc_start_iter = disc_start_iter
         self.lr_g_factor = lr_g_factor
+        self.trainable_ae_params = trainable_ae_params
+        if self.trainable_ae_params is not None:
+            self.ae_optimizer_args = ae_optimizer_args or [{} for _ in range(len(self.trainable_ae_params))]
+            assert len(self.ae_optimizer_args) == len(self.trainable_ae_params)
+        else:
+            self.ae_optimizer_args = [{}]  # makes type consitent
+
+        self.trainable_disc_params = trainable_disc_params
+        if self.trainable_disc_params is not None:
+            self.disc_optimizer_args = (
+                disc_optimizer_args or [{} for _ in range(len(self.trainable_disc_params))],
+            )
+            assert len(self.disc_optimizer_args) == len(self.trainable_disc_params)
+        else:
+            self.disc_optimizer_args = [{}]  # makes type consitent
+
+        self.apply_ckpt(ckpt_path, ckpt_engine)
+        self.additional_decode_keys = set(additional_decode_keys or [])
 
     def get_input(self, batch: Dict) -> Tensor:
         # assuming unified data format, dataloader returns a dict.
@@ -161,83 +194,119 @@ class AutoencodingEngine(AbstractAutoencoder):
         return batch[self.input_key]
 
     def get_autoencoder_params(self) -> list:
-        params = (
-            list(self.encoder.parameters())
-            + list(self.decoder.parameters())
-            + list(self.regularization.get_trainable_parameters())
-            + list(self.loss.get_trainable_autoencoder_parameters())
-        )
+        params = []
+        if hasattr(self.loss, "get_trainable_autoencoder_parameters"):
+            params += list(self.loss.get_trainable_autoencoder_parameters())
+        if hasattr(self.regularization, "get_trainable_parameters"):
+            params += list(self.regularization.get_trainable_parameters())
+        params = params + list(self.encoder.parameters())
+        params = params + list(self.decoder.parameters())
         return params
 
     def get_discriminator_params(self) -> list:
-        params = list(self.loss.get_trainable_parameters())  # e.g., discriminator
+        if hasattr(self.loss, "get_trainable_parameters"):
+            params = list(self.loss.get_trainable_parameters())  # e.g., discriminator
+        else:
+            params = []
         return params
 
     def get_last_layer(self):
         return self.decoder.get_last_layer()
 
-    def encode(self, x: Any, return_reg_log: bool = False) -> Any:
+    def encode(
+        self,
+        x: Tensor,
+        return_reg_log: bool = False,
+        unregularized: bool = False,
+    ) -> Union[Tensor, Tuple[Tensor, dict]]:
         z = self.encoder(x)
+        if unregularized:
+            return z, dict()
         z, reg_log = self.regularization(z)
         if return_reg_log:
             return z, reg_log
         return z
 
-    def decode(self, z: Any) -> Tensor:
-        x = self.decoder(z)
+    def decode(self, z: Tensor, **kwargs) -> Tensor:
+        x = self.decoder(z, **kwargs)
         return x
 
-    def forward(self, x: Any) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, x: Tensor, **additional_decode_kwargs) -> Tuple[Tensor, Tensor, dict]:
         z, reg_log = self.encode(x, return_reg_log=True)
-        dec = self.decode(z)
+        dec = self.decode(z, **additional_decode_kwargs)
         return z, dec, reg_log
 
-    def training_step(self, batch, batch_idx) -> Any:
+    def inner_training_step(self, batch: dict, batch_idx: int, optimizer_idx: int = 0) -> Tensor:
         x = self.get_input(batch)
+        additional_decode_kwargs = {
+            key: batch[key] for key in self.additional_decode_keys.intersection(batch)
+        }
+        z, xrec, regularization_log = self(x, **additional_decode_kwargs)
+        if hasattr(self.loss, "forward_keys"):
+            extra_info = {
+                "z": z,
+                "optimizer_idx": optimizer_idx,
+                "global_step": self.global_step,
+                "last_layer": self.get_last_layer(),
+                "split": "train",
+                "regularization_log": regularization_log,
+                "autoencoder": self,
+            }
+            extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
+        else:
+            extra_info = dict()
 
-        ae_opt: LightningOptimizer
-        disc_opt: LightningOptimizer
-        ae_opt, disc_opt = self.optimizers()
+        if optimizer_idx == 0:
+            # autoencode
+            out_loss = self.loss(x, xrec, **extra_info)
+            if isinstance(out_loss, tuple):
+                aeloss, log_dict_ae = out_loss
+            else:
+                # simple loss function
+                aeloss = out_loss
+                log_dict_ae = {"train/loss/rec": aeloss.detach()}
 
-        # Run the step
-        _, xrec, regularization_log = self(x)
+            self.log_dict(
+                log_dict_ae,
+                prog_bar=False,
+                logger=True,
+                on_step=True,
+                on_epoch=True,
+                sync_dist=False,
+            )
+            self.log(
+                "loss",
+                aeloss.mean().detach(),
+                prog_bar=True,
+                logger=False,
+                on_epoch=False,
+                on_step=True,
+            )
+            return aeloss
+        elif optimizer_idx == 1:
+            # discriminator
+            discloss, log_dict_disc = self.loss(x, xrec, **extra_info)
+            # -> discriminator always needs to return a tuple
+            self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True)
+            return discloss
+        else:
+            raise NotImplementedError(f"Unknown optimizer {optimizer_idx}")
 
-        # autoencoder loss calc
-        aeloss, log_dict_ae = self.loss(
-            regularization_log,
-            x,
-            xrec,
-            0,
-            self.global_step,
-            last_layer=self.get_last_layer(),
-            split="train",
-        )
-        self.manual_backward(aeloss / self.accumulate_grad_batches)
-        # gradient accumulation
-        if (batch_idx + 1) % self.accumulate_grad_batches == 0:
-            ae_opt.step()
-            ae_opt.zero_grad()
+    def training_step(self, batch: dict, batch_idx: int):
+        opts = self.optimizers()
+        if not isinstance(opts, list):
+            # Non-adversarial case
+            opts = [opts]
+        optimizer_idx = batch_idx % len(opts)
+        if self.global_step < self.disc_start_iter:
+            optimizer_idx = 0
+        opt = opts[optimizer_idx]
+        opt.zero_grad()
+        with opt.toggle_model():
+            loss = self.inner_training_step(batch, batch_idx, optimizer_idx=optimizer_idx)
+            self.manual_backward(loss)
 
-        # discriminator loss calc
-        discloss, log_dict_disc = self.loss(
-            regularization_log,
-            x,
-            xrec,
-            1,
-            self.global_step,
-            last_layer=self.get_last_layer(),
-            split="train",
-        )
-        self.manual_backward(discloss / self.accumulate_grad_batches)
-        # gradient accumulation, step schedulers here
-        if (batch_idx + 1) % self.accumulate_grad_batches == 0:
-            disc_opt.step()
-            disc_opt.zero_grad()
-            for scheduler in self.lr_schedulers():
-                scheduler.step()
-
-        log_dict_ae.update(log_dict_disc)
-        self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=True)
+        opt.step()
 
     def validation_step(self, batch, batch_idx) -> Dict:
         log_dict = self._validation_step(batch, batch_idx)

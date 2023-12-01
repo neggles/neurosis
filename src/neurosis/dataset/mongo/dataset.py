@@ -10,6 +10,7 @@ import pandas as pd
 import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
+from pymongo import MongoClient
 from s3fs import S3File, S3FileSystem
 from torch import Tensor
 from torch.utils.data import DataLoader
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 class MongoAspectDataset(AspectBucketDataset):
     def __init__(
         self,
-        config_path: Optional[PathLike] = None,
+        settings: MongoSettings,
         buckets: AspectBucketList = SDXLBucketList(),
         batch_size: int = 1,
         image_key: str = "image",
@@ -41,7 +42,6 @@ class MongoAspectDataset(AspectBucketDataset):
         caption_ext: str = ".txt",
         tag_sep: str = ", ",
         word_sep: str = " ",
-        recursive: bool = False,
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
         process_tags: bool = True,
@@ -51,14 +51,13 @@ class MongoAspectDataset(AspectBucketDataset):
         s3fs_kwargs: dict = {},
     ):
         super().__init__(buckets, batch_size, image_key, caption_key)
-        self.settings: MongoSettings = get_mongo_settings(config_path)
-        self.client = self.settings.get_client(new=True)
+        self.settings = settings
+        self.client: MongoClient = None
 
         self.path_key = path_key
         self.caption_ext = caption_ext
         self.tag_sep = tag_sep
         self.word_sep = word_sep
-        self.recursive = recursive
         self.resampling = resampling
         self.clamp_orig = clamp_orig
         self.process_tags = process_tags
@@ -67,6 +66,12 @@ class MongoAspectDataset(AspectBucketDataset):
 
         self.fs = S3FileSystem(**s3fs_kwargs)
 
+        # load meta
+        logger.debug(
+            f"Preloading dataset from mongodb://{self.settings.uri.host}/{self.settings.database}.{self.settings.collection}"
+        )
+        self._count: int = 0
+        self._preload()
         # transforms
         self.transforms: Callable = T.Compose(
             [
@@ -76,7 +81,7 @@ class MongoAspectDataset(AspectBucketDataset):
         )
 
     def __len__(self):
-        return len(self.samples)
+        return self._count
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         sample: pd.Series = self.samples.iloc[index]
@@ -91,6 +96,10 @@ class MongoAspectDataset(AspectBucketDataset):
             "crop_coords_top_left": crop_coords,
             "target_size_as_tuple": bucket.size,
         }
+
+    def _preload(self):
+        logger.debug(f"Counting documents... filter: {self.settings.query.filter}")
+        self._count = self.settings.get_count()
 
     def _get_image(self, path: str) -> Image.Image:
         image = self.fs.cat(path)
@@ -122,12 +131,26 @@ class MongoAspectDataset(AspectBucketDataset):
         else:
             return caption.strip()
 
+    def __load_meta(self, image_path: Path) -> pd.Series:
+        caption_file = image_path.with_suffix(self.caption_ext)
+        if not caption_file.exists():
+            raise FileNotFoundError(f"Caption {self.caption_ext} for image {image_path} does not exist.")
 
-class MongoDatasetModule(L.LightningDataModule):
+        caption = self.__clean_caption(caption_file.read_text(encoding="utf-8"))
+        resolution = np.array(Image.open(image_path).size, np.int32)
+        aspect = np.float32(resolution[0] / resolution[1])
+        bucket_idx = self.buckets.bucket_idx(aspect)
+        return pd.Series(
+            data=[image_path, caption, aspect, resolution, bucket_idx],
+            index=["image_path", "caption", "aspect", "resolution", "bucket_idx"],
+        )
+
+
+class MongoDatasetModule(LightningDataModule):
     def __init__(
         self,
-        mongo_settings: MongoSettings,
-        mongo_query: Query,
+        config_path: Optional[PathLike] = None,
+        *,
         buckets: AspectBucketList = SDXLBucketList(),
         batch_size: int = 1,
         image_key: str = "image",
@@ -140,7 +163,37 @@ class MongoDatasetModule(L.LightningDataModule):
         clamp_orig: bool = True,
         num_workers: int = 0,
     ):
+        super().__init__()
+        self.mongo_settings = get_mongo_settings(config_path)
+
+        self.dataset = MongoAspectDataset(
+            self.mongo_settings,
+            buckets,
+            batch_size,
+            image_key,
+            caption_key,
+            caption_ext,
+            tag_sep,
+            word_sep,
+            recursive,
+            resampling,
+            clamp_orig,
+        )
+        self.sampler = AspectBucketSampler(self.dataset)
+
+    def prepare_data(self) -> None:
         pass
+
+    def setup(self, stage: str):
+        pass
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.dataset,
+            batch_sampler=self.sampler,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
 
 
 def get_pixiv_tags():

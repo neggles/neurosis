@@ -27,9 +27,10 @@ class MongoSettings(BaseModel):
     password: Optional[str] = Field(None)
     database: str = Field(..., description="Database to pull from", env="MONGO_DATABASE")
     collection: str = Field(..., description="Collection to pull from", env="MONGO_COLLECTION")
-    queries: list[Query] = Field(default_factory=list)
+    query: Query = Field(default_factory=Query, description="Query to run on the collection")
 
     _client: Optional[MongoClient] = Field(None, allow_mutation=True, init=False, repr=False)
+    _count: Optional[int] = Field(None, allow_mutation=True, init=False, repr=False)
 
     def get_client(self, new: bool = False) -> MongoClient:
         if not new and self._client is not None:
@@ -44,7 +45,11 @@ class MongoSettings(BaseModel):
         mongo_kwargs.setdefault("authMechanism", "SCRAM-SHA-256")
 
         client = MongoClient(
-            host=self.uri.host, port=self.uri.port, username=user, password=password, **mongo_kwargs
+            host=self.uri.host,
+            port=self.uri.port,
+            username=user,
+            password=password,
+            **mongo_kwargs,
         )
         if new:
             # just return the new client
@@ -55,11 +60,21 @@ class MongoSettings(BaseModel):
             return self._client
 
     def get_database(self) -> Database:
-        client = self.get_client()
-        return client[self.database]
+        return self.get_client()[self.database]
 
-    def get_queries(self) -> list[Query]:
-        return self.queries or []
+    def get_collection(self):
+        return self.get_database()[self.collection]
+
+    def get_count(self) -> int:
+        if self._count is None:
+            aggr = [
+                {"$match": self.query.filter},
+                {"$sort": self.query.sort or []},
+                {"$project": {"_id": 1}},
+                {"$count": "count"},
+            ]
+            self._count: int = self.get_collection().aggregate(aggr).next()["count"]
+        return self._count
 
 
 @lru_cache(maxsize=4)
