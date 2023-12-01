@@ -6,7 +6,7 @@ from typing import Annotated, List, Optional
 import jsonargparse
 import torch
 import typer
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
 from lightning.pytorch.cli import ArgsType, LightningArgumentParser, LightningCLI
 from rich.logging import RichHandler
 from rich.pretty import install as install_pretty
@@ -49,11 +49,11 @@ class DiffusionTrainerCli(LightningCLI):
             nested_key="model_checkpoint",
             required=False,
         )
-        parser.add_lightning_class_args(
-            lightning_class=HFHubCheckpoint,
-            nested_key="hf_hub_checkpoint",
-            required=False,
-        )
+        # parser.add_lightning_class_args(
+        #     lightning_class=HFHubCheckpoint,
+        #     nested_key="hf_hub_checkpoint",
+        #     required=False,
+        # )
         parser.add_lightning_class_args(
             lightning_class=ImageLogger,
             nested_key="image_logger",
@@ -64,6 +64,11 @@ class DiffusionTrainerCli(LightningCLI):
             nested_key="learning_rate_logger",
             required=False,
         )
+        # parser.add_lightning_class_args(
+        #     lightning_class=ModelSummary,
+        #     nested_key="model_summary",
+        #     required=False,
+        # )
 
 
 @train_app.command(add_help_option=False)

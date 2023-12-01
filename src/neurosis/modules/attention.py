@@ -9,8 +9,7 @@ from packaging import version
 from torch import FloatTensor, Tensor, nn
 from torch.backends.cuda import SDPBackend, sdp_kernel
 from torch.nn import functional as F
-
-from neurosis.modules.diffusion.util import checkpoint
+from torch.utils.checkpoint import checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -259,23 +258,6 @@ class CrossAttention(nn.Module):
 
         q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=h), (q, k, v))
 
-        ## old
-        """
-        sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
-        del q, k
-
-        if exists(mask):
-            mask = rearrange(mask, 'b ... -> b (...)')
-            max_neg_value = -torch.finfo(sim.dtype).max
-            mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            sim.masked_fill_(~mask, max_neg_value)
-
-        # attention, what we cannot get enough of
-        sim = sim.softmax(dim=-1)
-
-        out = einsum('b i j, b j d -> b i d', sim, v)
-        """
-        ## new
         with sdp_kernel(**BACKEND_MAP[self.backend]):
             # logger.debug("dispatching into backend", self.backend, "q/k/v shape: ", q.shape, k.shape, v.shape)
             out = F.scaled_dot_product_attention(

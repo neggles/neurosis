@@ -8,6 +8,7 @@ import torch
 from einops import rearrange
 from torch import Tensor, nn
 from torch.nn import functional as F
+from torch.utils.checkpoint import checkpoint
 
 from neurosis.modules.diffusion.model import Encoder
 from neurosis.modules.regularizers import DiagonalGaussianDistribution
@@ -210,14 +211,20 @@ class GeneralConditioner(nn.Module):
                     output[out_key] = emb
         return output
 
-    def get_unconditional_conditioning(self, batch_c, batch_uc=None, force_uc_zero_embeddings=None):
+    def get_unconditional_conditioning(
+        self,
+        batch_c: dict,
+        batch_uc: Optional[dict] = None,
+        force_uc_zero_embeddings: Optional[list[str]] = None,
+        force_cond_zero_embeddings: Optional[list[str]] = None,
+    ):
         if force_uc_zero_embeddings is None:
             force_uc_zero_embeddings = []
         ucg_rates = list()
         for embedder in self.embedders:
             ucg_rates.append(embedder.ucg_rate)
             embedder.ucg_rate = 0.0
-        c = self(batch_c)
+        c = self(batch_c, force_cond_zero_embeddings)
         uc = self(batch_c if batch_uc is None else batch_uc, force_uc_zero_embeddings)
 
         for embedder, rate in zip(self.embedders, ucg_rates):

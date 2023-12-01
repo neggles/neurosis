@@ -17,7 +17,7 @@ from neurosis.modules.diffusion.sampling_utils import (
     to_neg_log_sigma,
     to_sigma,
 )
-from neurosis.modules.guidance import DiffusionGuider, IdentityGuider
+from neurosis.modules.guidance import Guider, IdentityGuider
 from neurosis.utils import append_dims
 
 
@@ -25,7 +25,7 @@ class BaseDiffusionSampler:
     def __init__(
         self,
         discretization: Discretization,
-        guider: Optional[DiffusionGuider] = None,
+        guider: Optional[Guider] = None,
         num_steps: Union[int, None] = None,
         verbose: bool = False,
         device: str = "cuda",

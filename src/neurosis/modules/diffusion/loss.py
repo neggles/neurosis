@@ -1,32 +1,37 @@
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import torch
-from omegaconf import ListConfig
 from torch import Tensor, nn
 
-from neurosis.modules.diffusion.sigma_sampling import DiffusionSampler
 from neurosis.modules.losses.lpips import LPIPS
 from neurosis.utils import append_dims
+
+from ..encoders import GeneralConditioner
+from .denoiser import Denoiser
+from .denoiser_weighting import DenoiserWeighting
+from .sigma_sampling import DiffusionSampler
 
 
 class StandardDiffusionLoss(nn.Module):
     def __init__(
         self,
         sigma_sampler: DiffusionSampler,
-        type: str = "l2",
+        loss_weighting: DenoiserWeighting,
+        loss_type: str = "l2",
         offset_noise_level: float = 0.0,
-        batch2model_keys: Optional[Union[str, List[str], ListConfig]] = None,
+        batch2model_keys: Optional[Union[str, list[str]]] = None,
     ):
         super().__init__()
-        if type not in ["l2", "l1", "lpips"]:
-            raise ValueError(f"Unknown loss type {type}, must be one of ['l2', 'l1', 'lpips']")
+        if loss_type not in ["l2", "l1", "lpips"]:
+            raise ValueError(f"Unknown loss type {loss_type}, must be one of ['l2', 'l1', 'lpips']")
 
         self.sigma_sampler = sigma_sampler
+        self.loss_weighting = loss_weighting
 
-        self.loss_type = type
+        self.loss_type = loss_type
         self.offset_noise_level = offset_noise_level
 
-        if type == "lpips":
+        if loss_type == "lpips":
             self.lpips = LPIPS().eval()
 
         if not batch2model_keys:
@@ -37,22 +42,49 @@ class StandardDiffusionLoss(nn.Module):
 
         self.batch2model_keys = set(batch2model_keys)
 
-    def __call__(self, network: nn.Module, denoiser, conditioner, input: Tensor, batch: Tensor) -> Tensor:
-        cond = conditioner(batch)
-        additional_model_inputs = {key: batch[key] for key in self.batch2model_keys.intersection(batch)}
+    def get_noised_input(
+        self, sigmas_bc: torch.Tensor, noise: torch.Tensor, input: torch.Tensor
+    ) -> torch.Tensor:
+        noised_input = input + noise * sigmas_bc
+        return noised_input
 
-        sigmas = self.sigma_sampler(input.shape[0]).to(input.device)
+    def forward(
+        self,
+        network: nn.Module,
+        denoiser: Denoiser,
+        conditioner: GeneralConditioner,
+        input: torch.Tensor,
+        batch: dict,
+    ) -> torch.Tensor:
+        cond = conditioner(batch)
+        return self._forward(network, denoiser, cond, input, batch)
+
+    def _forward(
+        self,
+        network: nn.Module,
+        denoiser: Denoiser,
+        cond: dict,
+        input: torch.Tensor,
+        batch: dict,
+    ) -> tuple[torch.Tensor, dict]:
+        additional_model_inputs = {key: batch[key] for key in self.batch2model_keys.intersection(batch)}
+        sigmas = self.sigma_sampler(input.shape[0]).to(input)
+
         noise = torch.randn_like(input)
         if self.offset_noise_level > 0.0:
+            offset_shape = (input.shape[0], input.shape[1])
             noise = noise + self.offset_noise_level * append_dims(
-                torch.randn(input.shape[0], device=input.device), input.ndim
+                torch.randn(offset_shape, device=input.device),
+                input.ndim,
             )
-        noised_input = input + noise * append_dims(sigmas, input.ndim)
+        sigmas_bc = append_dims(sigmas, input.ndim)
+        noised_input = self.get_noised_input(sigmas_bc, noise, input)
+
         model_output = denoiser(network, noised_input, sigmas, cond, **additional_model_inputs)
-        w = append_dims(denoiser.w(sigmas), input.ndim)
+        w = append_dims(self.loss_weighting(sigmas), input.ndim)
         return self.get_loss(model_output, input, w)
 
-    def get_loss(self, model_output: Tensor, target: Tensor, w: Tensor) -> Tensor:
+    def get_loss(self, model_output: Tensor, target: Tensor, w: Tensor):
         if self.loss_type == "l2":
             return torch.mean((w * (model_output - target) ** 2).reshape(target.shape[0], -1), 1)
         elif self.loss_type == "l1":
@@ -60,3 +92,5 @@ class StandardDiffusionLoss(nn.Module):
         elif self.loss_type == "lpips":
             loss = self.lpips(model_output, target).reshape(-1)
             return loss
+        else:
+            raise NotImplementedError(f"Unknown loss type {self.loss_type}")

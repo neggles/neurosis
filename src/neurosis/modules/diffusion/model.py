@@ -235,12 +235,12 @@ def make_attn(in_channels: int, attn_type="vanilla", attn_kwargs=None) -> nn.Mod
     if attn_type not in ["vanilla", "vanilla-xformers", "memory-efficient-cross-attn", "linear", "none"]:
         raise ValueError(f"attn_type {attn_type} unknown")
 
-    logger.print(f"making attention of type '{attn_type}' with {in_channels} in_channels")
+    logger.debug(f"making attention of type '{attn_type}' with {in_channels} in_channels")
     if attn_type == "vanilla":
         assert attn_kwargs is None
         return AttnBlock(in_channels)
     elif attn_type == "vanilla-xformers":
-        print(f"building MemoryEfficientAttnBlock with {in_channels} in_channels...")
+        logger.debug(f"building MemoryEfficientAttnBlock with {in_channels} in_channels...")
         return MemoryEfficientAttnBlock(in_channels)
     elif type == "memory-efficient-cross-attn":
         attn_kwargs["query_dim"] = in_channels

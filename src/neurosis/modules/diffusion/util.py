@@ -1,5 +1,5 @@
 """
-adopted from
+partially adopted from
 https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
 and
 https://github.com/lucidrains/denoising-diffusion-pytorch/blob/7706bdfc6f527f58d33f84b7b522e61e6e3164b3/denoising_diffusion_pytorch/denoising_diffusion_pytorch.py
@@ -10,9 +10,10 @@ thanks!
 """
 
 import math
+from typing import Optional
 
 import torch
-from einops import repeat
+from einops import rearrange, repeat
 from torch import Tensor, nn
 
 
@@ -27,7 +28,7 @@ def make_beta_schedule(
     return betas.numpy()
 
 
-def extract_into_tensor(a, t, x_shape):
+def extract_into_tensor(a: Tensor, t: Tensor, x_shape) -> Tensor:
     b, *_ = t.shape
     out = a.gather(-1, t)
     return out.reshape(b, *((1,) * (len(x_shape) - 1)))
@@ -237,18 +238,12 @@ def normalization(channels):
     return GroupNorm32(32, channels)
 
 
-# PyTorch 1.7 has SiLU, but we support PyTorch 1.5.
-class SiLU(nn.Module):
-    def forward(self, x):
-        return x * torch.sigmoid(x)
-
-
 class GroupNorm32(nn.GroupNorm):
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         return super().forward(x.float()).type(x.dtype)
 
 
-def conv_nd(dims, *args, **kwargs):
+def conv_nd(dims: int, *args, **kwargs):
     """
     Create a 1D, 2D, or 3D convolution module.
     """
@@ -258,7 +253,7 @@ def conv_nd(dims, *args, **kwargs):
         return nn.Conv2d(*args, **kwargs)
     elif dims == 3:
         return nn.Conv3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
+    raise ValueError(f"unsupported dimension: {dims}")
 
 
 def linear(*args, **kwargs):
@@ -279,3 +274,54 @@ def avg_pool_nd(dims, *args, **kwargs):
     elif dims == 3:
         return nn.AvgPool3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
+
+
+class AlphaBlender(nn.Module):
+    strategies = ["learned", "fixed", "learned_with_images"]
+    mix_factor: Tensor
+
+    def __init__(
+        self,
+        alpha: float,
+        merge_strategy: str = "learned_with_images",
+        rearrange_pattern: str = "b t -> (b t) 1 1",
+    ):
+        super().__init__()
+        self.merge_strategy = merge_strategy
+        self.rearrange_pattern = rearrange_pattern
+
+        assert merge_strategy in self.strategies, f"merge_strategy needs to be in {self.strategies}"
+
+        if self.merge_strategy == "fixed":
+            self.register_buffer("mix_factor", Tensor([alpha]))
+        elif self.merge_strategy == "learned" or self.merge_strategy == "learned_with_images":
+            self.register_parameter("mix_factor", nn.Parameter(Tensor([alpha])))
+        else:
+            raise ValueError(f"unknown merge strategy {self.merge_strategy}")
+
+    def get_alpha(self, image_only_indicator: Tensor) -> Tensor:
+        if self.merge_strategy == "fixed":
+            alpha = self.mix_factor
+        elif self.merge_strategy == "learned":
+            alpha = torch.sigmoid(self.mix_factor)
+        elif self.merge_strategy == "learned_with_images":
+            assert image_only_indicator is not None, "need image_only_indicator ..."
+            alpha = torch.where(
+                image_only_indicator.bool(),
+                torch.ones(1, 1, device=image_only_indicator.device),
+                rearrange(torch.sigmoid(self.mix_factor), "... -> ... 1"),
+            )
+            alpha = rearrange(alpha, self.rearrange_pattern)
+        else:
+            raise NotImplementedError
+        return alpha
+
+    def forward(
+        self,
+        x_spatial: Tensor,
+        x_temporal: Tensor,
+        image_only_indicator: Optional[Tensor] = None,
+    ) -> Tensor:
+        alpha = self.get_alpha(image_only_indicator)
+        x = alpha.to(x_spatial.dtype) * x_spatial + (1.0 - alpha).to(x_spatial.dtype) * x_temporal
+        return x

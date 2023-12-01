@@ -6,12 +6,13 @@ import open_clip
 import torch
 from einops import rearrange, repeat
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint
 from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.tokenization_utils import BatchEncoding
 
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.utils import autocast, checkpoint, expand_dims_like, np_text_decode
+from neurosis.utils import autocast, expand_dims_like, np_text_decode
 
 
 class FrozenCLIPEmbedder(AbstractEmbModel):
