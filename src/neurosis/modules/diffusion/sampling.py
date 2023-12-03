@@ -26,19 +26,29 @@ class BaseDiffusionSampler:
         self,
         discretization: Discretization,
         guider: Optional[Guider] = None,
-        num_steps: Union[int, None] = None,
+        num_steps: Optional[int] = None,
         verbose: bool = False,
         device: str = "cuda",
     ):
-        self.num_steps = num_steps
         self.discretization = discretization
-        self.guider = guider if guider is not None else IdentityGuider
+        self.guider = guider or IdentityGuider
+        self.num_steps = num_steps
         self.verbose = verbose
         self.device = device
 
-    def prepare_sampling_loop(self, x: Tensor, cond, uc=None, num_steps=None):
-        sigmas = self.discretization(self.num_steps if num_steps is None else num_steps, device=self.device)
-        uc = uc or cond
+    def prepare_sampling_loop(
+        self,
+        x: Tensor,
+        cond: Tensor,
+        uc: Optional[Tensor] = None,
+        num_steps: Optional[int] = None,
+    ):
+        num_steps = num_steps or self.num_steps
+        if num_steps is None:
+            raise ValueError(f"Step count must be set at init or call time! {self.step_count=}")
+
+        sigmas = self.discretization(n=num_steps, device=self.device)
+        uc = uc if uc is not None else cond
 
         x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
         num_sigmas = len(sigmas)

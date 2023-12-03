@@ -42,7 +42,6 @@ class DiffusionEngine(L.LightningModule):
         optimizer: OptimizerCallable,
         scheduler: LRSchedulerCallable,
         loss_fn: Optional[StandardDiffusionLoss],
-        network_wrapper: Optional[str] = None,
         ckpt_path: Optional[PathLike] = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
@@ -59,8 +58,7 @@ class DiffusionEngine(L.LightningModule):
         self.log_keys = log_keys
         self.input_key = input_key
 
-        network_wrapper = get_obj_from_str(network_wrapper) if network_wrapper is not None else OpenAIWrapper
-        self.model = network_wrapper(model, compile_model=compile_model)
+        self.model = OpenAIWrapper(model, compile_model=compile_model)
         self.denoiser = denoiser
         self.sampler = sampler
         self.conditioner = conditioner
@@ -134,7 +132,7 @@ class DiffusionEngine(L.LightningModule):
     @torch.no_grad()
     def decode_first_stage(self, z: Tensor) -> Tensor:
         z = 1.0 / self.scale_factor * z
-        n_samples = self.en_and_decode_n_samples_a_time, z.shape[0]
+        n_samples = self.en_and_decode_n_samples_a_time or z.shape[0]
 
         n_rounds = ceil(z.shape[0] / n_samples)
         all_out = []

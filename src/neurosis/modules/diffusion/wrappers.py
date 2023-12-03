@@ -3,7 +3,7 @@ from torch import Tensor, nn
 
 
 class IdentityWrapper(nn.Module):
-    def __init__(self, diffusion_model, compile_model: bool = False):
+    def __init__(self, diffusion_model: nn.Module, compile_model: bool = False):
         super().__init__()
         if compile_model:
             self.diffusion_model = torch.compile(diffusion_model)

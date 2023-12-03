@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated, List, Optional
 
 import jsonargparse
+import lightning
 import torch
 import typer
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
@@ -23,7 +24,7 @@ if isatty(1):
     _ = install_pretty(console=console)
     _ = install_traceback(
         console=console,
-        suppress=[jsonargparse, torch],
+        suppress=[jsonargparse, torch, lightning],
         show_locals=is_debug,
         locals_max_length=3,
         locals_max_string=64,
@@ -36,6 +37,7 @@ train_app: typer.Typer = typer.Typer(
 )
 
 logging.basicConfig(
+    format="%(message)s",
     handlers=[RichHandler(console=console)],
     level=logging.INFO,
 )
@@ -49,11 +51,6 @@ class DiffusionTrainerCli(LightningCLI):
             nested_key="model_checkpoint",
             required=False,
         )
-        # parser.add_lightning_class_args(
-        #     lightning_class=HFHubCheckpoint,
-        #     nested_key="hf_hub_checkpoint",
-        #     required=False,
-        # )
         parser.add_lightning_class_args(
             lightning_class=ImageLogger,
             nested_key="image_logger",
@@ -64,11 +61,6 @@ class DiffusionTrainerCli(LightningCLI):
             nested_key="learning_rate_logger",
             required=False,
         )
-        # parser.add_lightning_class_args(
-        #     lightning_class=ModelSummary,
-        #     nested_key="model_summary",
-        #     required=False,
-        # )
 
 
 @train_app.command(add_help_option=False)
