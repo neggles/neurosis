@@ -13,7 +13,7 @@ trainer:
   default_root_dir: ./projects
   use_distributed_sampler: true
 
-  fast_dev_run: true
+  fast_dev_run: true # disable to actually train
 
   logger:
     - class_path: lightning.pytorch.loggers.wandb.WandbLogger
@@ -26,6 +26,11 @@ trainer:
         save_dir: ${trainer.default_root_dir}
         name: neurosis-test
 
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelSummary
+      init_args:
+        max_depth: 3
+
 model_checkpoint:
   filename: "{epoch:03d}-{step:08d}"
   save_last: true
@@ -36,7 +41,7 @@ model_checkpoint:
   verbose: true
 
 image_logger:
-  every_n_train_steps: 50
+  every_n_train_steps: 25 # this is multiplied by accumulate_grad_batches
   max_images: 4
   clamp: true
   increase_log_steps: false
@@ -70,26 +75,22 @@ model:
         num_res_blocks: 2
         channel_mult: [1, 2, 4]
         num_head_channels: 64
-        use_spatial_transformer: true
         use_linear_in_transformer: true
         transformer_depth: [1, 2, 10] # note: the first is unused (due to attn_res starting at 2) 32, 16, 8 --> 64, 32, 16
         context_dim: 2048
         spatial_transformer_attn_type: softmax-xformers
-        legacy: false
 
     denoiser:
       class_path: neurosis.modules.diffusion.DiscreteDenoiser
       init_args:
         num_idx: 1000
-        weighting:
-          class_path: neurosis.modules.diffusion.EpsWeighting
         scaling:
           class_path: neurosis.modules.diffusion.EpsScaling
         discretization:
           class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
 
     first_stage_model:
-      class_path: neurosis.models.autoencoder.AutoencoderKLInferenceWrapper
+      class_path: neurosis.models.autoencoder.AutoencoderKL
       init_args:
         # recommend using https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/blob/main/sdxl_vae.safetensors
         ckpt_path: data/sdxl_vae.safetensors
@@ -151,18 +152,8 @@ model:
               input_key: target_size_as_tuple
               is_trainable: false
 
-    sampler:
-      class_path: neurosis.modules.diffusion.sampling.EulerEDMSampler
-      init_args:
-        num_steps: 50
-        discretization:
-          class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
-        guider:
-          class_path: neurosis.modules.guidance.VanillaCFG
-          init_args:
-            scale: 7.5
-
     optimizer:
+      # you can replace this with any subclass of torch.optim.Optimizer
       class_path: neurosis.optimizers.Adafactor
       init_args:
         scale_parameter: true
@@ -177,12 +168,25 @@ model:
     loss_fn:
       class_path: neurosis.modules.diffusion.StandardDiffusionLoss
       init_args:
+        loss_weighting:
+          class_path: neurosis.modules.diffusion.EpsWeighting
         sigma_sampler:
           class_path: neurosis.modules.diffusion.sigma_sampling.DiscreteSampling
           init_args:
             num_idx: 1000
             discretization:
               class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+
+    sampler:
+      class_path: neurosis.modules.diffusion.sampling.EulerEDMSampler
+      init_args:
+        num_steps: 50
+        discretization:
+          class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+        guider:
+          class_path: neurosis.modules.guidance.VanillaCFG
+          init_args:
+            scale: 7.5
 
 data:
   class_path: neurosis.dataset.imagefolder.ImageFolderModule

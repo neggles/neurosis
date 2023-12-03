@@ -442,11 +442,8 @@ class BasicTransformerBlock(nn.Module):
         additional_tokens: Optional[Tensor] = None,
         n_times_crossframe_attn_in_self: int = 0,
     ) -> Tensor:
-        # return mixed_checkpoint(self._forward, kwargs, self.parameters(), self.checkpoint)
         if self.checkpoint:
-            # inputs = {"x": x, "context": context}
-            return checkpoint(self._forward, x, context)
-            # return checkpoint(self._forward, inputs, self.parameters(), self.checkpoint)
+            return checkpoint(self._forward, x, context, use_reentrant=False)
         else:
             return self._forward(x, context, additional_tokens, n_times_crossframe_attn_in_self)
 
@@ -542,7 +539,7 @@ class SpatialTransformer(nn.Module):
         d_head: int,
         depth: int = 1,
         dropout: float = 0.0,
-        context_dim: Optional[int] = None,
+        context_dim: Optional[int | list[int]] = None,
         disable_self_attn: bool = False,
         use_linear: bool = False,
         attn_type: str = "softmax",
@@ -558,7 +555,7 @@ class SpatialTransformer(nn.Module):
             context_dim = [context_dim]
         if context_dim is not None and isinstance(context_dim, list):
             if depth != len(context_dim):
-                logger.warn(
+                logger.debug(
                     f"{self.__class__.__name__}: Found context dims {context_dim} of depth {len(context_dim)}, "
                     f"which does not match the specified 'depth' of {depth}. Setting context_dim to {depth * [context_dim[0]]} now."
                 )

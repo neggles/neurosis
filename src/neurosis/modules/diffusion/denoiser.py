@@ -1,4 +1,5 @@
-from typing import Callable, Union
+import logging
+from typing import Union
 
 from torch import Tensor, nn
 
@@ -6,6 +7,8 @@ from neurosis.utils import append_dims
 
 from .denoiser_scaling import DenoiserScaling
 from .discretizer import Discretization
+
+logger = logging.getLogger(__name__)
 
 
 class Denoiser(nn.Module):
@@ -36,6 +39,7 @@ class Denoiser(nn.Module):
 
         net_input = input * c_in
         net_output = network(net_input, c_noise, cond, **additional_model_inputs)
+
         return net_output * c_out + input * c_skip
 
 
@@ -44,7 +48,7 @@ class DiscreteDenoiser(Denoiser):
 
     def __init__(
         self,
-        scaling: Callable,
+        scaling: DenoiserScaling,
         num_idx: int,
         discretization: Discretization,
         do_append_zero: bool = False,

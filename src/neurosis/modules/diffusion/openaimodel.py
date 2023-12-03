@@ -22,16 +22,6 @@ from neurosis.modules.diffusion.util import (
 logger = logging.getLogger(__name__)
 
 
-# dummy replace
-def convert_module_to_f16(x):
-    pass
-
-
-def convert_module_to_f32(x):
-    pass
-
-
-## go
 class AttentionPool2d(nn.Module):
     """
     Adapted from CLIP: https://github.com/openai/CLIP/blob/main/clip/model.py
@@ -42,7 +32,7 @@ class AttentionPool2d(nn.Module):
         spacial_dim: int,
         embed_dim: int,
         num_heads_channels: int,
-        output_dim: int = None,
+        output_dim: Optional[int] = None,
     ):
         super().__init__()
         self.positional_embedding = nn.Parameter(
@@ -61,7 +51,6 @@ class AttentionPool2d(nn.Module):
         x = self.qkv_proj(x)
         x = self.attention(x)
         x = self.c_proj(x)
-        return x[:, :, 0]
 
 
 class TimestepBlock(nn.Module):
@@ -93,9 +82,11 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         num_video_frames: Optional[int] = None,
     ):
         for layer in self:
-            if isinstance(layer, TimestepBlock):
+            module = layer
+
+            if isinstance(module, TimestepBlock):
                 x = layer(x, emb)
-            elif isinstance(layer, SpatialTransformer):
+            elif isinstance(module, SpatialTransformer):
                 x = layer(x, context)
             else:
                 x = layer(x)
@@ -175,7 +166,12 @@ class Downsample(nn.Module):
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
         self.dims = dims
-        stride = 2 if dims != 3 else ((1, 2, 2) if not third_down else (2, 2, 2))
+
+        if dims == 3:
+            stride = (1, 2, 2) if not third_down else (2, 2, 2)
+        else:
+            stride = 2
+
         if use_conv:
             logger.debug(f"Building a Downsample layer with {dims} dims.")
             logger.debug(
@@ -196,7 +192,7 @@ class Downsample(nn.Module):
             assert self.channels == self.out_channels
             self.op = avg_pool_nd(dims, kernel_size=stride, stride=stride)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         assert x.shape[1] == self.channels
         return self.op(x)
 
@@ -311,7 +307,7 @@ class ResBlock(TimestepBlock):
         :return: an [N x C x ...] Tensor of outputs.
         """
         if self.use_checkpoint:
-            return checkpoint(self._forward, x, emb)
+            return checkpoint(self._forward, x, emb, use_reentrant=False)
         else:
             return self._forward(x, emb)
 
@@ -381,7 +377,7 @@ class AttentionBlock(nn.Module):
         self.proj_out = zero_module(conv_nd(1, channels, channels, 1))
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
-        return checkpoint(self._forward, x)
+        return checkpoint(self._forward, x, use_reentrant=False)
 
     def _forward(self, x: Tensor) -> Tensor:
         b, c, *spatial = x.shape
@@ -451,11 +447,11 @@ class QKVAttention(nn.Module):
 
 
 class Timestep(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim: int):
         super().__init__()
         self.dim = dim
 
-    def forward(self, t):
+    def forward(self, t: Tensor) -> Tensor:
         return timestep_embedding(t, self.dim)
 
 
@@ -500,14 +496,14 @@ class UNetModel(nn.Module):
         channel_mult: Union[list, list] = (1, 2, 4, 8),
         conv_resample: bool = True,
         dims: int = 2,
-        num_classes: Optional[list[int, str]] = None,
+        num_classes: Optional[list[int, str] | str] = None,
         use_checkpoint: bool = False,
         num_heads: int = -1,
         num_head_channels: int = -1,
         num_heads_upsample: int = -1,
         use_scale_shift_norm: bool = False,
         resblock_updown: bool = False,
-        transformer_depth: int = 1,
+        transformer_depth: int | list[int] = 1,
         context_dim: Optional[int] = None,
         disable_self_attentions: Optional[list[bool]] = None,
         num_attention_blocks: Optional[list[int]] = None,
@@ -803,7 +799,7 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        if (y is not None) and (self.num_classes is None):
+        if (y is not None) != (self.num_classes is not None):
             raise ValueError(f"y must be None for non-class-conditional models, got {y=}")
         hs = []
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
@@ -823,3 +819,5 @@ class UNetModel(nn.Module):
             h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb, context)
         h = h.type(x.dtype)
+
+        return self.out(h)

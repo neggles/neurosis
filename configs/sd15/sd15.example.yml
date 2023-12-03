@@ -13,7 +13,7 @@ trainer:
   default_root_dir: ./projects
   use_distributed_sampler: true
 
-  fast_dev_run: true
+  fast_dev_run: true # disable to actually train
 
   logger:
     - class_path: lightning.pytorch.loggers.wandb.WandbLogger
@@ -41,7 +41,7 @@ model_checkpoint:
   verbose: true
 
 image_logger:
-  every_n_train_steps: 50
+  every_n_train_steps: 25 # this is multiplied by accumulate_grad_batches
   max_images: 4
   clamp: true
   increase_log_steps: false
@@ -87,7 +87,7 @@ model:
           class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
 
     first_stage_model:
-      class_path: neurosis.models.autoencoder.AutoencoderKLInferenceWrapper
+      class_path: neurosis.models.autoencoder.AutoencoderKL
       init_args:
         ckpt_path: data/sd15/kl-f8-anime2.vae.pt
         embed_dim: 4
@@ -118,18 +118,8 @@ model:
               input_key: caption
               is_trainable: false
 
-    sampler:
-      class_path: neurosis.modules.diffusion.sampling.EulerEDMSampler
-      init_args:
-        num_steps: 50
-        discretization:
-          class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
-        guider:
-          class_path: neurosis.modules.guidance.VanillaCFG
-          init_args:
-            scale: 7.5
-
     optimizer:
+      # you can replace this with any subclass of torch.optim.Optimizer
       class_path: neurosis.optimizers.Adafactor
       init_args:
         scale_parameter: true
@@ -144,19 +134,30 @@ model:
     loss_fn:
       class_path: neurosis.modules.diffusion.StandardDiffusionLoss
       init_args:
+        loss_weighting:
+          class_path: neurosis.modules.diffusion.EpsWeighting
         sigma_sampler:
           class_path: neurosis.modules.diffusion.sigma_sampling.DiscreteSampling
           init_args:
             num_idx: 1000
             discretization:
               class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
-        loss_weighting:
-          class_path: neurosis.modules.diffusion.EpsWeighting
+
+    sampler:
+      class_path: neurosis.modules.diffusion.sampling.EulerEDMSampler
+      init_args:
+        num_steps: 50
+        discretization:
+          class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+        guider:
+          class_path: neurosis.modules.guidance.VanillaCFG
+          init_args:
+            scale: 7.5
 
 data:
   class_path: neurosis.dataset.imagefolder.ImageFolderModule
   init_args:
-    folder: "/tank/ml/sd/train/neurosis/data/lynn/niji-1"
+    folder: "data/dataset/folder"
     recursive: true
     buckets:
       class_path: neurosis.dataset.aspect.WDXLBucketList
@@ -165,5 +166,5 @@ data:
         use_atan: false
     batch_size: 2
     num_workers: 4
-    tag_sep: " "
-    word_sep: "_"
+    tag_sep: ", "
+    word_sep: " "
