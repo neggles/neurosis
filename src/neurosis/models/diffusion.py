@@ -1,5 +1,6 @@
 import logging
 from contextlib import contextmanager
+from math import ceil
 from os import PathLike
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union
@@ -51,6 +52,7 @@ class DiffusionEngine(L.LightningModule):
         log_keys: Union[list, None] = None,
         no_cond_log: bool = False,
         compile_model: bool = False,
+        en_and_decode_n_samples_a_time: Optional[int] = None,
     ):
         super().__init__()
 
@@ -84,6 +86,8 @@ class DiffusionEngine(L.LightningModule):
 
         if ckpt_path is not None:
             self.init_from_ckpt(Path(ckpt_path))
+
+        self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
 
         self.save_hyperparameters(
             ignore=[
@@ -128,16 +132,29 @@ class DiffusionEngine(L.LightningModule):
         return batch[self.input_key]
 
     @torch.no_grad()
-    def decode_first_stage(self, z):
+    def decode_first_stage(self, z: Tensor) -> Tensor:
         z = 1.0 / self.scale_factor * z
-        with torch.autocast("cuda", enabled=self.first_stage_autocast):
-            out = self.first_stage_model.decode(z)
+        n_samples = self.en_and_decode_n_samples_a_time, z.shape[0]
+
+        n_rounds = ceil(z.shape[0] / n_samples)
+        all_out = []
+        with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
+            for n in range(n_rounds):
+                out = self.first_stage_model.decode(z[n * n_samples : (n + 1) * n_samples])
+                all_out.append(out)
+        out = torch.cat(all_out, dim=0)
         return out
 
     @torch.no_grad()
-    def encode_first_stage(self, x):
-        with torch.autocast("cuda", enabled=self.first_stage_autocast):
-            z = self.first_stage_model.encode(x)
+    def encode_first_stage(self, x: Tensor) -> Tensor:
+        n_samples = self.en_and_decode_n_samples_a_time or x.shape[0]
+        n_rounds = ceil(x.shape[0] / n_samples)
+        all_out = []
+        with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
+            for n in range(n_rounds):
+                out = self.first_stage_model.encode(x[n * n_samples : (n + 1) * n_samples])
+                all_out.append(out)
+        z = torch.cat(all_out, dim=0)
         z = self.scale_factor * z
         return z
 
