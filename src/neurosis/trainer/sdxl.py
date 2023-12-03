@@ -56,11 +56,6 @@ class DiffusionTrainerCli(LightningCLI):
             nested_key="image_logger",
             required=False,
         )
-        parser.add_lightning_class_args(
-            lightning_class=LearningRateMonitor,
-            nested_key="learning_rate_logger",
-            required=False,
-        )
 
 
 @train_app.command(add_help_option=False)
