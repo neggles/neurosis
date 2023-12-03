@@ -172,11 +172,11 @@ class DiffusionEngine(L.LightningModule):
     def training_step(self, batch: dict, batch_idx: int):
         loss, loss_dict = self.shared_step(batch)
 
-        self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False)
-
         if self.scheduler is not None:
             lr = self.optimizers().param_groups[0]["lr"]
-            self.log("train/lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+            loss_dict.update("train/lr_abs", lr)
+
+        self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
 
         return loss
 
