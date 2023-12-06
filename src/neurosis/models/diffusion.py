@@ -26,7 +26,8 @@ from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.utils import disabled_train, get_obj_from_str, log_txt_as_img, np_text_decode
+from neurosis.modules.losses.hooks import LossHook
+from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class DiffusionEngine(L.LightningModule):
         no_cond_log: bool = False,
         compile_model: bool = False,
         en_and_decode_n_samples_a_time: Optional[int] = None,
+        loss_hooks: list[LossHook] = [],
     ):
         super().__init__()
 
@@ -70,6 +72,7 @@ class DiffusionEngine(L.LightningModule):
         self._init_first_stage(first_stage_model)
 
         self.loss_fn = loss_fn
+        self.loss_hooks = loss_hooks
 
         self.use_ema = use_ema
         if self.use_ema:
@@ -158,27 +161,29 @@ class DiffusionEngine(L.LightningModule):
 
     def forward(self, x, batch) -> tuple[Tensor, dict[str, Tensor]]:
         loss = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
-        loss_mean = loss.mean()
-        loss_dict = {"train/loss": loss_mean}
-        return loss_mean, loss_dict
+        return loss
 
-    def shared_step(self, batch: dict) -> Any:
+    def shared_step(self, batch: dict) -> tuple[Tensor, dict[str, Tensor]]:
         x = self.get_input(batch)
         x = self.encode_first_stage(x)
         batch["global_step"] = self.global_step
-        loss, loss_dict = self(x, batch)
+        loss = self(x, batch)
+        loss_dict = {"train/loss": loss.mean()}
         return loss, loss_dict
 
     def training_step(self, batch: dict, batch_idx: int):
         loss, loss_dict = self.shared_step(batch)
 
+        for hook in self.loss_hooks:
+            loss, loss_dict = hook(self, batch, loss, loss_dict)
+
         if self.scheduler is not None:
-            lr = self.optimizers().param_groups[0]["lr"]
+            lr: float = self.optimizers().param_groups[0]["lr"]
             loss_dict.update({"train/lr_abs": lr})
 
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
 
-        return loss
+        return loss.mean()
 
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
@@ -213,9 +218,9 @@ class DiffusionEngine(L.LightningModule):
         optimizer = self.optimizer(network_params)
         if self.scheduler is not None:
             scheduler = self.scheduler(optimizer)
-            return [optimizer], scheduler
+            return [optimizer], [scheduler]
         else:
-            return optimizer
+            return [optimizer], []
 
     @torch.no_grad()
     def sample(
