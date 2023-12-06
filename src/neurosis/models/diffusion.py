@@ -172,8 +172,14 @@ class DiffusionEngine(L.LightningModule):
         return loss, loss_dict
 
     def training_step(self, batch: dict, batch_idx: int):
+        # run any pre-step hooks
+        for hook in self.loss_hooks:
+            hook.pre_hook(self.trainer, self, batch, batch_idx)
+
+        # run the actual step
         loss, loss_dict = self.shared_step(batch)
 
+        # run any post-step hooks
         for hook in self.loss_hooks:
             loss, loss_dict = hook(self, batch, loss, loss_dict)
 
@@ -181,13 +187,23 @@ class DiffusionEngine(L.LightningModule):
             lr: float = self.optimizers().param_groups[0]["lr"]
             loss_dict.update({"train/lr_abs": lr})
 
-        self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
+        self.log_dict(
+            loss_dict,
+            prog_bar=True,
+            logger=True,
+            on_step=True,
+            on_epoch=True,
+            batch_size=batch[self.input_key].shape[0],
+        )
 
         return loss.mean()
 
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
             raise ValueError("Sampler and loss function need to be set for training.")
+
+    def on_train_batch_start(self, batch: Any, batch_idx: int) -> int | None:
+        return super().on_train_batch_start(batch, batch_idx)
 
     def on_train_batch_end(self, *args, **kwargs):
         if self.use_ema:

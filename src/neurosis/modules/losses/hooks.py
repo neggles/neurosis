@@ -1,26 +1,31 @@
+import logging
 from abc import ABC, abstractmethod
 
 import lightning.pytorch as L
 from torch import Tensor
 
+logger = logging.getLogger(__name__)
+
 
 class LossHook(ABC):
     """A hook for the loss function in DiffusionEngine that modifies the loss before it is backpropagated."""
 
-    def __init__(self, name: str = "GenericHook", **kwargs):
-        self.name = name
+    def __init__(self, name: str = None, **kwargs):
+        self.name = name or self.__class__.__name__
+        if len(kwargs) > 0:
+            logger.info(f"{self.__class__.__name__} superclass received unexpected kwargs:\n" + f"{kwargs}")
 
-    @abstractmethod
     def __call__(
         self,
-        engine: L.LightningModule,
+        pl_module: L.LightningModule,
         batch: dict,
         loss: Tensor,
         loss_dict: dict[str, Tensor] = {},
+        **kwargs,
     ) -> tuple[Tensor, dict[str, Tensor]]:
-        raise NotImplementedError("You called an ABC. Why would you do that? ;_;")
+        return self.batch_hook(pl_module, batch, loss, loss_dict, **kwargs)
 
-    def on_train_batch_start(
+    def pre_hook(
         self,
         trainer: L.Trainer,
         pl_module: L.LightningModule,
@@ -29,12 +34,13 @@ class LossHook(ABC):
     ):
         pass
 
-    def on_train_batch_end(
+    @abstractmethod
+    def batch_hook(
         self,
-        trainer: L.Trainer,
         pl_module: L.LightningModule,
-        outputs: Tensor,
         batch: dict,
-        batch_idx: int,
-    ):
-        pass
+        loss: Tensor,
+        loss_dict: dict[str, Tensor] = {},
+        **kwargs,
+    ) -> tuple[Tensor, dict[str, Tensor]]:
+        raise NotImplementedError("You called an ABC. Why would you do that? ;_;")
