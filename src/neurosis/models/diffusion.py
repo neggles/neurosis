@@ -174,7 +174,7 @@ class DiffusionEngine(L.LightningModule):
 
         if self.scheduler is not None:
             lr = self.optimizers().param_groups[0]["lr"]
-            loss_dict.update("train/lr_abs", lr)
+            loss_dict.update({"train/lr_abs": lr})
 
         self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
 
@@ -275,7 +275,7 @@ class DiffusionEngine(L.LightningModule):
     def log_images(
         self,
         batch: dict,
-        N: int = 8,
+        num_img: int = 8,
         sample: bool = True,
         ucg_keys: list[str] = None,
         **kwargs,
@@ -288,31 +288,30 @@ class DiffusionEngine(L.LightningModule):
             )
         else:
             ucg_keys = conditioner_input_keys
+
         log = dict()
-
         x: Tensor = self.get_input(batch)
-
         c, uc = self.conditioner.get_unconditional_conditioning(
             batch,
             force_uc_zero_embeddings=ucg_keys if len(self.conditioner.embedders) > 0 else [],
         )
 
         sampling_kwargs = {}
-
-        N = min(x.shape[0], N)
-        x = x.to(self.device)[:N]
+        num_img = min(x.shape[0], num_img)
+        x = x.to(self.device)[:num_img]
         log["inputs"] = x
+
         z: Tensor = self.encode_first_stage(x)
         log["reconstructions"] = self.decode_first_stage(z)
-        log.update(self.log_conditionings(batch, N))
+        log.update(self.log_conditionings(batch, num_img))
 
         for k in c:
             if isinstance(c[k], Tensor):
-                c[k], uc[k] = map(lambda y: y[k][:N].to(self.device), (c, uc))
+                c[k], uc[k] = map(lambda y: y[k][:num_img].to(self.device), (c, uc))
 
         if sample:
             with self.ema_scope("Plotting"):
-                samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=N, **sampling_kwargs)
+                samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=num_img, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
             log["samples"] = samples
         return log

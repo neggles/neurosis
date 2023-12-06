@@ -1,51 +1,111 @@
 import logging
+from enum import Enum
 from os import PathLike
 from pathlib import Path
 from typing import Optional, Union
+from warnings import warn
 
 import numpy as np
 import torch
 import torchvision
 from lightning.pytorch import Callback, LightningModule, Trainer
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from matplotlib import pyplot as plt
 from PIL import Image
 from torch import Tensor
+from torch.amp.autocast_mode import autocast
 
 from neurosis.utils import isheatmap
 
 logger = logging.getLogger(__name__)
 
 
+class StepType(str, Enum):
+    global_step = "global_step"  # default
+    batch_idx = "batch_idx"  # batch index instead of global step
+    global_batch = "global_batch"  # global step * accumulate_grad_batches
+    sample_idx = "sample_idx"  # global step * accumulate_grad_batches * batch_size
+
+
 class ImageLogger(Callback):
     def __init__(
         self,
-        every_n_train_steps: int = 1000,
+        every_n_train_steps: int = 100,
+        # every_n_epochs: int = 1, # doesn't work without wasting memory
         max_images: int = 4,
         clamp: bool = True,
-        increase_log_steps: bool = True,
         rescale: bool = True,
-        disabled: bool = False,
-        log_on_batch_idx: bool = False,
+        log_step_type: StepType = StepType.global_step,
+        log_before_start: bool = False,
         log_first_step: bool = False,
-        log_images_kwargs: Optional[dict] = None,
-        log_before_first_step: bool = False,
+        log_func_kwargs: dict = {},
+        disabled: bool = False,
         enable_autocast: bool = True,
+        batch_size: int = 1,
     ):
         super().__init__()
-        self.enable_autocast = enable_autocast
-        self.rescale = rescale
-        self.train_steps = every_n_train_steps
+        self.every_n_train_steps = every_n_train_steps
+        # self.every_n_epochs = every_n_epochs
         self.max_images = max_images
-        if not increase_log_steps:
-            self.log_steps = [self.train_steps]
+        self.rescale = rescale
         self.clamp = clamp
-        self.disabled = disabled
-        self.log_on_batch_idx = log_on_batch_idx
-        self.log_images_kwargs = log_images_kwargs if log_images_kwargs else {}
+        self.enable_autocast = enable_autocast
+        self.enabled = not disabled
+
+        if self.max_images < 1 and self.enabled:
+            raise ValueError("max_images must be >= 1 if disable=False")
+
+        self.log_step_type = StepType(log_step_type)
+        self.log_before_start = log_before_start
         self.log_first_step = log_first_step
-        self.log_before_first_step = log_before_first_step
+        self.log_func_kwargs = log_func_kwargs
+        self.batch_size = batch_size
+
+        self.__trainer: Trainer = None
+        self.__pl_module: LightningModule = None
+
+    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
+        self.__trainer = trainer
+        self.__pl_module = pl_module
+
+    @property
+    def local_dir(self) -> Optional[Path]:
+        tgt_dir = (  # pick the first one of these that's not None
+            self.__pl_module.logger.save_dir
+            or self.__pl_module.logger.log_dir
+            or self.__trainer.log_dir
+            or self.__trainer.default_root_dir
+            or None
+        )
+        return Path(tgt_dir) if tgt_dir is not None else None
+
+    def get_step_idx(self, batch_idx: int, global_step: Optional[int] = None) -> int:
+        global_step = global_step or self.__trainer.global_step
+        match self.log_step_type:
+            case StepType.global_step:
+                return global_step
+            case StepType.batch_idx:
+                return batch_idx
+            case StepType.global_batch:
+                return global_step * self.__trainer.accumulate_grad_batches
+            case StepType.sample_idx:
+                return batch_idx * self.__trainer.accumulate_grad_batches * self.batch_size
+            case _:
+                raise ValueError(f"invalid log_step_type: {self.log_step_type}")
+
+    def check_step_idx(self, batch_idx: int, global_step: Optional[int] = None):
+        step_idx = self.get_step_idx(batch_idx, global_step)
+
+        if step_idx == 0:
+            return self.log_first_step
+
+        # check if step_idx is a multiple of every_n_train_steps
+        if not (step_idx % self.every_n_train_steps):
+            return True
+
+        # otherwise, don't log this step
+        return False
 
     @rank_zero_only
     def log_local(
@@ -70,105 +130,116 @@ class ImageLogger(Callback):
                 plt.colorbar(ax)
                 plt.axis("off")
 
-                filename = "{}_gs-{:06}_e-{:06}_b-{:06}.png".format(k, global_step, current_epoch, batch_idx)
+                filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
                 path = root / filename
 
                 plt.savefig(path)
                 plt.close()
-                # TODO: support wandb
+
+                for logger in pl_module.loggers:
+                    if isinstance(logger, WandbLogger):
+                        img = Image.open(path)
+                        logger.log_image(
+                            key=f"{split}/heatmaps/{k}",
+                            images=[img],
+                            step=pl_module.global_step,
+                        )
             else:
                 grid = torchvision.utils.make_grid(images[k], nrow=4)
                 if self.rescale:
                     grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
-                grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
-                grid = grid.numpy()
+                grid: np.ndarray = grid.transpose(0, 1).transpose(1, 2).squeeze(-1).cpu().numpy()
                 grid = (grid * 255).astype(np.uint8)
-                filename = "{}_gs-{:06}_e-{:06}_b-{:06}.png".format(k, global_step, current_epoch, batch_idx)
+
+                filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
                 path = root / filename
 
                 img = Image.fromarray(grid)
                 img.save(path)
-                if pl_module is not None:
-                    if isinstance(pl_module.logger, WandbLogger):
-                        pl_module.logger.log_image(
-                            key=f"{split}/{k}",
+
+                for logger in pl_module.loggers:
+                    if isinstance(logger, WandbLogger):
+                        logger.log_image(
+                            key=f"{split}/images/{k}",
                             images=[img],
                             step=pl_module.global_step,
                         )
 
     @rank_zero_only
-    def log_img(
+    def maybe_log_images(
         self,
         pl_module: LightningModule,
         batch: Union[Tensor, dict[str, Tensor]],
         batch_idx: int,
         split: str = "train",
+        force: bool = False,
     ):
-        check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
-        if (
-            self.check_frequency(check_idx)
-            and hasattr(pl_module, "log_images")
-            and callable(pl_module.log_images)
-            and self.max_images > 0
-        ):
-            is_train = pl_module.training
-            if is_train:
-                pl_module.eval()
+        if not self.enabled:
+            return
 
-            gpu_autocast_kwargs = {
-                "enabled": self.enable_autocast,  # torch.is_autocast_enabled(),
-                "dtype": torch.get_autocast_gpu_dtype(),
-                "cache_enabled": torch.is_autocast_cache_enabled(),
-            }
-            with torch.no_grad(), torch.cuda.amp.autocast(**gpu_autocast_kwargs):
-                images: list[Tensor] = pl_module.log_images(batch, split=split, **self.log_images_kwargs)
+        # check if we should log this step and return early if not
+        if not self.check_step_idx(batch_idx, pl_module.global_step) and not force:
+            return
 
-            for k in images:
+        # if max_images is 0, do nothing
+        if self.max_images == 0:
+            return
+
+        # now make sure the module has a log_images method that we can call
+        if not hasattr(pl_module, "log_images"):
+            warn(f"{pl_module.__class__.__name__} has no log_images method")
+            return
+        if not callable(pl_module.log_images):
+            warn(f"{pl_module.__class__.__name__}'s log_images method is not callable! ")
+            return
+
+        # if the model is in training mode, flip to eval mode
+        training = pl_module.training
+        if training:
+            pl_module.eval()
+
+        # set up autocast kwargs
+        autocast_kwargs = dict(
+            device_type="cuda",
+            enabled=self.enable_autocast,
+            dtype=torch.get_autocast_gpu_dtype(),
+            cache_enabled=torch.is_autocast_cache_enabled(),
+        )
+        # call the actual log_images method
+        with torch.inference_mode(), autocast(**autocast_kwargs):
+            images: list[Tensor] = pl_module.log_images(batch, split=split, **self.log_func_kwargs)
+
+        # flip back to training mode if we flipped to eval mode earlier
+        if training:
+            pl_module.train()
+
+        # if the model returned None, warn and return early
+        if images is None:
+            warn(f"{pl_module.__class__.__name__} returned None from log_images")
+            return
+
+        for k in images:
+            # take the first max_images images from the sample batch, unless it's a heatmap
+            if not isheatmap(images[k]):
                 num_imgs = min(images[k].shape[0], self.max_images)
-                if not isheatmap(images[k]):
-                    images[k] = images[k][:num_imgs]
-                if isinstance(images[k], Tensor):
-                    images[k] = images[k].detach().float().cpu()
-                    if self.clamp and not isheatmap(images[k]):
-                        images[k] = torch.clamp(images[k], -1.0, 1.0)
+                images[k] = images[k][:num_imgs]
 
-            if pl_module.logger.save_dir:
-                local_dir = Path(pl_module.logger.save_dir)
-            elif pl_module.logger.log_dir:
-                local_dir = Path(pl_module.logger.log_dir)
-            elif pl_module.trainer.log_dir:
-                local_dir = Path(pl_module.trainer.log_dir).joinpath("imagelogger")
-            else:
-                local_dir = None
+            # detach, move to cpu, and clamp range if necessary
+            if isinstance(images[k], Tensor):
+                images[k] = images[k].detach().float().cpu()
+                if self.clamp and not isheatmap(images[k]):
+                    images[k] = torch.clamp(images[k], -1.0, 1.0)
 
+            # log the images
             self.log_local(
-                local_dir,
+                self.local_dir,
                 split,
                 images,
                 pl_module.global_step,
                 pl_module.current_epoch,
                 batch_idx,
-                pl_module=pl_module if isinstance(pl_module.logger, WandbLogger) else None,
+                pl_module=pl_module,
             )
-
-            if is_train:
-                pl_module.train()
-
-    def check_frequency(self, check_idx: int):
-        if check_idx == 0:
-            return True if self.log_first_step else False
-
-        if not (check_idx % self.train_steps):
-            return True
-
-        if check_idx in self.log_steps:
-            try:
-                self.log_steps.remove(check_idx)
-            except ValueError:
-                logger.warning(f"Failed to remove {check_idx} from log_steps")
-            return True
-
-        return False
 
     @rank_zero_only
     def on_train_batch_end(
@@ -179,8 +250,8 @@ class ImageLogger(Callback):
         batch,
         batch_idx,
     ):
-        if not self.disabled and (pl_module.global_step > 0 or self.log_first_step):
-            self.log_img(pl_module, batch, batch_idx, split="train")
+        if self.enabled:
+            self.maybe_log_images(pl_module, batch, batch_idx, split="train")
 
     @rank_zero_only
     def on_train_batch_start(
@@ -190,9 +261,10 @@ class ImageLogger(Callback):
         batch,
         batch_idx,
     ):
-        if self.log_before_first_step and pl_module.global_step == 0:
-            print(f"{self.__class__.__name__}: logging before training")
-            self.log_img(pl_module, batch, batch_idx, split="train")
+        if self.log_before_start and pl_module.global_step == 0:
+            logger.info(f"{self.__class__.__name__}: logging before training")
+            self.maybe_log_images(pl_module, batch, batch_idx, split="train", force=True)
+            self.log_before_start = False
 
     @rank_zero_only
     def on_validation_batch_end(
@@ -205,8 +277,10 @@ class ImageLogger(Callback):
         *args,
         **kwargs,
     ):
-        if not self.disabled and pl_module.global_step > 0:
-            self.log_img(pl_module, batch, batch_idx, split="val")
-        if hasattr(pl_module, "calibrate_grad_norm"):
-            if (pl_module.calibrate_grad_norm and batch_idx % 25 == 0) and batch_idx > 0:
-                self.log_gradients(trainer, pl_module, batch_idx=batch_idx)
+        if self.enabled and pl_module.global_step > 0:
+            self.maybe_log_images(pl_module, batch, batch_idx, split="val")
+
+        # # this isn't actually implemented here
+        # calibrate = getattr(pl_module, "calibrate_grad_norm", False)
+        # if calibrate and (batch_idx % 25 == 0) and batch_idx > 0:
+        #     self.log_gradients(trainer, pl_module, batch_idx=batch_idx)
