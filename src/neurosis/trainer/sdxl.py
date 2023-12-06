@@ -7,8 +7,15 @@ import jsonargparse
 import lightning
 import torch
 import typer
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
+from lightning.pytorch.callbacks import (  # noqa: F401
+    DeviceStatsMonitor,
+    LearningRateMonitor,
+    ModelCheckpoint,
+    ModelSummary,
+)
 from lightning.pytorch.cli import ArgsType, LightningArgumentParser, LightningCLI
+from lightning.pytorch.loggers.tensorboard import TensorBoardLogger  # noqa: F401
+from lightning.pytorch.loggers.wandb import WandbLogger  # noqa: F401
 from rich.logging import RichHandler
 from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback

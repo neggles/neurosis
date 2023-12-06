@@ -9,6 +9,7 @@ trainer:
 
   max_epochs: 1
   accumulate_grad_batches: 4
+  log_every_n_steps: 1
 
   default_root_dir: ./projects
   use_distributed_sampler: true
@@ -30,24 +31,28 @@ trainer:
     - class_path: lightning.pytorch.callbacks.ModelSummary
       init_args:
         max_depth: 3
+    - class_path: DeviceStatsMonitor
+      init_args:
+        cpu_stats: true
+    - class_path: LearningRateMonitor
+      init_args:
+        logging_interval: step
 
 model_checkpoint:
   filename: "{epoch:03d}-{step:08d}"
   save_last: true
   save_on_train_epoch_end: true
-  save_top_k: 1
-  every_n_epochs: 0
-  every_n_train_steps: 1000
+  every_n_train_steps: 250
   verbose: true
 
 image_logger:
-  every_n_train_steps: 25 # this is multiplied by accumulate_grad_batches
+  every_n_train_steps: 25
   max_images: 4
   clamp: true
-  increase_log_steps: false
-
-learning_rate_logger:
-  logging_interval: "step"
+  rescale: true
+  log_step_type: batch_idx # global_step, batch_idx, global_batch, sample_idx (see neurosis.trainer.callbacks.image_logger)
+  log_before_start: true
+  log_func_kwargs: {}
 
 model:
   class_path: neurosis.models.DiffusionEngine
