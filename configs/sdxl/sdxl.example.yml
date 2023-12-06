@@ -46,13 +46,14 @@ model_checkpoint:
   verbose: true
 
 image_logger:
-  every_n_train_steps: 25
+  every_n_train_steps: 5
   max_images: 4
   clamp: true
   rescale: true
-  log_step_type: batch_idx # global_step, batch_idx, global_batch, sample_idx (see neurosis.trainer.callbacks.image_logger)
+  log_step_type: global_step # global_step, batch_idx, global_batch, sample_idx (see neurosis.trainer.callbacks.image_logger)
   log_before_start: true
-  log_func_kwargs: {}
+  log_func_kwargs:
+    num_img: 4
 
 model:
   class_path: neurosis.models.DiffusionEngine

@@ -140,7 +140,7 @@ class ImageLogger(Callback):
                     if isinstance(logger, WandbLogger):
                         img = Image.open(path)
                         logger.log_image(
-                            key=f"{split}/heatmaps/{k}",
+                            key=f"{split}/{k}",
                             images=[img],
                             step=pl_module.global_step,
                         )
@@ -160,7 +160,7 @@ class ImageLogger(Callback):
                 for logger in pl_module.loggers:
                     if isinstance(logger, WandbLogger):
                         logger.log_image(
-                            key=f"{split}/images/{k}",
+                            key=f"{split}/{k}",
                             images=[img],
                             step=pl_module.global_step,
                         )
