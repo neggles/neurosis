@@ -62,6 +62,7 @@ class ImageLogger(Callback):
         self.log_func_kwargs = log_func_kwargs
         self.batch_size = batch_size
 
+        self.__last_logged_step: int = -1
         self.__trainer: Trainer = None
         self.__pl_module: LightningModule = None
 
@@ -94,11 +95,15 @@ class ImageLogger(Callback):
             case _:
                 raise ValueError(f"invalid log_step_type: {self.log_step_type}")
 
-    def check_step_idx(self, batch_idx: int, global_step: Optional[int] = None):
+    def check_step_idx(self, batch_idx: int, global_step: Optional[int] = None) -> bool:
         step_idx = self.get_step_idx(batch_idx, global_step)
 
         if step_idx == 0:
             return self.log_first_step
+
+        # don't log the same step twice
+        if step_idx == self.__last_logged_step:
+            return False
 
         # check if step_idx is a multiple of every_n_train_steps
         if not (step_idx % self.every_n_train_steps):
@@ -172,17 +177,13 @@ class ImageLogger(Callback):
         batch: Union[Tensor, dict[str, Tensor]],
         batch_idx: int,
         split: str = "train",
-        force: bool = False,
     ):
-        if not self.enabled:
+        # if max_images is 0 or we're disabled, do nothing
+        if (not self.enabled) or (self.max_images == 0):
             return
 
         # check if we should log this step and return early if not
-        if not self.check_step_idx(batch_idx, pl_module.global_step) and not force:
-            return
-
-        # if max_images is 0, do nothing
-        if self.max_images == 0:
+        if not self.check_step_idx(batch_idx, pl_module.global_step):
             return
 
         # now make sure the module has a log_images method that we can call
@@ -192,6 +193,9 @@ class ImageLogger(Callback):
         if not callable(pl_module.log_images):
             warn(f"{pl_module.__class__.__name__}'s log_images method is not callable! ")
             return
+
+        # confirmed we're logging, save the step number
+        self.__last_logged_step = self.get_step_idx(batch_idx, pl_module.global_step)
 
         # if the model is in training mode, flip to eval mode
         training = pl_module.training
@@ -250,7 +254,7 @@ class ImageLogger(Callback):
         batch,
         batch_idx,
     ):
-        if self.enabled:
+        if self.enabled and pl_module.global_step > 0:
             self.maybe_log_images(pl_module, batch, batch_idx, split="train")
 
     @rank_zero_only
@@ -261,10 +265,9 @@ class ImageLogger(Callback):
         batch,
         batch_idx,
     ):
-        if self.log_before_start and pl_module.global_step == 0:
+        if self.log_before_start and self.get_step_idx(batch_idx, pl_module.global_step) == 0:
             logger.info(f"{self.__class__.__name__}: logging before training")
             self.maybe_log_images(pl_module, batch, batch_idx, split="train", force=True)
-            self.log_before_start = False
 
     @rank_zero_only
     def on_validation_batch_end(

@@ -30,13 +30,10 @@ trainer:
   callbacks:
     - class_path: lightning.pytorch.callbacks.ModelSummary
       init_args:
-        max_depth: 3
+        max_depth: 5
     - class_path: DeviceStatsMonitor
       init_args:
         cpu_stats: true
-    - class_path: LearningRateMonitor
-      init_args:
-        logging_interval: step
 
 model_checkpoint:
   filename: "{epoch:03d}-{step:08d}"
@@ -46,12 +43,12 @@ model_checkpoint:
   verbose: true
 
 image_logger:
-  every_n_train_steps: 5
+  every_n_train_steps: 50
   max_images: 4
   clamp: true
   rescale: true
   log_step_type: global_step # global_step, batch_idx, global_batch, sample_idx (see neurosis.trainer.callbacks.image_logger)
-  log_before_start: true
+  log_before_start: false
   log_func_kwargs:
     num_img: 4
 

@@ -5,7 +5,7 @@ import torch
 from torch import Tensor
 from torch.nn import Parameter
 from torch.optim.lr_scheduler import LambdaLR
-from torch.optim.optimizer import Optimizer
+from torch.optim.optimizer import Optimizer, _use_grad_for_differentiable
 
 from .types import OptLossClosure, ParamGroup, Params, State
 
@@ -123,6 +123,7 @@ class Adafactor(Optimizer):
             scale_parameter=scale_parameter,
             relative_step=relative_step,
             warmup_init=warmup_init,
+            differentiable=False,
         )
         super().__init__(params, defaults)
 
@@ -155,6 +156,7 @@ class Adafactor(Optimizer):
         c_factor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
         return torch.mul(r_factor, c_factor)
 
+    @torch.no_grad()
     def step(self, closure=None):
         """
         Performs a single optimization step
@@ -165,7 +167,8 @@ class Adafactor(Optimizer):
         """
         loss = None
         if closure is not None:
-            loss = closure()
+            with torch.enable_grad():
+                loss = closure()
 
         for group in self.param_groups:
             p: Parameter
