@@ -1,7 +1,6 @@
 from typing import Any, Optional, Union
 
 import kornia
-import numpy as np
 import open_clip
 import torch
 from einops import rearrange, repeat
@@ -18,7 +17,7 @@ from neurosis.utils import autocast, expand_dims_like, np_text_decode
 class FrozenCLIPEmbedder(AbstractEmbModel):
     """Uses the CLIP transformer encoder for text (from huggingface)"""
 
-    LAYERS = ["last", "pooled", "hidden"]
+    LAYERS = ["last", "pooled", "hidden", "penultimate"]
 
     def __init__(
         self,
@@ -33,19 +32,33 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
     ):
         # clip-vit-base-patch32
         super().__init__(**kwargs)
-        assert layer in self.LAYERS
+        if layer not in self.LAYERS:
+            raise ValueError(f"layer must be one of {self.LAYERS}, got {layer=}")
+
         self.tokenizer: CLIPTokenizer = CLIPTokenizer.from_pretrained(version)
         self.transformer: CLIPTextModel = CLIPTextModel.from_pretrained(version)
         self.device = device
         self.max_length = max_length
         if freeze:
             self.freeze()
+
         self.layer = layer
-        self.layer_idx = layer_idx
         self.return_pooled = always_return_pooled
-        if layer == "hidden":
-            assert layer_idx is not None
-            assert 0 <= abs(layer_idx) <= 12
+        self.output_hidden_states = self.layer in ["hidden", "penultimate"]
+
+        match layer:
+            case "hidden":
+                if layer_idx is None:
+                    raise ValueError("layer_idx must be specified for hidden layer")
+                if not (0 <= abs(layer_idx) <= 12):
+                    raise ValueError("layer_idx must be between -12 and 12")
+                # add 12 to negative indices to get the correct layer
+                layer_idx += 12 if layer_idx < 0 else 0
+                self.layer_idx = layer_idx
+            case "penultimate":
+                self.layer_idx = 11
+            case _:
+                raise NotImplementedError("Only last, penultimate and hidden layers are supported")
 
     def freeze(self):
         self.transformer = self.transformer.eval()
@@ -66,14 +79,17 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         )
         tokens = batch_encoding["input_ids"].to(self.device)
         outputs: BaseModelOutputWithPooling = self.transformer(
-            input_ids=tokens, output_hidden_states=self.layer == "hidden"
+            input_ids=tokens, output_hidden_states=self.output_hidden_states
         )
-        if self.layer == "last":
-            z = outputs.last_hidden_state
-        elif self.layer == "pooled":
-            z = outputs.pooler_output[:, None, :]
-        else:
-            z = outputs.hidden_states[self.layer_idx]
+
+        match self.layer:
+            case "last":
+                z = outputs.last_hidden_state
+            case "pooled":
+                z = outputs.pooler_output[:, None, :]
+            case _:
+                z = outputs.hidden_states[self.layer_idx]
+
         if self.return_pooled:
             return z, outputs.pooler_output
         return z
@@ -98,7 +114,9 @@ class FrozenOpenCLIPEmbedder(AbstractEmbModel):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        assert layer in self.LAYERS
+        if layer not in self.LAYERS:
+            raise ValueError(f"layer must be one of {self.LAYERS}, got {layer=}")
+
         model, _, _ = open_clip.create_model_and_transforms(
             arch, device=torch.device("cpu"), pretrained=version
         )
@@ -109,13 +127,15 @@ class FrozenOpenCLIPEmbedder(AbstractEmbModel):
         self.max_length = max_length
         if freeze:
             self.freeze()
+
         self.layer = layer
-        if self.layer == "last":
-            self.layer_idx = 0
-        elif self.layer == "penultimate":
-            self.layer_idx = 1
-        else:
-            raise NotImplementedError("Only last and penultimate layers are supported")
+        match self.layer:
+            case "last":
+                self.layer_idx = 0
+            case "penultimate":
+                self.layer_idx = 1
+            case _:
+                raise NotImplementedError("Only last and penultimate layers are supported")
 
     def freeze(self):
         self.model = self.model.eval()
@@ -171,7 +191,8 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
     ):
         super().__init__(**kwargs)
         if layer not in self.LAYERS:
-            raise ValueError(f"layer must be one of {self.LAYERS}")
+            raise ValueError(f"layer must be one of {self.LAYERS}, got {layer=}")
+
         model, _, _ = open_clip.create_model_and_transforms(
             arch,
             device=torch.device("cpu"),
@@ -182,16 +203,19 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
 
         self.device = torch.device(device)
         self.max_length = max_length
-        self.return_pooled = always_return_pooled
         if freeze:
             self.freeze()
+
         self.layer = layer
-        if self.layer == "last":
-            self.layer_idx = 0
-        elif self.layer == "penultimate":
-            self.layer_idx = 1
-        else:
-            raise NotImplementedError("Only last and penultimate layers are supported")
+        match self.layer:
+            case "last":
+                self.layer_idx = 0
+            case "penultimate":
+                self.layer_idx = 1
+            case _:
+                raise NotImplementedError("Only last and penultimate layers are supported")
+
+        self.return_pooled = always_return_pooled
         self.legacy = legacy
 
     def freeze(self) -> None:
