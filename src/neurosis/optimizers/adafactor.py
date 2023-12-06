@@ -11,43 +11,89 @@ from .types import OptLossClosure, ParamGroup, Params, State
 
 
 class Adafactor(Optimizer):
-    """Implements Adafactor algorithm.
+    """
+    AdaFactor pytorch implementation can be used as a drop in replacement for Adam original fairseq code:
+    https://github.com/pytorch/fairseq/blob/master/fairseq/optim/adafactor.py
 
-    It has been proposed in: `Adafactor: Adaptive Learning Rates with
-    Sublinear Memory Cost`__.
+    Paper: *Adafactor: Adaptive Learning Rates with Sublinear Memory Cost* https://arxiv.org/abs/1804.04235 Note that
+    this optimizer internally adjusts the learning rate depending on the `scale_parameter`, `relative_step` and
+    `warmup_init` options. To use a manual (external) learning rate schedule you should set `scale_parameter=False` and
+    `relative_step=False`.
 
     Arguments:
-        params: iterable of parameters to optimize or dicts defining
-            parameter groups
-        lr: external learning rate (default: None)
-        eps: regularization constans for square gradient
-            and parameter scale respectively (default: (1e-30, 1e-3))
-        clip_threshold: threshold of root mean square of
-            final gradient update (default: 1.0)
-        decay_rate: coefficient used to compute running averages of square
-            gradient (default: -0.8)
-        beta1: coefficient used for computing running averages of gradient
-            (default: None)
-        weight_decay: weight decay (L2 penalty) (default: 0)
-        scale_parameter: if true, learning rate is scaled by root mean square
-            of parameter (default: True)
-        relative_step: if true, time-dependent learning rate is computed
-            instead of external learning rate (default: True)
-        warmup_init: time-dependent learning rate computation depends on
-            whether warm-up initialization is being used (default: False)
+        params (`Iterable[nn.parameter.Parameter]`):
+            Iterable of parameters to optimize or dictionaries defining parameter groups.
+        lr (`float`, *optional*):
+            The external learning rate.
+        eps (`Tuple[float, float]`, *optional*, defaults to `(1e-30, 0.001)`):
+            Regularization constants for square gradient and parameter scale respectively
+        clip_threshold (`float`, *optional*, defaults to 1.0):
+            Threshold of root mean square of final gradient update
+        decay_rate (`float`, *optional*, defaults to -0.8):
+            Coefficient used to compute running averages of square
+        beta1 (`float`, *optional*):
+            Coefficient used for computing running averages of gradient
+        weight_decay (`float`, *optional*, defaults to 0.0):
+            Weight decay (L2 penalty)
+        scale_parameter (`bool`, *optional*, defaults to `True`):
+            If True, learning rate is scaled by root mean square
+        relative_step (`bool`, *optional*, defaults to `True`):
+            If True, time-dependent learning rate is computed instead of external learning rate
+        warmup_init (`bool`, *optional*, defaults to `False`):
+            Time-dependent learning rate computation depends on whether warm-up initialization is being used
+
+    This implementation handles low-precision (FP16, bfloat) values, but we have not thoroughly tested.
+
+    Recommended T5 finetuning settings (https://discuss.huggingface.co/t/t5-finetuning-tips/684/3):
+
+        - Training without LR warmup or clip_threshold is not recommended.
+
+           - use scheduled LR warm-up to fixed LR
+           - use clip_threshold=1.0 (https://arxiv.org/abs/1804.04235)
+        - Disable relative updates
+        - Use scale_parameter=False
+        - Additional optimizer operations like gradient clipping should not be used alongside Adafactor
 
     Example:
-        >>> import torch_optimizer as optim
-        >>> optimizer = optim.Adafactor(model.parameters())
-        >>> optimizer.zero_grad()
-        >>> loss_fn(model(input), target).backward()
-        >>> optimizer.step()
 
-    __ https://arxiv.org/abs/1804.04235
+    ```python
+    Adafactor(model.parameters(), scale_parameter=False, relative_step=False, warmup_init=False, lr=1e-3)
+    ```
 
-    Note:
-        Reference code: https://github.com/pytorch/fairseq/blob/master/fairseq/optim/adafactor.py  # noqa
-    """
+    Others reported the following combination to work well:
+
+    ```python
+    Adafactor(model.parameters(), scale_parameter=True, relative_step=True, warmup_init=True, lr=None)
+    ```
+
+    When using `lr=None` with [`Trainer`] you will most likely need to use [`~optimization.AdafactorSchedule`]
+    scheduler as following:
+
+    ```python
+    from transformers.optimization import Adafactor, AdafactorSchedule
+
+    optimizer = Adafactor(model.parameters(), scale_parameter=True, relative_step=True, warmup_init=True, lr=None)
+    lr_scheduler = AdafactorSchedule(optimizer)
+    trainer = Trainer(..., optimizers=(optimizer, lr_scheduler))
+    ```
+
+    Usage:
+
+    ```python
+    # replace AdamW with Adafactor
+    optimizer = Adafactor(
+        model.parameters(),
+        lr=1e-3,
+        eps=(1e-30, 1e-3),
+        clip_threshold=1.0,
+        decay_rate=-0.8,
+        beta1=None,
+        weight_decay=0.0,
+        relative_step=False,
+        scale_parameter=False,
+        warmup_init=False,
+    )
+    ```"""
 
     def __init__(
         self,
@@ -62,10 +108,10 @@ class Adafactor(Optimizer):
         relative_step: bool = True,
         warmup_init: bool = False,
     ):
-        if lr is not None and lr <= 0.0:
-            raise ValueError("Invalid learning rate: {}".format(lr))
-        if weight_decay < 0.0:
-            raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
+        if lr is not None and relative_step:
+            raise ValueError("Cannot combine manual `lr` and `relative_step=True` options")
+        if warmup_init and not relative_step:
+            raise ValueError("`warmup_init=True` requires `relative_step=True`")
 
         defaults = dict(
             lr=lr,
@@ -84,7 +130,7 @@ class Adafactor(Optimizer):
     def _get_lr(param_group: ParamGroup, param_state: State) -> float:
         rel_step_sz = param_group["lr"]
         if param_group["relative_step"]:
-            min_step = param_group["lr"] * param_state["step"] if param_group["warmup_init"] else 1e-2
+            min_step = 1e-6 * param_state["step"] if param_group["warmup_init"] else 1e-2
             rel_step_sz = min(min_step, 1.0 / math.sqrt(param_state["step"]))
         param_scale = 1.0
         if param_group["scale_parameter"]:
@@ -99,18 +145,21 @@ class Adafactor(Optimizer):
 
     @staticmethod
     def _rms(tensor: Tensor) -> float:
-        return torch.div(tensor.norm(2), (tensor.numel() ** 0.5)).item()
+        return torch.div(tensor.norm(2), (tensor.numel() ** 0.5))
 
     @staticmethod
     def _approx_sq_grad(exp_avg_sq_row: Tensor, exp_avg_sq_col: Tensor) -> Tensor:
+        # copy from fairseq's adafactor implementation:
+        # https://github.com/huggingface/transformers/blob/8395f14de6068012787d83989c3627c3df6a252b/src/transformers/optimization.py#L505
         r_factor = (exp_avg_sq_row / exp_avg_sq_row.mean(dim=-1, keepdim=True)).rsqrt_().unsqueeze(-1)
         c_factor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
         return torch.mul(r_factor, c_factor)
 
-    def step(self, closure: OptLossClosure = None) -> Optional[float]:
-        """Performs a single optimization step.
+    def step(self, closure=None):
+        """
+        Performs a single optimization step
 
-        Args:
+        Arguments:
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
         """
@@ -123,7 +172,7 @@ class Adafactor(Optimizer):
             for p in group["params"]:
                 if p.grad is None:
                     continue
-                grad = p.grad.data
+                grad = p.grad
                 if grad.dtype in {torch.float16, torch.bfloat16}:
                     grad = grad.float()
                 if grad.is_sparse:
@@ -156,8 +205,8 @@ class Adafactor(Optimizer):
                     else:
                         state["exp_avg_sq"] = state["exp_avg_sq"].to(grad)
 
-                p_data_fp32 = p.data
-                if p.data.dtype in {torch.float16, torch.bfloat16}:
+                p_data_fp32 = p
+                if p.dtype in {torch.float16, torch.bfloat16}:
                     p_data_fp32 = p_data_fp32.float()
 
                 state["step"] += 1
@@ -179,38 +228,45 @@ class Adafactor(Optimizer):
                 else:
                     exp_avg_sq = state["exp_avg_sq"]
 
-                    exp_avg_sq.mul_(beta2t).add_(update, alpha=1.0 - beta2t)
-                    torch.rsqrt(exp_avg_sq, out=update).mul_(grad)
+                    exp_avg_sq.mul_(beta2t).add_(update, alpha=(1.0 - beta2t))
+                    update = exp_avg_sq.rsqrt().mul_(grad)
 
-                update.div_(max(1.0, self._rms(update) / group["clip_threshold"]))
+                update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
                 update.mul_(group["lr"])
 
                 if use_first_moment:
                     exp_avg = state["exp_avg"]
-                    exp_avg.mul_(group["beta1"]).add_(update, alpha=1 - group["beta1"])
+                    exp_avg.mul_(group["beta1"]).add_(update, alpha=(1 - group["beta1"]))
                     update = exp_avg
 
                 if group["weight_decay"] != 0:
-                    p_data_fp32.add_(p_data_fp32, alpha=-group["weight_decay"] * group["lr"])
+                    p_data_fp32.add_(p_data_fp32, alpha=(-group["weight_decay"] * group["lr"]))
 
                 p_data_fp32.add_(-update)
 
-                if p.data.dtype in {torch.float16, torch.bfloat16}:
-                    p.data.copy_(p_data_fp32)
+                if p.dtype in {torch.float16, torch.bfloat16}:
+                    p.copy_(p_data_fp32)
 
         return loss
 
 
 class AdafactorScheduler(LambdaLR):
     """
-    Adafactor does its own scheduling, so this is a dummy/proxy scheduler object.
-    During startup it will report the initial learning rate, and during training it will
-    retrieve & report the current learning rate from the optimizer (useful for logging).
+    Since [`~optimization.Adafactor`] performs its own scheduling, if the training loop relies on a scheduler (e.g.,
+    for logging), this class creates a proxy object that retrieves the current lr values from the optimizer.
+
+    It returns `initial_lr` during startup and the actual `lr` during stepping.
     """
 
-    def __init__(self, optimizer: Optimizer, initial_lr: float = 0.0) -> None:
-        def lr_lambda(_) -> float:
-            return initial_lr
+    def __init__(
+        self,
+        optimizer: Optimizer,
+        initial_lr: float = 0.0,
+    ):
+        self.initial_lr = initial_lr
+
+        def lr_lambda(_):
+            return self.initial_lr
 
         for group in optimizer.param_groups:
             group["initial_lr"] = initial_lr
