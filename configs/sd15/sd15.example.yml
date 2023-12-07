@@ -61,7 +61,7 @@ model:
       - caption
     ckpt_path: data/sd15/UMMdromedaDX-A.neurosis.safetensors
     use_ema: false
-    input_key: "image"
+    input_key: ${data.init_args.image_key}
     no_cond_log: false
     compile_model: false
 
@@ -118,7 +118,7 @@ model:
             init_args:
               layer: hidden
               layer_idx: 11
-              input_key: caption
+              input_key: ${data.init_args.caption_key}
               is_trainable: false
 
     optimizer:
@@ -162,6 +162,8 @@ data:
   init_args:
     folder: "data/dataset/folder"
     recursive: true
+    image_key: "image"
+    caption_key: "caption"
     buckets:
       class_path: neurosis.dataset.aspect.WDXLBucketList
       init_args:
