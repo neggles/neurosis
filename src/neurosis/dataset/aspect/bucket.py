@@ -1,4 +1,5 @@
 import logging
+from bisect import bisect_left
 from collections import UserList
 from dataclasses import dataclass, field
 from itertools import product
@@ -208,11 +209,8 @@ class AspectBucketList(UserList):
         if self.bias_square:
             # Choose closest bucket, biasing towards aspect 1.0 (square) so the bucket will
             # always fit within the rescaled image dimensions
-            side = "left" if ratio > 1.0 else "right"
-            bucket_idx = np.searchsorted(aspect_list, find_ratio, side=side)
-            # for ratio > 1.0, searchsorted returns 1 higher than we want
-            if ratio > 1.0:
-                bucket_idx -= 1
+            offset = 0 if ratio > 1.0 else 1
+            bucket_idx = bisect_left(aspect_list, find_ratio) - offset
         else:
             # This avoids the incorrect aspect ratio bias used by the original NAI implementation.
             bucket_idx = np.interp(find_ratio, aspect_list, self.indices).round().astype(int)
