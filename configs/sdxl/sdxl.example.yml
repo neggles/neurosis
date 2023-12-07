@@ -61,7 +61,7 @@ model:
       - caption
     ckpt_path: "data/sd_xl_base_1.0_0.9vae.safetensors"
     use_ema: false
-    input_key: "image"
+    input_key: ${data.init_args.image_key}
     no_cond_log: false
     compile_model: false
 
@@ -123,7 +123,7 @@ model:
             init_args:
               layer: hidden
               layer_idx: 11
-              input_key: caption
+              input_key: ${data.init_args.caption_key}
               is_trainable: false
           # crossattn and vector cond
           - class_path: neurosis.models.text_encoder.FrozenOpenCLIPEmbedder2
@@ -134,7 +134,7 @@ model:
               layer: penultimate
               always_return_pooled: true
               legacy: false
-              input_key: caption
+              input_key: ${data.init_args.caption_key}
               is_trainable: false
           # vector cond
           - class_path: neurosis.modules.encoders.metadata.ConcatTimestepEmbedderND
@@ -196,6 +196,8 @@ data:
   init_args:
     folder: "data/dataset/folder"
     recursive: true
+    image_key: "image"
+    caption_key: "caption"
     buckets:
       class_path: neurosis.dataset.aspect.WDXLBucketList
       init_args:
