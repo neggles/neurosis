@@ -15,7 +15,10 @@ from neurosis.utils import autocast, expand_dims_like, np_text_decode
 
 
 class FrozenCLIPEmbedder(AbstractEmbModel):
-    """Uses the CLIP transformer encoder for text (from huggingface)"""
+    """
+    Uses the CLIP transformer encoder for text (from huggingface)
+    Uses legacy unconditioned value dropout.
+    """
 
     LAYERS = ["last", "pooled", "hidden", "penultimate"]
 
@@ -99,7 +102,10 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
 
 
 class FrozenOpenCLIPEmbedder(AbstractEmbModel):
-    """Uses the OpenCLIP transformer encoder for text, with no pooling"""
+    """
+    Uses the OpenCLIP transformer encoder for text, with no pooling
+    Uses legacy unconditioned value dropout.
+    """
 
     LAYERS = ["last", "penultimate"]
 
@@ -172,7 +178,8 @@ class FrozenOpenCLIPEmbedder(AbstractEmbModel):
 
 class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
     """
-    Uses the OpenCLIP transformer encoder for text, with pooling layer
+    Uses the OpenCLIP transformer encoder for text, with pooling layer.
+    Uses legacy unconditioned value dropout.
     """
 
     LAYERS = ["pooled", "last", "penultimate"]
@@ -186,7 +193,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         freeze: bool = True,
         layer: str = "last",
         always_return_pooled: bool = False,
-        legacy: bool = True,
+        legacy: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
