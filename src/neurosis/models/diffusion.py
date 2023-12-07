@@ -26,7 +26,7 @@ from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.modules.losses.hooks import LossHook
+from neurosis.modules.diffusion.hooks import LossHook
 from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class DiffusionEngine(L.LightningModule):
         log_keys: Union[list, None] = None,
         no_cond_log: bool = False,
         compile_model: bool = False,
-        en_and_decode_n_samples_a_time: Optional[int] = None,
+        vae_batch_size: Optional[int] = None,
         loss_hooks: list[LossHook] = [],
     ):
         super().__init__()
@@ -84,11 +84,10 @@ class DiffusionEngine(L.LightningModule):
         self.scale_factor: float = scale_factor
         self.first_stage_autocast: bool = not disable_first_stage_autocast
         self.no_cond_log: bool = no_cond_log
+        self.vae_batch_size = vae_batch_size
 
         if ckpt_path is not None:
             self.init_from_ckpt(Path(ckpt_path))
-
-        self.en_and_decode_n_samples_a_time = en_and_decode_n_samples_a_time
 
         self.save_hyperparameters(
             ignore=[
@@ -135,7 +134,7 @@ class DiffusionEngine(L.LightningModule):
     @torch.no_grad()
     def decode_first_stage(self, z: Tensor) -> Tensor:
         z = 1.0 / self.scale_factor * z
-        n_samples = self.en_and_decode_n_samples_a_time or z.shape[0]
+        n_samples = self.vae_batch_size or z.shape[0]
 
         n_rounds = ceil(z.shape[0] / n_samples)
         all_out = []
@@ -148,7 +147,7 @@ class DiffusionEngine(L.LightningModule):
 
     @torch.no_grad()
     def encode_first_stage(self, x: Tensor) -> Tensor:
-        n_samples = self.en_and_decode_n_samples_a_time or x.shape[0]
+        n_samples = self.vae_batch_size or x.shape[0]
         n_rounds = ceil(x.shape[0] / n_samples)
         all_out = []
         with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
@@ -279,7 +278,7 @@ class DiffusionEngine(L.LightningModule):
                         xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
                     else:
                         raise NotImplementedError()
-                elif isinstance(x, (list, ListConfig)):
+                elif isinstance(x, list):
                     if isinstance(x[0], np.bytes_):
                         x = np_text_decode(x)
                     if isinstance(x[0], str):
