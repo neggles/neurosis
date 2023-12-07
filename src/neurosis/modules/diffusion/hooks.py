@@ -32,7 +32,7 @@ class LossHook(ABC):
         batch,
         batch_idx,
     ):
-        pass
+        return batch
 
     @abstractmethod
     def batch_hook(
