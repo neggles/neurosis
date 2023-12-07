@@ -117,15 +117,18 @@ class GeneralConditioner(nn.Module):
 
         self.embedders: nn.ModuleList[AbstractEmbModel] = nn.ModuleList(embedders)
 
-    def possibly_get_ucg_val(self, embedder: AbstractEmbModel, batch: dict) -> dict:
+    def possibly_get_ucg_val(self, embedder: AbstractEmbModel, batch: dict) -> tuple[dict]:
         if embedder.legacy_ucg_val is None:
             raise ValueError("embedder has no legacy_ucg_val")
 
+        is_ucg = [False] * len(batch[embedder.input_key])
         p = embedder.ucg_rate
         val = embedder.legacy_ucg_val
         for i in range(len(batch[embedder.input_key])):
             if embedder.ucg_prng.choice(2, p=[1 - p, p]):
                 batch[embedder.input_key][i] = val
+                is_ucg[i] = True
+        batch["is_ucg"] = is_ucg
         return batch
 
     def forward(self, batch: dict, force_zero_embeddings: Optional[List] = None) -> dict:
