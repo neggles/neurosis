@@ -1,12 +1,14 @@
-from .embedding import (
-    AbstractEmbModel,
+from .classed import (
     ClassEmbedder,
     ClassEmbedderForMultiCond,
+)
+from .embedding import (
+    AbstractEmbModel,
     GeneralConditioner,
-    IdentityEncoder,
-    LowScaleEncoder,
     SpatialRescaler,
 )
+from .lowscale import LowScaleEncoder
+from .misc import IdentityEncoder
 
 __all__ = [
     "AbstractEmbModel",
