@@ -3,12 +3,14 @@
 """
 
 
+from abc import abstractmethod
 from typing import Optional, Union
 
 import torch
 from torch import Tensor
 from tqdm import tqdm
 
+from neurosis.modules.diffusion.denoiser import Denoiser
 from neurosis.modules.diffusion.discretizer import Discretization
 from neurosis.modules.diffusion.sampling_utils import (
     get_ancestral_step,
@@ -28,13 +30,13 @@ class BaseDiffusionSampler:
         guider: Optional[Guider] = None,
         num_steps: Optional[int] = None,
         verbose: bool = False,
-        device: str = "cuda",
+        device: str | torch.device = "cuda",
     ):
         self.discretization = discretization
         self.guider = guider or IdentityGuider
         self.num_steps = num_steps
         self.verbose = verbose
-        self.device = device
+        self.device = device if isinstance(device, torch.device) else torch.device(device)
 
     def prepare_sampling_loop(
         self,
@@ -78,10 +80,22 @@ class BaseDiffusionSampler:
 
 
 class SingleStepDiffusionSampler(BaseDiffusionSampler):
-    def sampler_step(self, sigma, next_sigma, denoiser, x, cond, uc, *args, **kwargs):
-        raise NotImplementedError("Implement in subclass")
+    @abstractmethod
+    def sampler_step(
+        self,
+        sigma: Tensor | float,
+        next_sigma: Tensor | float,
+        denoiser: Denoiser,
+        x: Tensor,
+        cond: Tensor,
+        uc: Optional[Tensor] = None,
+        *args,
+        **kwargs,
+    ):
+        raise NotImplementedError("Abstract base class was called ;_;")
 
-    def euler_step(self, x: Tensor, d, dt):
+    def euler_step(self, x: Tensor, d: Tensor, dt: Tensor):
+        """it's just an FMA, stop overthinking it"""
         return x + dt * d
 
 
@@ -102,7 +116,16 @@ class EDMSampler(SingleStepDiffusionSampler):
         self.s_tmax = s_tmax
         self.s_noise = s_noise
 
-    def sampler_step(self, sigma, next_sigma, denoiser, x, cond, uc=None, gamma=0.0):
+    def sampler_step(
+        self,
+        sigma: Tensor | float,
+        next_sigma: Tensor | float,
+        denoiser: Denoiser,
+        x: Tensor,
+        cond: Tensor,
+        uc: Optional[Tensor] = None,
+        gamma: float = 0.0,
+    ):
         sigma_hat = sigma * (gamma + 1.0)
         if gamma > 0:
             eps = torch.randn_like(x) * self.s_noise

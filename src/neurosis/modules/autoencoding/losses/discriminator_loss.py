@@ -290,4 +290,4 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
             return d_loss, log
 
         else:
-            raise NotImplementedError(f"Unknown optimizer_idx {optimizer_idx}")
+            raise ValueError(f"Unknown optimizer_idx {optimizer_idx}")

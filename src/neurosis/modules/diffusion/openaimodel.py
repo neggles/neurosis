@@ -63,7 +63,7 @@ class TimestepBlock(nn.Module):
         """
         Apply the module to `x` given `emb` timestep embeddings.
         """
-        raise NotImplementedError("Abstract base class was called")
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class TimestepEmbedSequential(nn.Sequential, TimestepBlock):

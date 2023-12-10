@@ -402,7 +402,7 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
         if attn_mode not in self.ATTENTION_MODES:
-            raise NotImplementedError(f"Unknown attention mode: {attn_mode}")
+            raise ValueError(f"Unknown attention mode: {attn_mode}")
 
         attn_cls = self.ATTENTION_MODES[attn_mode]
         if not isinstance(sdp_backend, (SDPBackend, type(None))):
@@ -490,7 +490,7 @@ class BasicTransformerSingleLayerBlock(nn.Module):
     ):
         super().__init__()
         if attn_mode not in self.ATTENTION_MODES:
-            raise NotImplementedError(f"Unknown attention mode: {attn_mode}")
+            raise ValueError(f"Unknown attention mode: {attn_mode}")
 
         attn_cls = self.ATTENTION_MODES[attn_mode]
         self.attn1 = attn_cls(

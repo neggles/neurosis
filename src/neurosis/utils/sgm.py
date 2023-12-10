@@ -199,7 +199,7 @@ def load_model_from_config(config, ckpt: PathLike, verbose=True, freeze=True) ->
     elif ckpt.suffix == ".safetensors":
         state_dict = load_safetensors(ckpt)
     else:
-        raise NotImplementedError(f"Unknown file extension {ckpt.suffix}")
+        raise ValueError(f"Unknown file extension {ckpt.suffix}")
 
     model: Module = instantiate_from_config(config.model)
 

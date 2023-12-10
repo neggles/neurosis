@@ -8,7 +8,7 @@ from torch import Tensor
 class DenoiserScaling(ABC):
     @abstractmethod
     def __call__(self, sigma: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        raise NotImplementedError("Abstract base class was called")
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class EDMScaling(DenoiserScaling):

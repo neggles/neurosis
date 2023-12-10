@@ -13,11 +13,11 @@ class AbstractRegularizer(nn.Module):
         super().__init__()
 
     def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
-        raise NotImplementedError()
+        raise NotImplementedError("Abstract base class was called ;_;")
 
     @abstractmethod
     def get_trainable_parameters(self) -> Any:
-        raise NotImplementedError()
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class DiagonalGaussianRegularizer(AbstractRegularizer):

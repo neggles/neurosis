@@ -6,7 +6,7 @@ from torch import Tensor
 
 class DenoiserWeighting(ABC):
     def __call__(self, sigma: Tensor) -> Tensor:
-        raise NotImplementedError("Abstract base class was called")
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class UnitWeighting(DenoiserWeighting):

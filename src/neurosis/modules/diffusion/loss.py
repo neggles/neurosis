@@ -93,4 +93,4 @@ class StandardDiffusionLoss(nn.Module):
             loss = self.lpips(model_output, target).reshape(-1)
             return loss
         else:
-            raise NotImplementedError(f"Unknown loss type {self.loss_type}")
+            raise ValueError(f"Unknown loss type {self.loss_type}")

@@ -260,7 +260,7 @@ class AlphaBlender(nn.Module):
             )
             alpha = rearrange(alpha, self.rearrange_pattern)
         else:
-            raise NotImplementedError
+            raise ValueError(f"unknown merge strategy {self.merge_strategy}")
         return alpha
 
     def forward(

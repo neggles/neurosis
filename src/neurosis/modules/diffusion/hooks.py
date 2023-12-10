@@ -43,4 +43,4 @@ class LossHook(ABC):
         loss_dict: dict[str, Tensor] = {},
         **kwargs,
     ) -> tuple[Tensor, dict[str, Tensor]]:
-        raise NotImplementedError("You called an ABC. Why would you do that? ;_;")
+        raise NotImplementedError("Abstract base class was called ;_;")
