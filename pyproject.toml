@@ -14,6 +14,7 @@ ignore = ['F841', 'F401', 'E501']
 line-length = 110
 target-version = 'py310'
 ignore = ['F841', 'F401', 'E501']
+extend-exclude = ["/usr/lib/*"]
 
 [tool.ruff.isort]
 combine-as-imports = true
