@@ -1,54 +1,77 @@
+import logging
+from bisect import bisect_left
 from collections import UserDict
-from typing import Optional
+from typing import Callable, Optional
 
+import lightning.pytorch as L
 import numpy as np
 import torch
 from torch import Tensor
 
-from neurosis.modules.losses.hooks import LossHook
+from neurosis.modules.diffusion.hooks import LossHook
+from neurosis.utils import np_text_decode
 
-FREQ_SCALES = {
-    "NAI": {
-        -1: 1.1,
-        10: 1.05,
-        50: 1.02,
-        100: 1,
-        1000: 0.999,
-        2000: 0.995,
-        4000: 0.99,
-        6000: 0.98,
-        8000: 0.97,
-        10000: 0.96,
-        15000: 0.95,
-        20000: 0.90,
-        30000: 0.85,
-        40000: 0.80,
-    }
-}
+logger = logging.getLogger(__name__)
 
-FREQ_REWARDS = {
-    "NAI": {
-        "bad_anatomy": 0.99,
-        "bad_feet": 0.99,
-        "bad_hands": 0.99,
-        "bad_leg": 0.99,
-        "best_quality": 1.015,
-        "censored": 0.975,
-        "comic": 0.99,
-        "error": 0.98,
-        "everyone": 1.0025,
-        "jpeg_artifacts": 0.99,
-        "lowres": 0.99,
-        "masterpiece": 1.03,
-        "sample_watermark": 0.95,
-        "scenery": 1.005,
-        "uncensored": 1.01,
-    }
+DEFAULT_SCALE = {
+    -1: 1.1,
+    10: 1.05,
+    50: 1.02,
+    100: 1,
+    1000: 0.999,
+    2000: 0.995,
+    4000: 0.99,
+    6000: 0.98,
+    8000: 0.97,
+    10000: 0.96,
+    15000: 0.95,
+    20000: 0.90,
+    30000: 0.85,
+    40000: 0.80,
 }
 
 
 def is_artist_or_character(tag):
     return tag.startswith("character:") or tag.startswith("artist:")
+
+
+class TagFreqScale(UserDict):
+    data: dict[int, float]
+    steps: list[int]
+
+    def __init__(
+        self,
+        scales: list[tuple[int, float]] | dict[int, float] = DEFAULT_SCALE,
+    ):
+        if isinstance(scales, list):
+            scales = dict(scales)
+        super().__init__(data=scales)
+        self.steps = sorted(self.keys())
+
+    def __getitem__(self, key: int):
+        if key not in self.data:
+            key = self.steps[bisect_left(self.steps, key)]
+        return self.data[key]
+
+    def __setitem__(self, key: int, value: float):
+        ret = super().__setitem__(key, value)
+        self.steps = sorted(self.keys())
+        return ret
+
+
+class TagRewards(UserDict):
+    data: dict[str, float]
+
+    def __init__(
+        self,
+        **kwargs,
+    ):
+        kwargs = {k: v for k, v in kwargs.items() if isinstance(v, float)}
+        super().__init__(data=kwargs)
+
+    def __getitem__(self, key: str):
+        if key not in self:
+            return None
 
 
 class TagCount(UserDict):
@@ -83,9 +106,11 @@ class TagLoss(UserDict):
 class TagFrequencyHook(LossHook):
     def __init__(
         self,
-        steps_per_epoch: int,
+        input_key: str = "caption",
+        # separator for tags in tag string
+        tag_sep: str = ", ",
         # function to check if a tag is an artist or character tag
-        tag_check_fn=is_artist_or_character,
+        check_fn: Callable = is_artist_or_character,
         # strength of loss pull towards historical frequency adjusted tag loss
         alpha: float = 0.2,
         # strength of historical loss accumulation
@@ -93,47 +118,48 @@ class TagFrequencyHook(LossHook):
         # overall strength of tag loss
         strength: float = 1.0,
         # loss multipliers for tags based on frequency of occurrence
-        freq_scale: dict[int, float] = FREQ_SCALES["NAI"],
+        freq_scale: TagFreqScale = TagFreqScale(),
         # specific adjustments for individual tags
-        freq_rewards: dict[str, float] = FREQ_REWARDS["NAI"],
-        # separator for tags in tag string
-        tag_sep: str = ", ",
+        tag_rewards: TagRewards = TagRewards(),
     ):
-        self.steps_per_epoch = steps_per_epoch
-        self.global_step = 0
+        self.input_key = input_key
+        self.check_fn = check_fn
 
         self.alpha = alpha
         self.beta = beta
         self.strength = strength
-        self.freq_scale = freq_scale
-        self.tag_rewards = freq_rewards
+        self.freq_scale = freq_scale if isinstance(freq_scale, TagFreqScale) else TagFreqScale(freq_scale)
+        self.tag_rewards = tag_rewards if isinstance(tag_rewards, TagRewards) else TagRewards(tag_rewards)
         self.tag_sep = tag_sep
 
-        self.check_tag = tag_check_fn
-
-        # mapping from tag to count of how many times it has been seen in the current epoch
         self.tag_counter: TagCount = TagCount()
         self.loss_stats: TagLoss = TagLoss()
 
-        self.registered: bool = False
+        # used for the current batch between pre-hook and batch-hook
+        self.epoch = 0
+        self.global_step = 0
+        self.batch_idx = 0
         self.tags: list[str] = None
         self.total_loss: float = 0.0
-
         self.ucg_batch: bool = False
 
-    @property
-    def freq_steps(self):
-        return sorted(self.freq_scale.keys())
-
-    def save_batch_tags(self, tags: list[str], is_ucg: bool = False):
+    def pre_hook(
+        self,
+        trainer: L.Trainer,
+        pl_module: L.LightningModule,
+        batch,
+        batch_idx,
+    ):
         if self.tags is not None:
-            raise RuntimeError("save_tags called twice without calling get_weight")
+            raise RuntimeError("pre_hook called twice without calling batch_hook")
 
-        self.global_step += 1
-        self.tags = tags
-        self.ucg_batch = is_ucg
+        self.global_step = trainer.global_step
+        self.batch_idx = batch_idx
+        self.tags = [np_text_decode(x) for x in batch[self.input_key]]
+        self.ucg_batch = batch.get("is_ucg", False)
 
-        if not (self.global_step % self.steps_per_epoch):
+        if pl_module.current_epoch != self.epoch:
+            self.epoch = pl_module.current_epoch
             self.tag_counter.reset()
 
     def get_batch_tags(self, count: int) -> list[str]:
@@ -143,11 +169,14 @@ class TagFrequencyHook(LossHook):
             self.tags = None
         return tags
 
-    def get_scale(self, count: int) -> float:
-        step = self.freq_steps[np.searchsorted(self.freq_steps, count, "left")]
-        return self.freq_scale[step]
-
-    def get_weight(self, loss: Tensor):
+    def batch_hook(
+        self,
+        pl_module: L.LightningModule,
+        batch: dict,
+        loss: Tensor,
+        loss_dict: dict[str, Tensor] = {},
+        **kwargs,
+    ):
         if not self.tags:
             raise RuntimeError("get_weight called without calling save_tags")
 
@@ -170,7 +199,7 @@ class TagFrequencyHook(LossHook):
 
             sample_tags = [x for x in tags[i].split(self.tag_sep)]
             if not self.ucg_batch:
-                adjust_tags = list(filter(self.check_tag, sample_tags))
+                adjust_tags = list(filter(self.check_fn, sample_tags))
             else:
                 adjust_tags = []
 
@@ -179,7 +208,7 @@ class TagFrequencyHook(LossHook):
             base_mults = []
             for tag in adjust_tags:
                 count = self.tag_counter.increment(tag)
-                base_mults.append(self.get_scale(count))
+                base_mults.append(self.freq_scale[count])
 
                 if tag in self.loss_stats:
                     tag_loss, tag_count = self.loss_stats[tag]
@@ -211,6 +240,7 @@ class TagFrequencyHook(LossHook):
 
             weights.append(torch.ones(loss.shape[1:]) * loss_weight)
 
+        loss_dict.update({"train/frequency_weight": torch.stack(weights).detach().mean().cpu()})
         weights = torch.stack(weights).to(loss.device)
 
-        return weights
+        return loss * weights, loss_dict

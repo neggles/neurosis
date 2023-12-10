@@ -52,7 +52,7 @@ class DiffusionEngine(L.LightningModule):
         no_cond_log: bool = False,
         compile_model: bool = False,
         vae_batch_size: Optional[int] = None,
-        loss_hooks: list[LossHook] = [],
+        forward_hooks: list[LossHook] = [],
     ):
         super().__init__()
 
@@ -71,7 +71,7 @@ class DiffusionEngine(L.LightningModule):
         self._init_first_stage(first_stage_model)
 
         self.loss_fn = loss_fn
-        self.loss_hooks = loss_hooks
+        self.forward_hooks = forward_hooks
 
         self.use_ema = use_ema
         if self.use_ema:
@@ -166,20 +166,23 @@ class DiffusionEngine(L.LightningModule):
         x = self.encode_first_stage(x)
         batch["global_step"] = self.global_step
         loss = self(x, batch)
-        loss_dict = {"train/loss": loss.mean()}
-        return loss, loss_dict
+        return loss
 
     def training_step(self, batch: dict, batch_idx: int):
         # run any pre-step hooks
-        for hook in self.loss_hooks:
+        for hook in self.forward_hooks:
             hook.pre_hook(self.trainer, self, batch, batch_idx)
 
         # run the actual step
-        loss, loss_dict = self.shared_step(batch)
+        loss = self.shared_step(batch)
 
         # run any post-step hooks
-        for hook in self.loss_hooks:
+        loss_dict = {}
+        for hook in self.forward_hooks:
             loss, loss_dict = hook(self, batch, loss, loss_dict)
+
+        # log the adjusted loss
+        loss_dict.update({"train/loss": loss.mean()})
 
         if self.scheduler is not None:
             lr: float = self.optimizers().param_groups[0]["lr"]
