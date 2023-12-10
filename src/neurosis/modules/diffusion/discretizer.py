@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Union
 
 import numpy as np
 import torch

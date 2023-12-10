@@ -59,6 +59,7 @@ __all__ = [
     "count_params",
     "disabled_train",
     "expand_dims_like",
+    "get_data_path",
     "get_nested_attribute",
     "get_obj_from_str",
     "get_string_from_tuple",
@@ -75,4 +76,5 @@ __all__ = [
     "mean_flat",
     "maybe_collect",
     "np_text_decode",
+    "package_data_file",
 ]

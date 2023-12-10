@@ -4,7 +4,6 @@ from typing import Optional
 from bson import ObjectId
 from pydantic import BaseModel, Field
 from pydantic_mongo import AbstractRepository, ObjectIdField
-from pymongo import MongoClient
 
 
 def current_unix_time() -> int:

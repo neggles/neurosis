@@ -1,43 +1,20 @@
 import io
-import logging
-import warnings
-from dataclasses import dataclass
-from itertools import chain
-from math import ceil
-from os import PathLike, getenv
 from pathlib import Path
-from time import perf_counter
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
-import pandas as pd
-import ray
-from fsspec import AbstractFileSystem
-from gcsfs import GCSFileSystem
-from humanfriendly import format_size, format_timespan
-from ray import data
-from ray._private.worker import RayContext
-from ray.actor import ActorHandle
-from ray.data import read_datasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
-from ray.data.context import DataContext
-from ray.data.dataset import Dataset
 from ray.data.datasource import (
-    BaseFileMetadataProvider,
     BinaryDatasource,
-    FastFileMetadataProvider,
     FileExtensionFilter,
-    Partitioning,
     PathPartitionFilter,
     Reader,
 )
-from ray.data.datasource.image_datasource import _ImageDatasourceReader, _ImageFileMetadataProvider
-from ray.runtime_env import RuntimeEnv
+from ray.data.datasource.image_datasource import _ImageDatasourceReader
 
 if TYPE_CHECKING:
     import pyarrow
-    from PIL import Image
     from ray.data.block import T
 
 
