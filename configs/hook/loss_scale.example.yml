@@ -1,0 +1,47 @@
+model:
+  init_args:
+    forward_hooks:
+      - class_path: neurosis.dataset.processing.TagFrequencyHook
+        init_args:
+          input_key: "caption"
+          tag_sep: " "
+          check_fn: neurosis.dataset.processing.tag_loss.is_artist_or_character
+          alpha: 0.2
+          beta: 0.99
+          strength: 1.0
+          freq_scale:
+            class_path: neurosis.dataset.processing.TagFreqScale
+            init_args:
+              scales:
+                - [-1, 1.1]
+                - [10, 1.05]
+                - [50, 1.02]
+                - [100, 1]
+                - [1000, 0.999]
+                - [2000, 0.995]
+                - [4000, 0.99]
+                - [6000, 0.98]
+                - [8000, 0.97]
+                - [10000, 0.96]
+                - [15000, 0.95]
+                - [20000, 0.90]
+                - [30000, 0.85]
+                - [40000, 0.80]
+          tag_rewards:
+            class_path: neurosis.dataset.processing.TagRewards
+            dict_kwargs:
+              bad_anatomy: 0.99,
+              bad_feet: 0.99,
+              bad_hands: 0.99,
+              bad_leg: 0.99,
+              best_quality: 1.015,
+              censored: 0.975,
+              comic: 0.99,
+              error: 0.98,
+              everyone: 1.0025,
+              jpeg_artifacts: 0.99,
+              lowres: 0.99,
+              masterpiece: 1.03,
+              sample_watermark: 0.95,
+              scenery: 1.005,
+              uncensored: 1.01,
