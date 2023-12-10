@@ -1,4 +1,4 @@
-name: Docker
+name: Container Build & Push
 run-name: neurosis via ${{ github.event_name }}
 
 on:
@@ -7,7 +7,7 @@ on:
       - "main"
       - "release"
     paths:
-      - ".github/workflows/build-push-docker.yaml"
+      - ".github/workflows/build-push.yaml"
       - "src/*"
       - "docker/*"
       - "docker-bake.hcl"
@@ -24,7 +24,7 @@ on:
 
   pull_request:
     paths:
-      - ".github/workflows/build-push-docker.yaml"
+      - ".github/workflows/build-push.yaml"
       - "src/*"
       - "docker/*"
       - "docker-bake.hcl"
