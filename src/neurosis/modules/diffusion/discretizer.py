@@ -19,7 +19,7 @@ class Discretization(ABC):
         self,
         n: int,
         do_append_zero: bool = True,
-        device: Union[str, torch.device] = "cpu",
+        device: str | torch.device = "cpu",
         flip: bool = False,
     ):
         sigmas = self.get_sigmas(n, device=device)
@@ -27,8 +27,8 @@ class Discretization(ABC):
         return sigmas if not flip else torch.flip(sigmas, (0,))
 
     @abstractmethod
-    def get_sigmas(self, n: int, device: Union[str, torch.device]) -> Tensor:
-        raise NotImplementedError("Abstract base class was called???")
+    def get_sigmas(self, n: int, device: str | torch.device) -> Tensor:
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class EDMDiscretization(Discretization):
@@ -42,7 +42,7 @@ class EDMDiscretization(Discretization):
         self.sigma_max = sigma_max
         self.rho = rho
 
-    def get_sigmas(self, n: int, device: Union[str, torch.device] = "cpu") -> Tensor:
+    def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
         ramp = torch.linspace(0, 1, n, device=device)
         min_inv_rho = self.sigma_min ** (1 / self.rho)
         max_inv_rho = self.sigma_max ** (1 / self.rho)
@@ -64,7 +64,7 @@ class LegacyDDPMDiscretization(Discretization):
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
         self.to_torch = partial(torch.tensor, dtype=torch.float32)
 
-    def get_sigmas(self, n: int, device: Union[str, torch.device] = "cpu") -> Tensor:
+    def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
         if n < self.num_timesteps:
             timesteps = generate_roughly_equally_spaced_steps(n, self.num_timesteps)
             alphas_cumprod = self.alphas_cumprod[timesteps]

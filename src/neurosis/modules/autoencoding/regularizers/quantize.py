@@ -50,7 +50,7 @@ class AbstractQuantizer(AbstractRegularizer):
 
     @abstractmethod
     def get_codebook_entry(self, indices: Tensor, shape: Optional[Tuple[int, ...]] = None) -> Tensor:
-        raise NotImplementedError()
+        raise NotImplementedError("Abstract base class was called ;_;")
 
     def get_trainable_parameters(self) -> Iterator[torch.nn.Parameter]:
         yield from self.parameters()

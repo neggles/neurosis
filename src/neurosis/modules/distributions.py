@@ -8,10 +8,10 @@ from torch.nn import Parameter
 
 class AbstractDistribution:
     def sample(self):
-        raise NotImplementedError()
+        raise NotImplementedError("Abstract base class was called ;_;")
 
     def mode(self):
-        raise NotImplementedError()
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class DiracDistribution(AbstractDistribution):

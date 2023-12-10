@@ -71,7 +71,7 @@ class AbstractAutoencoder(L.LightningModule):
         elif path.suffix in CHECKPOINT_EXTNS:
             sd = torch.load(path, map_location="cpu")["state_dict"]
         else:
-            raise NotImplementedError(f"Unknown checkpoint extension {path.suffix}")
+            raise ValueError(f"Unknown checkpoint extension {path.suffix}")
 
         keys = list(sd.keys())
 
@@ -100,7 +100,7 @@ class AbstractAutoencoder(L.LightningModule):
 
     @abstractmethod
     def get_input(self, batch) -> Any:
-        raise NotImplementedError()
+        raise NotImplementedError("Abstract base class was called ;_;")
 
     def on_train_batch_end(self, *args, **kwargs):
         # for EMA computation
@@ -124,11 +124,11 @@ class AbstractAutoencoder(L.LightningModule):
 
     @abstractmethod
     def encode(self, *args, **kwargs) -> Tensor:
-        raise NotImplementedError("encode()-method of abstract base class called")
+        raise NotImplementedError("Abstract base class was called ;_;")
 
     @abstractmethod
     def decode(self, *args, **kwargs) -> Tensor:
-        raise NotImplementedError("decode()-method of abstract base class called")
+        raise NotImplementedError("Abstract base class was called ;_;")
 
     def instantiate_optimizer_from_config(self, params, lr: float, cfg: dict) -> Optimizer:
         logger.info(f"loading >>> {cfg['target']} <<< optimizer from config")
@@ -138,7 +138,7 @@ class AbstractAutoencoder(L.LightningModule):
 
     @abstractmethod
     def configure_optimizers(self) -> Any:
-        raise NotImplementedError("configure_optimizers()-method of abstract base class called")
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class AutoencodingEngine(AbstractAutoencoder):
@@ -302,7 +302,7 @@ class AutoencodingEngine(AbstractAutoencoder):
             self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True)
             return discloss
         else:
-            raise NotImplementedError(f"Unknown optimizer {optimizer_idx}")
+            raise ValueError(f"Unknown optimizer {optimizer_idx}")
 
     def training_step(self, batch: dict, batch_idx: int):
         opts = self.optimizers()
@@ -584,7 +584,7 @@ class AEIntegerWrapper(nn.Module):
         self.model = model
 
         if not hasattr(model, "encode") or not hasattr(model, "decode"):
-            raise NotImplementedError("Need AE interface (encode and decode methods)")
+            raise ValueError("Need AE interface (encode and decode methods)")
 
         self.regularization = get_nested_attribute(model, regularization_key)
         self.shape = shape
@@ -592,20 +592,21 @@ class AEIntegerWrapper(nn.Module):
 
     def encode(self, x: Tensor) -> Tensor:
         if self.training:
-            raise NotImplementedError(f"{self.__class__.__name__} only supports inference currently")
+            raise RuntimeError(f"{self.__class__.__name__} only supports inference currently")
 
         _, log = self.model.encode(x, **self.encoder_kwargs)
-        assert isinstance(log, dict)
-        inds = log["min_encoding_indices"]
-        return rearrange(inds, "b ... -> b (...)")
+        if not isinstance(log, dict):
+            raise ValueError(f"Log was not a dict: {log}")
+        indices = log["min_encoding_indices"]
+        return rearrange(indices, "b ... -> b (...)")
 
-    def decode(self, inds: Tensor, shape: Optional[tuple | list] = None) -> Tensor:
-        # expect inds shape (b, s) with s = h*w
+    def decode(self, indices: Tensor, shape: Optional[tuple | list] = None) -> Tensor:
+        # expect indices shape (b, s) with s = h*w
         shape = shape or self.shape
         if shape is not None:
             if len(shape) != 2:
-                raise NotImplementedError(f"Unhandled shape: {shape}")
-            inds = rearrange(inds, "b (h w) -> b h w", h=shape[0], w=shape[1])
-        h = self.regularization.get_codebook_entry(inds)  # (b, h, w, c)
+                raise ValueError(f"Invalid input shape: {shape}")
+            indices = rearrange(indices, "b (h w) -> b h w", h=shape[0], w=shape[1])
+        h = self.regularization.get_codebook_entry(indices)  # (b, h, w, c)
         h = rearrange(h, "b h w c -> b c h w")
         return self.model.decode(h)

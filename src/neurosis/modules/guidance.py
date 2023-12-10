@@ -11,11 +11,11 @@ from ..utils import append_dims
 class Guider(ABC):
     @abstractmethod
     def __call__(self, x: Tensor, sigma: float) -> Tensor:
-        raise NotImplementedError("Abstract base class was called")
+        raise NotImplementedError("Abstract base class was called ;_;")
 
     @abstractmethod
     def prepare_inputs(self, x: Tensor, s: float, c: dict, uc: dict) -> tuple[Tensor, float, dict]:
-        raise NotImplementedError("prepare_inputs() not implemented!")
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class VanillaCFG(Guider):

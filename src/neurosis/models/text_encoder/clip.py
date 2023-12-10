@@ -61,7 +61,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
             case "penultimate":
                 self.layer_idx = 11
             case _:
-                raise NotImplementedError("Only last, penultimate and hidden layers are supported")
+                raise ValueError("Only last, penultimate and hidden layers are supported")
 
     def freeze(self):
         self.transformer = self.transformer.eval()
@@ -141,7 +141,7 @@ class FrozenOpenCLIPEmbedder(AbstractEmbModel):
             case "penultimate":
                 self.layer_idx = 1
             case _:
-                raise NotImplementedError("Only last and penultimate layers are supported")
+                raise ValueError("Only last and penultimate layers are supported")
 
     def freeze(self):
         self.model = self.model.eval()
@@ -220,7 +220,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
             case "penultimate":
                 self.layer_idx = 1
             case _:
-                raise NotImplementedError("Only last and penultimate layers are supported")
+                raise ValueError("Only last and penultimate layers are supported")
 
         self.return_pooled = always_return_pooled
         self.legacy = legacy
