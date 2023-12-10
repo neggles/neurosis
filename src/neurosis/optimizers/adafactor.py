@@ -5,9 +5,9 @@ import torch
 from torch import Tensor
 from torch.nn import Parameter
 from torch.optim.lr_scheduler import LambdaLR
-from torch.optim.optimizer import Optimizer, _use_grad_for_differentiable
+from torch.optim.optimizer import Optimizer
 
-from .types import OptLossClosure, ParamGroup, Params, State
+from .types import ParamGroup, Params, State
 
 
 class Adafactor(Optimizer):

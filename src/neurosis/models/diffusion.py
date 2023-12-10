@@ -10,7 +10,6 @@ import numpy as np
 import torch
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from lightning.pytorch.loggers.wandb import WandbLogger
-from omegaconf import ListConfig
 from safetensors.torch import load_file as load_safetensors
 from torch import Tensor
 
@@ -22,11 +21,11 @@ from neurosis.modules.diffusion import (
     StandardDiffusionLoss,
     UNetModel,
 )
+from neurosis.modules.diffusion.hooks import LossHook
 from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.modules.diffusion.hooks import LossHook
 from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
 
 logger = logging.getLogger(__name__)
@@ -261,7 +260,7 @@ class DiffusionEngine(L.LightningModule):
         These can be lists of strings (text-to-image), tensors, ints, ...
         """
         image_h, image_w = batch[self.input_key].shape[2:]
-        log = dict()
+        log_dict = dict()
 
         embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
@@ -277,7 +276,7 @@ class DiffusionEngine(L.LightningModule):
                         x = ["x".join([str(xx) for xx in x[i].tolist()]) for i in range(x.shape[0])]
                         xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
                     else:
-                        raise NotImplementedError()
+                        raise NotImplementedError("Tensor conditioning with dim > 2 not implemented")
                 elif isinstance(x, list):
                     if isinstance(x[0], np.bytes_):
                         x = np_text_decode(x)
@@ -285,11 +284,11 @@ class DiffusionEngine(L.LightningModule):
                         # strings
                         xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
                     else:
-                        raise NotImplementedError()
+                        raise NotImplementedError(f"Conditioning for list[{type(x[0])}] not implemented")
                 else:
-                    raise NotImplementedError()
-                log[embedder.input_key] = xc
-        return log
+                    raise NotImplementedError(f"Conditioning for input of {type(x)} not implemented")
+                log_dict[embedder.input_key] = xc
+        return log_dict
 
     @torch.no_grad()
     def log_images(
@@ -309,7 +308,7 @@ class DiffusionEngine(L.LightningModule):
         else:
             ucg_keys = conditioner_input_keys
 
-        log = dict()
+        log_dict = dict()
         x: Tensor = self.get_input(batch)
         c, uc = self.conditioner.get_unconditional_conditioning(
             batch,
@@ -319,11 +318,11 @@ class DiffusionEngine(L.LightningModule):
         sampling_kwargs = {}
         num_img = min(x.shape[0], num_img)
         x = x.to(self.device)[:num_img]
-        log["inputs"] = x
+        log_dict["inputs"] = x
 
         z: Tensor = self.encode_first_stage(x)
-        log["reconstructions"] = self.decode_first_stage(z)
-        log.update(self.log_conditionings(batch, num_img))
+        log_dict["reconstructions"] = self.decode_first_stage(z)
+        log_dict.update(self.log_conditionings(batch, num_img))
 
         for k in c:
             if isinstance(c[k], Tensor):
@@ -333,5 +332,5 @@ class DiffusionEngine(L.LightningModule):
             with self.ema_scope("Plotting"):
                 samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=num_img, **sampling_kwargs)
             samples = self.decode_first_stage(samples)
-            log["samples"] = samples
-        return log
+            log_dict["samples"] = samples
+        return log_dict

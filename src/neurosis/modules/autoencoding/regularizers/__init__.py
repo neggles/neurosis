@@ -1,9 +1,7 @@
-from abc import abstractmethod
 from typing import Any, Tuple
 
 import torch
-from torch import Tensor, nn
-from torch.nn import functional as F
+from torch import Tensor
 
 from neurosis.modules.distributions import DiagonalGaussianDistribution
 

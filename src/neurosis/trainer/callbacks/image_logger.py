@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torchvision
 from lightning.pytorch import Callback, LightningModule, Trainer
-from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
+from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from matplotlib import pyplot as plt
 from PIL import Image

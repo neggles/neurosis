@@ -2,7 +2,6 @@ from os import PathLike
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 from PIL import Image, ImageOps
 from torch import Tensor
 from torchvision.transforms import v2 as T

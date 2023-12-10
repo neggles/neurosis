@@ -4,14 +4,13 @@ from os import PathLike
 from pathlib import Path
 from typing import Callable, Optional
 
-import lightning as L
 import numpy as np
 import pandas as pd
 import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from pymongo import MongoClient
-from s3fs import S3File, S3FileSystem
+from s3fs import S3FileSystem
 from torch import Tensor
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
@@ -23,9 +22,8 @@ from neurosis.dataset.aspect import (
     AspectBucketSampler,
     SDXLBucketList,
 )
-from neurosis.dataset.loaders import S3ImageLoader
-from neurosis.dataset.mongo.settings import MongoSettings, Query, get_mongo_settings
-from neurosis.dataset.utils import clean_word, load_bucket_image_file, pil_crop_bucket, pil_ensure_rgb
+from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
+from neurosis.dataset.utils import clean_word, pil_crop_bucket, pil_ensure_rgb
 
 logger = logging.getLogger(__name__)
 
