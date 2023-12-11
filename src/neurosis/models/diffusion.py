@@ -226,18 +226,24 @@ class DiffusionEngine(L.LightningModule):
                     print(f"{context}: Restored training weights")
 
     def configure_optimizers(self):
-        network_params = list(self.model.parameters())
+        param_groups = []
+        param_groups.append({"params": list(self.model.parameters())})
+
         embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
             if embedder.is_trainable:
-                network_params.extend(list(embedder.parameters()))
+                logger.info(f"Adding {embedder.__class__.__name__} to trainable parameter groups")
+                embedder_params = {"params": list(embedder.parameters())}
+                if hasattr(embedder, "base_lr") and embedder.base_lr is not None:
+                    embedder_params["initial_lr"] = embedder.base_lr
+                param_groups.append(embedder_params)
 
-        optimizer = self.optimizer(network_params)
+        optimizer = self.optimizer(param_groups)
         if self.scheduler is not None:
             scheduler = self.scheduler(optimizer)
             return [optimizer], [scheduler]
-        else:
-            return [optimizer], []
+
+        return [optimizer], []
 
     @torch.no_grad()
     def sample(
