@@ -234,9 +234,9 @@ class DiffusionEngine(L.LightningModule):
         optimizer = self.optimizer(param_groups)
         if self.scheduler is not None:
             scheduler = self.scheduler(optimizer)
-            return [optimizer], [scheduler]
+            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "step"}}
 
-        return [optimizer], []
+        return optimizer
 
     @torch.no_grad()
     def sample(
