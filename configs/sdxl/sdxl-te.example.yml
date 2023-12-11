@@ -1,0 +1,216 @@
+seed_everything: 42
+
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: 1
+  num_nodes: 1
+  precision: bf16-mixed
+
+  max_epochs: 1
+  accumulate_grad_batches: 4
+  log_every_n_steps: 1
+
+  default_root_dir: ./projects
+  use_distributed_sampler: true
+
+  fast_dev_run: true # disable to actually train
+
+  logger:
+    - class_path: lightning.pytorch.loggers.wandb.WandbLogger
+      init_args:
+        project: neurosis-test
+        save_dir: ${trainer.default_root_dir}
+        tags: [sdxl, test]
+    - class_path: lightning.pytorch.loggers.TensorBoardLogger
+      init_args:
+        save_dir: ${trainer.default_root_dir}
+        name: neurosis-test
+
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelSummary
+      init_args:
+        max_depth: 5
+    - class_path: DeviceStatsMonitor
+      init_args:
+        cpu_stats: true
+
+model_checkpoint:
+  filename: "{epoch:03d}-{step:08d}"
+  save_last: true
+  save_on_train_epoch_end: true
+  every_n_train_steps: 250
+  verbose: true
+
+image_logger:
+  every_n_train_steps: 50
+  max_images: 4
+  clamp: true
+  rescale: true
+  log_step_type: global_step # global_step, batch_idx, global_batch, sample_idx (see neurosis.trainer.callbacks.image_logger)
+  log_before_start: false
+  log_func_kwargs:
+    num_img: 4
+
+model:
+  class_path: neurosis.models.DiffusionEngine
+  init_args:
+    scale_factor: 0.13025
+    disable_first_stage_autocast: true
+    log_keys:
+      - caption
+    ckpt_path: "data/sd_xl_base_1.0_0.9vae.safetensors"
+    use_ema: false
+    input_key: ${data.init_args.image_key}
+    no_cond_log: false
+    compile_model: false
+
+    model:
+      class_path: neurosis.modules.diffusion.UNetModel
+      init_args:
+        adm_in_channels: 2816
+        num_classes: sequential
+        use_checkpoint: true
+        in_channels: 4
+        out_channels: 4
+        model_channels: 320
+        attention_resolutions: [4, 2]
+        num_res_blocks: 2
+        channel_mult: [1, 2, 4]
+        num_head_channels: 64
+        use_linear_in_transformer: true
+        transformer_depth: [1, 2, 10] # note: the first is unused (due to attn_res starting at 2) 32, 16, 8 --> 64, 32, 16
+        context_dim: 2048
+        spatial_transformer_attn_type: softmax-xformers
+
+    denoiser:
+      class_path: neurosis.modules.diffusion.DiscreteDenoiser
+      init_args:
+        num_idx: 1000
+        scaling:
+          class_path: neurosis.modules.diffusion.EpsScaling
+        discretization:
+          class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+
+    first_stage_model:
+      class_path: neurosis.models.autoencoder.AutoencoderKL
+      init_args:
+        # recommend using https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/blob/main/sdxl_vae.safetensors
+        ckpt_path: data/sdxl_vae.safetensors
+        embed_dim: 4
+        monitor: val/rec_loss
+        ddconfig:
+          attn_type: vanilla-xformers
+          double_z: true
+          z_channels: 4
+          resolution: 256
+          in_channels: 3
+          out_ch: 3
+          ch: 128
+          ch_mult: [1, 2, 4, 4]
+          num_res_blocks: 2
+          attn_resolutions: []
+          dropout: 0.0
+        loss:
+          class_path: torch.nn.Identity
+
+    conditioner:
+      class_path: neurosis.modules.encoders.GeneralConditioner
+      init_args:
+        emb_models:
+          # crossattn cond
+          - class_path: neurosis.models.text_encoder.FrozenCLIPEmbedder
+            init_args:
+              layer: hidden
+              layer_idx: 11
+              input_key: ${data.init_args.caption_key}
+              is_trainable: true
+              base_lr: 1.0
+          # crossattn and vector cond
+          - class_path: neurosis.models.text_encoder.FrozenOpenCLIPEmbedder2
+            init_args:
+              arch: ViT-bigG-14
+              version: null
+              freeze: true
+              layer: penultimate
+              always_return_pooled: true
+              legacy: false
+              input_key: ${data.init_args.caption_key}
+              is_trainable: true
+              base_lr: 1.0
+          # vector cond
+          - class_path: neurosis.modules.encoders.metadata.ConcatTimestepEmbedderND
+            init_args:
+              outdim: 256 # multiplied by two
+              input_key: original_size_as_tuple
+              is_trainable: false
+          # vector cond
+          - class_path: neurosis.modules.encoders.metadata.ConcatTimestepEmbedderND
+            init_args:
+              outdim: 256 # multiplied by two
+              input_key: crop_coords_top_left
+              is_trainable: false
+          # vector cond
+          - class_path: neurosis.modules.encoders.metadata.ConcatTimestepEmbedderND
+            init_args:
+              outdim: 256 # multiplied by two
+              input_key: target_size_as_tuple
+              is_trainable: false
+
+    optimizer:
+      # you can replace this with any subclass of torch.optim.Optimizer
+      class_path: bitsandbytes.optim.AdamW8bit
+      init_args:
+        lr: 3e-5
+        betas: [0.9, 0.999]
+        eps: 1e-8
+        weight_decay: 0.0
+
+    scheduler:
+      class_path: neurosis.schedulers.LegacyCosineAnnealingWarmupRestarts
+      init_args:
+        first_cycle_steps: 50
+        cycle_mult: 1.0
+        min_lr: 3e-7
+        warm_up_steps: 25
+        gamma: 0.9
+
+    loss_fn:
+      class_path: neurosis.modules.diffusion.StandardDiffusionLoss
+      init_args:
+        loss_weighting:
+          class_path: neurosis.modules.diffusion.EpsWeighting
+        sigma_sampler:
+          class_path: neurosis.modules.diffusion.sigma_sampling.DiscreteSampling
+          init_args:
+            num_idx: 1000
+            discretization:
+              class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+
+    sampler:
+      class_path: neurosis.modules.diffusion.sampling.EulerEDMSampler
+      init_args:
+        num_steps: 50
+        discretization:
+          class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
+        guider:
+          class_path: neurosis.modules.guidance.VanillaCFG
+          init_args:
+            scale: 7.5
+
+data:
+  class_path: neurosis.dataset.imagefolder.ImageFolderModule
+  init_args:
+    folder: "data/dataset/folder"
+    recursive: true
+    image_key: "image"
+    caption_key: "caption"
+    buckets:
+      class_path: neurosis.dataset.aspect.WDXLBucketList
+      init_args:
+        bias_square: true
+        use_atan: false
+    batch_size: 2
+    num_workers: 4
+    tag_sep: ", "
+    word_sep: " "
