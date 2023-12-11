@@ -184,10 +184,6 @@ class DiffusionEngine(L.LightningModule):
         # log the adjusted loss
         loss_dict.update({"train/loss": loss.mean()})
 
-        if self.scheduler is not None:
-            lr: float = self.optimizers().param_groups[0]["lr"]
-            loss_dict.update({"train/lr_abs": lr})
-
         self.log_dict(
             loss_dict,
             prog_bar=True,
@@ -233,10 +229,7 @@ class DiffusionEngine(L.LightningModule):
         for embedder in self.conditioner.embedders:
             if embedder.is_trainable:
                 logger.info(f"Adding {embedder.__class__.__name__} to trainable parameter groups")
-                embedder_params = {"params": list(embedder.parameters())}
-                if hasattr(embedder, "base_lr") and embedder.base_lr is not None:
-                    embedder_params["initial_lr"] = embedder.base_lr
-                param_groups.append(embedder_params)
+                param_groups.append({"params": list(embedder.parameters())})
 
         optimizer = self.optimizer(param_groups)
         if self.scheduler is not None:
