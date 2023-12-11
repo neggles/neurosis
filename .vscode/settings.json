@@ -25,17 +25,14 @@
     },
 
     "[python]": {
-        "editor.wordBasedSuggestions": false,
+        "editor.wordBasedSuggestions": "off",
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.codeActionsOnSave": {
-            "source.organizeImports": true
+            "source.organizeImports": "always"
         }
     },
     "python.analysis.include": ["./src", "./scripts", "./tests"],
-
-    "python.formatting.provider": "none",
-    "python.linting.enabled": false,
 
     "[json]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",
