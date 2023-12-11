@@ -25,14 +25,17 @@ class AbstractEmbModel(nn.Module):
         is_trainable: Optional[bool] = None,
         ucg_rate: Optional[float] = 0.0,
         input_key: Optional[str] = None,
+        base_lr: Optional[float] = None,
     ):
         super().__init__()
         if not hasattr(self, "is_trainable"):
             self.is_trainable = is_trainable or False
         if not hasattr(self, "ucg_rate"):
-            self.ucg_rate = ucg_rate or 0.0
+            self.ucg_rate = ucg_rate
         if not hasattr(self, "input_key") and input_key is not None:
             self.input_key = input_key
+        if not hasattr(self, "base_lr") and base_lr is not None:
+            self.base_lr = base_lr
 
         # synchronize ucg_rate and ucg_prng for legacy ucg mode
         if hasattr(self, "legacy_ucg_val") and self.legacy_ucg_val is not None:
