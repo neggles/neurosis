@@ -1,7 +1,9 @@
 import importlib
-from functools import partial
+import logging
+from functools import lru_cache, partial
 from os import PathLike
 from pathlib import Path
+from textwrap import wrap as text_wrap
 from typing import Any, Callable, TypeVar
 
 import fsspec
@@ -12,11 +14,22 @@ from safetensors.torch import load_file as load_safetensors
 from torch import Tensor
 from torch.nn import Module
 
+from neurosis.data import package_file
+
 # generic wrapper typevar
 T = TypeVar("T")
 
 # used for overriding nn.Module methods while retaining type information
 M = TypeVar("M", bound=Module)
+
+logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=2)
+def get_image_font(name: str = "NotoSansMono", size: int = 10) -> ImageFont.ImageFont:
+    with package_file("fonts", f"{name}.ttf").open("rb") as f:
+        font = ImageFont.truetype(f, size=size)
+    return font
 
 
 def disabled_train(self: M, mode: bool = True) -> M:
@@ -67,29 +80,37 @@ def load_partial_from_config(config) -> partial[Any]:
     return partial(get_obj_from_str(target), **params)
 
 
-def log_txt_as_img(wh, xc, size=10) -> Tensor:
+def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor:
     # wh a tuple of (width, height)
     # xc a list of captions to plot
     b = len(xc)
     txts = list()
+
+    # load font and get width
+    font = get_image_font(size=size)
+    font_w = font.getlength(" ")  # monospace font
+    nc = (wh[0] // font_w) - 1  # number of characters per line
+
     for bi in range(b):
+        # make a new canvas and set up for drawing
         txt = Image.new("RGB", wh, color="white")
         draw = ImageDraw.Draw(txt)
-        font = ImageFont.truetype("data/DejaVuSans.ttf", size=size)
-        nc = int(40 * (wh[0] / 256))
-        if isinstance(xc[bi], list):
-            text_seq = xc[bi][0]
-        else:
-            text_seq = xc[bi]
-        lines = "\n".join(text_seq[start : start + nc] for start in range(0, len(text_seq), nc))
+
+        # get text and wrap it at nc
+        text_seq = xc[bi][0] if isinstance(xc[bi], list) else xc[bi]
+        lines = "\n".join(text_wrap(text_seq, nc, tabsize=4))
 
         try:
+            # actually draw the text
             draw.text((0, 0), lines, fill="black", font=font)
         except UnicodeEncodeError:
-            print("Cant encode string for logging. Skipping.")
+            logger.exception("Cant encode string for logging, skipping...")
+            continue
 
+        # convert to numpy and normalize
         txt = np.array(txt).transpose(2, 0, 1) / 127.5 - 1.0
         txts.append(txt)
+
     txts = np.stack(txts)
     txts = torch.tensor(txts)
     return txts
