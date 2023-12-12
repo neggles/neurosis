@@ -17,6 +17,17 @@ def package_file(dir: str, name: str) -> Generator[Traversable, Any, None]:
 
 
 @contextmanager
+def open_package_file(dir: str, name: str, mode: str = "r") -> Generator[Traversable, Any, None]:
+    file = resources.files(f"{__package__}.{dir}").joinpath(name)
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found in {resources.files(__package__)}")
+    try:
+        yield file.open(mode)
+    finally:
+        pass
+
+
+@contextmanager
 def lpips_checkpoint(name: str = "vgg_lpips") -> Generator[BufferedReader, Any, None]:
     lpips_file = resources.files(f"{__package__}.lpips").joinpath(f"{name}.pth")
     if not lpips_file.exists():

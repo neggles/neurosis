@@ -1,6 +1,7 @@
-from .files import lpips_checkpoint, package_file
+from .files import lpips_checkpoint, open_package_file, package_file
 
 __all__ = [
-    "package_file",
     "lpips_checkpoint",
+    "package_file",
+    "open_package_file",
 ]

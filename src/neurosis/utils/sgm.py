@@ -14,7 +14,7 @@ from safetensors.torch import load_file as load_safetensors
 from torch import Tensor
 from torch.nn import Module
 
-from neurosis.data import package_file
+from neurosis.data import open_package_file
 
 # generic wrapper typevar
 T = TypeVar("T")
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=2)
 def get_image_font(name: str = "NotoSansMono", size: int = 10) -> ImageFont.ImageFont:
-    with package_file("fonts", f"{name}.ttf").open("rb") as f:
+    with open_package_file("fonts", f"{name}.ttf", "rb") as f:
         font = ImageFont.truetype(f, size=size)
     return font
 
@@ -108,7 +108,8 @@ def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor
             continue
 
         # convert to numpy and normalize
-        txt = np.array(txt).transpose(2, 0, 1) / 127.5 - 1.0
+        txt = np.array(txt).transpose(2, 0, 1)  # H, W, C -> C, H, W
+        txt = txt / 127.5 - 1.0  # 0-255 -> -1.0-1.0
         txts.append(txt)
 
     txts = np.stack(txts)
