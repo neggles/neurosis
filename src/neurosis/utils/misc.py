@@ -1,18 +1,42 @@
 import logging
 from contextlib import contextmanager
+from typing import Optional
 
 import numpy as np
 
 from neurosis import is_debug
 
 
-def normalize8(x: np.ndarray) -> np.ndarray:
+def ndimage_to_f32(x: np.ndarray, zero_min: bool = False) -> np.ndarray:
+    if zero_min:
+        x = x / 255.0  # 0-255 -> 0.0-1.0
+    else:
+        x = (x / 127.5) - 1.0  # 0-255 -> -1.0-1.0
+
+    return x.astype(np.float32)
+
+
+def ndimage_to_u8(x: np.ndarray, zero_min: Optional[bool] = None) -> np.ndarray:
+    if zero_min is not None:
+        if zero_min is True:
+            x = x * 255.0  # 0 to 1 -> 0 to 255
+        else:
+            x = (x * 127.5) + 127.5  # -1 to +1 -> 0 to 255
+    else:
+        if x.min() >= 0.0:
+            x = x * 255.0  # 0 to 1 -> 0 to 255
+        else:
+            x = (x * 127.5) + 127.5  # -1 to +1 -> 0 to 255
+
+    return x.round().astype(np.uint8)
+
+
+def ndimage_to_u8_norm(x: np.ndarray) -> np.ndarray:
     min = x.min()
     max = x.max()
 
     x = ((x - min) / (max - min)) * 255
-    x = x.round().astype(np.uint8)
-    return x
+    return x.round().astype(np.uint8)
 
 
 class HFLoadFilter(logging.Filter):

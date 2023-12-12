@@ -80,7 +80,7 @@ def load_partial_from_config(config) -> partial[Any]:
     return partial(get_obj_from_str(target), **params)
 
 
-def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor:
+def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 8) -> Tensor:
     # wh a tuple of (width, height)
     # xc a list of captions to plot
     b = len(xc)
@@ -89,7 +89,7 @@ def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor
     # load font and get width
     font = get_image_font(size=size)
     font_w = font.getlength(" ")  # monospace font
-    nc = (wh[0] // font_w) - 1  # number of characters per line
+    nc = wh[0] // font_w  # number of characters per line
 
     for bi in range(b):
         # make a new canvas and set up for drawing
@@ -112,8 +112,7 @@ def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor
         txt = txt / 127.5 - 1.0  # 0-255 -> -1.0-1.0
         txts.append(txt)
 
-    txts = np.stack(txts)
-    txts = torch.tensor(txts)
+    txts = torch.tensor(np.stack(txts))
     return txts
 
 

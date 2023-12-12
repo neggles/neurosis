@@ -1,4 +1,4 @@
-from .misc import normalize8, silence_hf_load_warnings
+from .misc import ndimage_to_f32, ndimage_to_u8, ndimage_to_u8_norm, silence_hf_load_warnings
 from .module import (
     CheckpointFunction,
     MixedCheckpointFunction,
@@ -71,7 +71,9 @@ __all__ = [
     "mean_flat",
     "mixed_checkpoint",
     "MixedCheckpointFunction",
-    "normalize8",
+    "ndimage_to_f32",
+    "ndimage_to_u8_norm",
+    "ndimage_to_u8",
     "np_text_decode",
     "scale_module",
     "silence_hf_load_warnings",
