@@ -48,7 +48,7 @@ class BaseDiffusionSampler:
     ):
         num_steps = num_steps or self.num_steps
         if num_steps is None:
-            raise ValueError(f"Step count must be set at init or call time! {self.step_count=}")
+            raise ValueError(f"Step count must be set at init or call time! {self.num_steps=}")
 
         sigmas = self.discretization(n=num_steps, device=self.device)
         uc = uc if uc is not None else cond
@@ -78,6 +78,18 @@ class BaseDiffusionSampler:
                 desc=f"Sampling with {self.__class__.__name__} for {num_sigmas} steps",
             )
         return sigma_generator
+
+    @abstractmethod
+    def __call__(
+        self,
+        denoiser: Denoiser,
+        x: Tensor,
+        cond: Tensor,
+        uc: Optional[Tensor] = None,
+        num_steps: Optional[int] = None,
+        **kwargs,
+    ):
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class SingleStepDiffusionSampler(BaseDiffusionSampler):
@@ -119,8 +131,8 @@ class EDMSampler(SingleStepDiffusionSampler):
 
     def sampler_step(
         self,
-        sigma: Tensor | float,
-        next_sigma: Tensor | float,
+        sigma: Tensor,
+        next_sigma: Tensor,
         denoiser: Denoiser,
         x: Tensor,
         cond: Tensor,
@@ -140,7 +152,15 @@ class EDMSampler(SingleStepDiffusionSampler):
         x = self.possible_correction_step(euler_step, x, d, dt, next_sigma, denoiser, cond, uc)
         return x
 
-    def __call__(self, denoiser, x, cond, uc=None, num_steps=None):
+    def __call__(
+        self,
+        denoiser: Denoiser,
+        x: Tensor,
+        cond: Tensor,
+        uc: Optional[Tensor] = None,
+        num_steps: Optional[int] = None,
+        **kwargs,
+    ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps)
 
         for i in self.get_sigma_gen(num_sigmas):
@@ -163,20 +183,38 @@ class EDMSampler(SingleStepDiffusionSampler):
 
 
 class AncestralSampler(SingleStepDiffusionSampler):
-    def __init__(self, eta=1.0, s_noise=1.0, *args, **kwargs):
+    def __init__(
+        self,
+        eta: float = 1.0,
+        s_noise: float = 1.0,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
 
         self.eta = eta
         self.s_noise = s_noise
         self.noise_sampler = lambda x: torch.randn_like(x)
 
-    def ancestral_euler_step(self, x, denoised, sigma, sigma_down):
+    def ancestral_euler_step(
+        self,
+        x: Tensor,
+        denoised: Tensor,
+        sigma: Tensor,
+        sigma_down: Tensor,
+    ):
         d = to_d(x, sigma, denoised)
         dt = append_dims(sigma_down - sigma, x.ndim)
 
         return self.euler_step(x, d, dt)
 
-    def ancestral_step(self, x, sigma, next_sigma, sigma_up):
+    def ancestral_step(
+        self,
+        x: Tensor,
+        sigma: Tensor | float,
+        next_sigma: Tensor,
+        sigma_up: Tensor,
+    ):
         x = torch.where(
             append_dims(next_sigma, x.ndim) > 0.0,
             x + self.noise_sampler(x) * self.s_noise * append_dims(sigma_up, x.ndim),
@@ -184,7 +222,15 @@ class AncestralSampler(SingleStepDiffusionSampler):
         )
         return x
 
-    def __call__(self, denoiser, x, cond, uc=None, num_steps=None):
+    def __call__(
+        self,
+        denoiser: Denoiser,
+        x: Tensor,
+        cond: Tensor,
+        uc: Optional[Tensor] = None,
+        num_steps: Optional[int] = None,
+        **kwargs,
+    ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps)
 
         for i in self.get_sigma_gen(num_sigmas):
@@ -211,7 +257,15 @@ class LinearMultistepSampler(BaseDiffusionSampler):
 
         self.order = order
 
-    def __call__(self, denoiser, x, cond, uc=None, num_steps=None, **kwargs):
+    def __call__(
+        self,
+        denoiser: Denoiser,
+        x: Tensor,
+        cond: Tensor,
+        uc: Optional[Tensor] = None,
+        num_steps: Optional[int] = None,
+        **kwargs,
+    ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps)
 
         ds = []
@@ -351,7 +405,15 @@ class DPMPP2MSampler(BaseDiffusionSampler):
 
         return x, denoised
 
-    def __call__(self, denoiser, x, cond, uc=None, num_steps=None, **kwargs):
+    def __call__(
+        self,
+        denoiser: Denoiser,
+        x: Tensor,
+        cond: Tensor,
+        uc: Optional[Tensor] = None,
+        num_steps: Optional[int] = None,
+        **kwargs,
+    ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps)
 
         old_denoised = None

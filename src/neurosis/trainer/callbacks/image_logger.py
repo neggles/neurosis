@@ -7,7 +7,6 @@ from warnings import warn
 
 import numpy as np
 import torch
-import torchvision
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
@@ -15,8 +14,9 @@ from matplotlib import pyplot as plt
 from PIL import Image
 from torch import Tensor
 from torch.amp.autocast_mode import autocast
+from torchvision.utils import make_grid
 
-from neurosis.utils import isheatmap
+from neurosis.utils import isheatmap, ndimage_to_u8
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +64,9 @@ class ImageLogger(Callback):
 
         self.__last_logged_step: int = -1
         self.__trainer: Trainer = None
-        self.__pl_module: LightningModule = None
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.__trainer = trainer
-        self.__pl_module = pl_module
 
     @property
     def local_dir(self) -> Optional[Path]:
@@ -161,11 +159,13 @@ class ImageLogger(Callback):
                             step=pl_module.global_step,
                         )
             else:
-                grid = torchvision.utils.make_grid(images[k], nrow=4)
-                if self.rescale:
-                    grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
-                grid: np.ndarray = grid.transpose(0, 1).transpose(1, 2).squeeze(-1).cpu().numpy()
-                grid = (grid * 255).astype(np.uint8)
+                grid: Tensor = make_grid(images[k], nrow=4).permute((1, 2, 0)).squeeze(-1).cpu().numpy()
+
+                if grid.dtype != np.uint8:
+                    if self.rescale:
+                        grid = ndimage_to_u8(grid)
+                    else:
+                        grid = ndimage_to_u8(grid, zero_min=True)
 
                 filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
                 path = root / filename
@@ -222,7 +222,9 @@ class ImageLogger(Callback):
         )
         # call the actual log_images method
         with torch.inference_mode(), autocast(**autocast_kwargs):
-            images: list[Tensor] = pl_module.log_images(batch, split=split, **self.log_func_kwargs)
+            images: list[Tensor] = pl_module.log_images(
+                batch, num_img=self.max_images, split=split, **self.log_func_kwargs
+            )
 
         # flip back to training mode if we flipped to eval mode earlier
         if training:
@@ -265,8 +267,7 @@ class ImageLogger(Callback):
         batch,
         batch_idx,
     ):
-        if self.enabled and pl_module.global_step > 0:
-            self.maybe_log_images(pl_module, batch, batch_idx, split="train")
+        self.maybe_log_images(pl_module, batch, batch_idx, split="train")
 
     @rank_zero_only
     def on_train_batch_start(
@@ -276,9 +277,11 @@ class ImageLogger(Callback):
         batch,
         batch_idx,
     ):
-        if self.log_before_start and self.get_step_idx(batch_idx, pl_module.global_step) == 0:
-            logger.info(f"{self.__class__.__name__}: logging before training")
-            self.maybe_log_images(pl_module, batch, batch_idx, split="train", force=True)
+        if self.enabled and self.log_before_start:
+            # separate if to reduce processing time for most batches
+            if self.get_step_idx(batch_idx, pl_module.global_step) == 0:
+                logger.info(f"{self.__class__.__name__}: logging before training")
+                self.maybe_log_images(pl_module, batch, batch_idx, split="train", force=True)
 
     @rank_zero_only
     def on_validation_batch_end(
