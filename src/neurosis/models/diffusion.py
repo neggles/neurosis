@@ -76,7 +76,7 @@ class DiffusionEngine(L.LightningModule):
         self.use_ema = use_ema
         if self.use_ema:
             self.model_ema = LitEma(self.model, decay=ema_decay_rate)
-            print(f"Keeping EMAs of {len(list(self.model_ema.buffers()))}.")
+            logger.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))}.")
         else:
             self.model_ema = None
 
@@ -100,9 +100,9 @@ class DiffusionEngine(L.LightningModule):
                 "scheduler",
             ]
         )
-        for logger in self.loggers:
-            if isinstance(logger, WandbLogger):
-                logger.experiment.config.update(self.hparams)
+        for pl_logger in self.loggers:
+            if isinstance(pl_logger, WandbLogger):
+                pl_logger.experiment.config.update(self.hparams)
 
     def init_from_ckpt(self, path: Path) -> None:
         if path.suffix == ".safetensors":
@@ -212,14 +212,14 @@ class DiffusionEngine(L.LightningModule):
             self.model_ema.store(self.model.parameters())
             self.model_ema.copy_to(self.model)
             if context is not None:
-                print(f"{context}: Switched to EMA weights")
+                logger.info(f"{context}: Switched to EMA weights")
         try:
             yield None
         finally:
             if self.use_ema:
                 self.model_ema.restore(self.model.parameters())
                 if context is not None:
-                    print(f"{context}: Restored training weights")
+                    logger.info(f"{context}: Restored training weights")
 
     def configure_optimizers(self):
         param_groups = []

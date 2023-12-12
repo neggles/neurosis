@@ -112,14 +112,14 @@ class AbstractAutoencoder(L.LightningModule):
             self.model_ema.store(self.parameters())
             self.model_ema.copy_to(self)
             if context is not None:
-                print(f"{context}: Switched to EMA weights")
+                logger.info(f"{context}: Switched to EMA weights")
         try:
             yield None
         finally:
             if self.use_ema:
                 self.model_ema.restore(self.parameters())
                 if context is not None:
-                    print(f"{context}: Restored training weights")
+                    logger.info(f"{context}: Restored training weights")
 
     @abstractmethod
     def encode(self, *args, **kwargs) -> Tensor:

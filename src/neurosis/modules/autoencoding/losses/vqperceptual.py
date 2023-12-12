@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Generator, Iterator, Optional
 
 import torch
@@ -7,6 +8,8 @@ from torch.nn import Parameter
 from neurosis.modules.losses.functions import adopt_weight, hinge_d_loss, vanilla_d_loss
 from neurosis.modules.losses.lpips import LPIPS
 from neurosis.modules.losses.patchgan import NLayerDiscriminator
+
+logger = logging.getLogger(__name__)
 
 
 class VQLPIPSWithDiscriminator(nn.Module):
@@ -49,7 +52,7 @@ class VQLPIPSWithDiscriminator(nn.Module):
         self.discriminator.initialize_weights()
         self.discriminator_iter_start = disc_start
 
-        print(f"VQLPIPSWithDiscriminator running with {disc_loss} loss.")
+        logger.info(f"VQLPIPSWithDiscriminator running with {disc_loss} loss.")
         self.disc_factor = disc_factor
         self.discriminator_weight = disc_weight
 

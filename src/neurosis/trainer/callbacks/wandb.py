@@ -1,3 +1,4 @@
+import logging
 from os import PathLike, environ
 from pathlib import Path
 from typing import Optional
@@ -7,6 +8,8 @@ from lightning import LightningModule, Trainer
 from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.loggers import Logger, WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
+
+logger = logging.getLogger(__name__)
 
 __run = None
 __logger = None
@@ -25,7 +28,7 @@ def init_wandb(
     save_dir = Path(save_dir)
     save_dir.mkdir(exist_ok=True, parents=True)
 
-    print(f"setting WANDB_DIR to {save_dir}")
+    logger.info(f"setting WANDB_DIR to {save_dir}")
     environ["WANDB_DIR"] = save_dir
 
     if debug:
@@ -38,7 +41,7 @@ def init_wandb(
             group=group_name,
             name=run_name,
         )
-    print(f"wandb initialized for run {wandb.run.name}")
+    logger.info(f"wandb initialized for run {wandb.run.name}")
 
 
 def get_wandb_logger(

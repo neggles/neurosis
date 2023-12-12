@@ -1,3 +1,4 @@
+import logging
 from inspect import Parameter, signature
 from pathlib import Path
 from typing import Any
@@ -5,6 +6,8 @@ from typing import Any
 from lightning.pytorch import Trainer
 from natsort import natsorted
 from packaging.version import Version
+
+logger = logging.getLogger(__name__)
 
 
 def default_trainer_args() -> dict[str, Any]:
@@ -18,18 +21,17 @@ def get_checkpoint_name(logdir: Path) -> tuple[Path, str]:
     ckpt_dir = logdir.joinpath("checkpoints").resolve()
     ckpt_files = natsorted(ckpt_dir.glob("last**.ckpt"))
 
-    print('available "last" checkpoints:')
-    print([f"  - {x.absolute().relative_to(ckpt_dir)}" for x in ckpt_files])
+    logger.info('available "last" checkpoints:')
+    logger.info([f"  - {x.absolute().relative_to(ckpt_dir)}" for x in ckpt_files])
     if len(ckpt_files) > 1:
-        print("got most recent checkpoint")
+        logger.info("got most recent checkpoint")
         last_ckpt = sorted(ckpt_files, key=lambda x: x.stat().st_mtime)[-1]
-        print(f"Most recent ckpt is {last_ckpt}")
+        logger.info(f"Most recent ckpt is {last_ckpt}")
         logdir.joinpath("most_recent_ckpt.txt").write_text(last_ckpt + "\n")
         try:
             version = Version(last_ckpt.stem.split("-v")).major
         except Exception as e:
-            print("version confusion but not bad")
-            print(e)
+            logger.exception("version confusion but not bad")
             version = 1
         # version = last_version + 1
     else:
@@ -37,5 +39,5 @@ def get_checkpoint_name(logdir: Path) -> tuple[Path, str]:
         ckpt_files = ckpt_files[0]
         version = 1
     melk_ckpt_name = f"last-v{version}.ckpt"
-    print(f"Current melk ckpt_files name: {melk_ckpt_name}")
+    logger.info(f"Current melk ckpt_files name: {melk_ckpt_name}")
     return ckpt_files, melk_ckpt_name

@@ -1,4 +1,5 @@
 """Stripped version of https://github.com/richzhang/PerceptualSimilarity/tree/master/models"""
+import logging
 from collections import OrderedDict, namedtuple
 
 import torch
@@ -9,6 +10,8 @@ from neurosis.data import lpips_checkpoint
 from neurosis.utils import disabled_train
 
 VggOutputs = namedtuple("VggOutputs", ["relu1_2", "relu2_2", "relu3_3", "relu4_3", "relu5_3"])
+
+logger = logging.getLogger(__name__)
 
 
 class LPIPS(nn.Module):
@@ -31,7 +34,7 @@ class LPIPS(nn.Module):
     def _load_pretrained(self, name="vgg_lpips"):
         with lpips_checkpoint(name) as ckpt:
             self.load_state_dict(torch.load(ckpt, map_location=torch.device("cpu")), strict=False)
-        print("loaded pretrained LPIPS loss from {}.pth".format(name))
+        logger.info("loaded pretrained LPIPS loss from {}.pth".format(name))
 
     def forward(self, input: Tensor, target):
         in0_input, in1_input = (self.scaling_layer(input), self.scaling_layer(target))
