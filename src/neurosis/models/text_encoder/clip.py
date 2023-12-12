@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Optional, Union
 
 import kornia
@@ -11,7 +12,9 @@ from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.tokenization_utils import BatchEncoding
 
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.utils import autocast, expand_dims_like, np_text_decode
+from neurosis.utils import autocast, expand_dims_like, np_text_decode, silence_hf_load_warnings
+
+logger = logging.getLogger(__name__)
 
 
 class FrozenCLIPEmbedder(AbstractEmbModel):
@@ -39,7 +42,8 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
             raise ValueError(f"layer must be one of {self.LAYERS}, got {layer=}")
 
         self.tokenizer: CLIPTokenizer = CLIPTokenizer.from_pretrained(version)
-        self.transformer: CLIPTextModel = CLIPTextModel.from_pretrained(version)
+        with silence_hf_load_warnings():
+            self.transformer: CLIPTextModel = CLIPTextModel.from_pretrained(version)
         self.device = device
         self.max_length = max_length
         if freeze:
@@ -123,9 +127,10 @@ class FrozenOpenCLIPEmbedder(AbstractEmbModel):
         if layer not in self.LAYERS:
             raise ValueError(f"layer must be one of {self.LAYERS}, got {layer=}")
 
-        model, _, _ = open_clip.create_model_and_transforms(
-            arch, device=torch.device("cpu"), pretrained=version
-        )
+        with silence_hf_load_warnings(logger.root.level):
+            model, _, _ = open_clip.create_model_and_transforms(
+                arch, device=torch.device("cpu"), pretrained=version
+            )
         del model.visual
         self.model = model
 
@@ -200,11 +205,12 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         if layer not in self.LAYERS:
             raise ValueError(f"layer must be one of {self.LAYERS}, got {layer=}")
 
-        model, _, _ = open_clip.create_model_and_transforms(
-            arch,
-            device=torch.device("cpu"),
-            pretrained=version,
-        )
+        with silence_hf_load_warnings():
+            model, _, _ = open_clip.create_model_and_transforms(
+                arch,
+                device=torch.device("cpu"),
+                pretrained=version,
+            )
         del model.visual
         self.model: open_clip.CLIP = model
 
@@ -301,11 +307,13 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        model, _, _ = open_clip.create_model_and_transforms(
-            arch,
-            device=torch.device("cpu"),
-            pretrained=version,
-        )
+
+        with silence_hf_load_warnings():
+            model, _, _ = open_clip.create_model_and_transforms(
+                arch,
+                device=torch.device("cpu"),
+                pretrained=version,
+            )
         del model.transformer
         self.model: open_clip.CLIP = model
         self.max_crops = num_image_crops
@@ -420,9 +428,9 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
             )
             if tokens is not None:
                 tokens = rearrange(tokens, "(b n) t d -> b t (n d)", n=self.max_crops)
-                print(
+                logger.warn(
                     f"You are running very experimental token-concat in {self.__class__.__name__}. "
-                    f"Check what you are doing, and then remove this message."
+                    f"I hope you know what you're doing!."
                 )
 
         return x, tokens if self.output_tokens else x
