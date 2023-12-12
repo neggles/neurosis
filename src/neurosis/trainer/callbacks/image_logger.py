@@ -72,14 +72,25 @@ class ImageLogger(Callback):
 
     @property
     def local_dir(self) -> Optional[Path]:
-        tgt_dir = (  # pick the first one of these that's not None
-            self.__pl_module.logger.save_dir
-            or self.__pl_module.logger.log_dir
-            or self.__trainer.log_dir
-            or self.__trainer.default_root_dir
-            or None
-        )
-        return Path(tgt_dir) if tgt_dir is not None else None
+        tgt_dir = None
+        for pl_logger in self.__trainer.loggers:
+            if pl_logger.save_dir is not None:
+                logger.debug(f"using {pl_logger.__class__.__name__} save_dir")
+                tgt_dir = Path(pl_logger.save_dir).resolve()
+                break
+            if pl_logger.log_dir is not None:
+                logger.debug(f"using {pl_logger.__class__.__name__} log_dir")
+                tgt_dir = Path(pl_logger.log_dir).resolve()
+                break
+
+        if tgt_dir is None:
+            if self.__trainer.default_root_dir is not None:
+                logger.debug(f"using {self.__trainer.__class__.__name__} default_root_dir")
+                tgt_dir = Path(self.__trainer.default_root_dir)
+            else:
+                logger.debug("no save_dir, log_dir, or default_root_dir found...")
+
+        return tgt_dir
 
     def get_step_idx(self, batch_idx: int, global_step: Optional[int] = None) -> int:
         global_step = global_step or self.__trainer.global_step
