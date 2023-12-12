@@ -1,3 +1,4 @@
+import logging
 from os import PathLike
 from pathlib import Path
 from time import sleep
@@ -7,6 +8,8 @@ from lightning.pytorch import Callback, LightningModule, Trainer
 from omegaconf import OmegaConf
 
 MULTINODE_HACKS = True
+
+logger = logging.getLogger(__name__)
 
 
 class SetupCallback(Callback):
@@ -39,13 +42,13 @@ class SetupCallback(Callback):
 
     def on_exception(self, trainer: Trainer, pl_module: LightningModule, exception: Exception) -> None:
         if self.debug is False and trainer.is_global_zero:
-            print("Exception occurred - summoning checkpoint...")
+            logger.info("Exception occurred - summoning checkpoint...")
             if self.ckpt_name is None:
                 ckpt_path = self.ckptdir.joinpath("last.ckpt")
             else:
                 ckpt_path = self.ckptdir.joinpath(self.ckpt_name)
             trainer.save_checkpoint(ckpt_path)
-            print("Checkpoint summoned.")
+            logger.info("Checkpoint summoned.")
 
     def on_fit_start(self, trainer, pl_module: LightningModule) -> None:
         if trainer.is_global_zero:
@@ -58,8 +61,8 @@ class SetupCallback(Callback):
                 if "metrics_over_trainsteps_checkpoint" in self.lightning_config["callbacks"]:
                     self.ckptdir.joinpath("trainstep_checkpoints").mkdir(exist_ok=True, parents=True)
 
-            print("Project config")
-            print(OmegaConf.to_yaml(self.config))
+            logger.info("Project config")
+            logger.info(OmegaConf.to_yaml(self.config))
             if MULTINODE_HACKS:
                 sleep(5)
             OmegaConf.save(
@@ -67,8 +70,8 @@ class SetupCallback(Callback):
                 self.cfgdir.joinpath(f"{self.now}-project.yaml"),
             )
 
-            print("Lightning config")
-            print(OmegaConf.to_yaml(self.lightning_config))
+            logger.info("Lightning config")
+            logger.info(OmegaConf.to_yaml(self.lightning_config))
             OmegaConf.save(
                 OmegaConf.create({"lightning": self.lightning_config}),
                 self.cfgdir.joinpath(f"{self.now}-lightning.yaml"),
@@ -79,7 +82,7 @@ class SetupCallback(Callback):
             if not (MULTINODE_HACKS or self.resume) and self.logdir.exists():
                 target_dir = self.logdir.parent.joinpath("child_runs", self.logdir.name)
                 rank = trainer.local_rank
-                print(f"[R{rank}]: Renaming logdir {self.logdir} to {target_dir}")
+                logger.info(f"[R{rank}]: Renaming logdir {self.logdir} to {target_dir}")
                 target_dir.mkdir(exist_ok=True, parents=True)
                 try:
                     self.logdir.rename(target_dir.absolute())

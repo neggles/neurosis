@@ -166,7 +166,7 @@ def mean_flat(tensor: Tensor) -> Tensor:
 def count_params(model: Module, verbose: bool = False) -> int:
     total_params = sum(p.numel() for p in model.parameters())
     if verbose:
-        print(f"{model.__class__.__name__} has {total_params * 1.e-6:.2f} M params.")
+        logger.info(f"{model.__class__.__name__} has {total_params * 1.e-6:.2f} M params.")
     return total_params
 
 
@@ -210,13 +210,13 @@ def append_dims(x: Tensor, target_dims: int) -> Tensor:
 
 
 def load_model_from_config(config, ckpt: PathLike, verbose=True, freeze=True) -> Module:
-    print(f"Loading model from {ckpt}")
+    logger.info(f"Loading model from {ckpt}")
     ckpt = Path(ckpt)
 
     if ckpt.suffix == ".ckpt":
         lightning_state = torch.load(ckpt, map_location="cpu")
         if "global_step" in lightning_state:
-            print(f"Global Step for {ckpt.name}: {lightning_state['global_step']}")
+            logger.info(f"Global Step for {ckpt.name}: {lightning_state['global_step']}")
         state_dict = lightning_state["state_dict"]
     elif ckpt.suffix == ".safetensors":
         state_dict = load_safetensors(ckpt)
@@ -228,11 +228,11 @@ def load_model_from_config(config, ckpt: PathLike, verbose=True, freeze=True) ->
     m, u = model.load_state_dict(state_dict, strict=False)
 
     if len(m) > 0 and verbose:
-        print("missing keys:")
-        print(m)
+        logger.info("missing keys:")
+        logger.info(m)
     if len(u) > 0 and verbose:
-        print("unexpected keys:")
-        print(u)
+        logger.info("unexpected keys:")
+        logger.info(u)
 
     model.eval()
     if freeze:

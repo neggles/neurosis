@@ -1,8 +1,7 @@
 """
     Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py
 """
-
-
+import logging
 from abc import abstractmethod
 from typing import Optional
 
@@ -21,6 +20,8 @@ from neurosis.modules.diffusion.sampling_utils import (
 )
 from neurosis.modules.guidance import Guider, IdentityGuider
 from neurosis.utils import append_dims
+
+logger = logging.getLogger(__name__)
 
 
 class BaseDiffusionSampler:
@@ -67,10 +68,10 @@ class BaseDiffusionSampler:
     def get_sigma_gen(self, num_sigmas):
         sigma_generator = range(num_sigmas - 1)
         if self.verbose:
-            print("#" * 30, " Sampling setting ", "#" * 30)
-            print(f"Sampler: {self.__class__.__name__}")
-            print(f"Discretization: {self.discretization.__class__.__name__}")
-            print(f"Guider: {self.guider.__class__.__name__}")
+            logger.info("#" * 30, " Sampling setting ", "#" * 30)
+            logger.info(f"Sampler: {self.__class__.__name__}")
+            logger.info(f"Discretization: {self.discretization.__class__.__name__}")
+            logger.info(f"Guider: {self.guider.__class__.__name__}")
             sigma_generator = tqdm(
                 sigma_generator,
                 total=num_sigmas,
