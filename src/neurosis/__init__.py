@@ -24,6 +24,8 @@ PACKAGE = __package__.replace("_", "-")
 PACKAGE_ROOT = Path(__file__).parent.parent
 
 is_debug = getenv("NEUROSIS_DEBUG", None) is not None
+if is_debug is True:
+    is_debug = getenv("NEUROSIS_DEBUG").lower() not in ("0", "false", "no")
 
 _ = _install_traceback(show_locals=is_debug, width=120, word_wrap=True)
 
