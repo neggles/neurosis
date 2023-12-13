@@ -117,7 +117,7 @@ class LegacyCosineAnnealingWarmupRestarts(LRScheduler):
         optimizer: Optimizer,
         first_cycle_steps: int,
         cycle_mult: float = 1.0,
-        min_lr: float = 1e-6,
+        min_lr: float | list[float] = 1e-6,
         warm_up_steps: int = 0,
         gamma: float = 0.9,
         last_epoch: int = -1,
@@ -128,7 +128,7 @@ class LegacyCosineAnnealingWarmupRestarts(LRScheduler):
         self.max_lrs: list[float] = []
         self.active_lrs: list[float] = []
         self.base_lrs: list[float] = []
-        self.min_lr = min_lr
+        self.min_lrs = min_lr
         self.warm_up_steps = warm_up_steps
         self.gamma = gamma
         self.cur_cycle_steps = first_cycle_steps
@@ -152,15 +152,17 @@ class LegacyCosineAnnealingWarmupRestarts(LRScheduler):
         self.active_lrs.clear()
         self.base_lrs.clear()
 
-        param_group: ParamGroup
-        for param_group in self.optimizer.param_groups:
+        if not isinstance(self.min_lrs, list):
+            self.min_lrs = [self.min_lrs] * len(self.optimizer.param_groups)
+
+        for idx, param_group in enumerate(self.optimizer.param_groups):
             init_lr = param_group["initial_lr"]
+            base_lr = self.min_lrs[idx] if init_lr > self.min_lrs[idx] else 0.0
+
             self.max_lrs.append(init_lr)
             self.active_lrs.append(init_lr)
-
-            min_lr = self.min_lr if init_lr > self.min_lr else 0.0
-            param_group["lr"] = min_lr
-            self.base_lrs.append(min_lr)
+            self.base_lrs.append(base_lr)
+            param_group["lr"] = base_lr
 
     def get_lr(self) -> list[float]:
         if self.step_in_cycle == -1:
