@@ -90,8 +90,7 @@ class ImageLogger(Callback):
 
         return tgt_dir
 
-    def get_step_idx(self, batch_idx: int, global_step: Optional[int] = None) -> int:
-        global_step = global_step or self.__trainer.global_step
+    def get_step_idx(self, global_step: int, batch_idx: int) -> int:
         match self.log_step_type:
             case StepType.global_step:
                 return global_step
@@ -104,18 +103,19 @@ class ImageLogger(Callback):
             case _:
                 raise ValueError(f"invalid log_step_type: {self.log_step_type}")
 
-    def check_step_idx(self, batch_idx: int, global_step: Optional[int] = None) -> bool:
-        step_idx = self.get_step_idx(batch_idx, global_step)
+    def check_step_idx(self, global_step: int, batch_idx: int) -> bool:
+        step_idx = self.get_step_idx(global_step, batch_idx)
 
+        # don't log the same step twice
+        if step_idx <= self.__last_logged_step:
+            return False
+
+        # log the first step if log_first_step is True
         if step_idx == 0:
             return self.log_first_step
 
-        # don't log the same step twice
-        if step_idx == self.__last_logged_step:
-            return False
-
         # check if step_idx is a multiple of every_n_train_steps
-        if not (step_idx % self.every_n_train_steps):
+        if step_idx > 0 and (step_idx % self.every_n_train_steps) == 0:
             return True
 
         # otherwise, don't log this step
@@ -153,11 +153,7 @@ class ImageLogger(Callback):
                 for logger in pl_module.loggers:
                     if isinstance(logger, WandbLogger):
                         img = Image.open(path)
-                        logger.log_image(
-                            key=f"{split}/{k}",
-                            images=[img],
-                            step=pl_module.global_step,
-                        )
+                        logger.log_image(key=f"{split}/{k}", images=[img])
             else:
                 grid: Tensor = make_grid(images[k], nrow=4).permute((1, 2, 0)).squeeze(-1).cpu().numpy()
 
@@ -175,15 +171,12 @@ class ImageLogger(Callback):
 
                 for logger in pl_module.loggers:
                     if isinstance(logger, WandbLogger):
-                        logger.log_image(
-                            key=f"{split}/{k}",
-                            images=[img],
-                            step=pl_module.global_step,
-                        )
+                        logger.log_image(key=f"{split}/{k}", images=[img])
 
     @rank_zero_only
     def maybe_log_images(
         self,
+        trainer: Trainer,
         pl_module: LightningModule,
         batch: Union[Tensor, dict[str, Tensor]],
         batch_idx: int,
@@ -194,7 +187,7 @@ class ImageLogger(Callback):
             return
 
         # check if we should log this step and return early if not
-        if not self.check_step_idx(batch_idx, pl_module.global_step):
+        if not self.check_step_idx(trainer.global_step, batch_idx):
             return
 
         # now make sure the module has a log_images method that we can call
@@ -206,7 +199,7 @@ class ImageLogger(Callback):
             return
 
         # confirmed we're logging, save the step number
-        self.__last_logged_step = self.get_step_idx(batch_idx, pl_module.global_step)
+        self.__last_logged_step = self.get_step_idx(trainer.global_step, batch_idx)
 
         # if the model is in training mode, flip to eval mode
         training = pl_module.training
@@ -267,7 +260,8 @@ class ImageLogger(Callback):
         batch,
         batch_idx,
     ):
-        self.maybe_log_images(pl_module, batch, batch_idx, split="train")
+        if self.enabled:
+            self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train")
 
     @rank_zero_only
     def on_train_batch_start(
@@ -277,11 +271,9 @@ class ImageLogger(Callback):
         batch,
         batch_idx,
     ):
-        if self.enabled and self.log_before_start:
-            # separate if to reduce processing time for most batches
-            if self.get_step_idx(batch_idx, pl_module.global_step) == 0:
-                logger.info(f"{self.__class__.__name__}: logging before training")
-                self.maybe_log_images(pl_module, batch, batch_idx, split="train", force=True)
+        if self.enabled and self.log_before_start and trainer.global_step == 0:
+            logger.info(f"{self.__class__.__name__} running log before training...")
+            self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train", force=True)
 
     @rank_zero_only
     def on_validation_batch_end(
@@ -294,10 +286,5 @@ class ImageLogger(Callback):
         *args,
         **kwargs,
     ):
-        if self.enabled and pl_module.global_step > 0:
-            self.maybe_log_images(pl_module, batch, batch_idx, split="val")
-
-        # # this isn't actually implemented here
-        # calibrate = getattr(pl_module, "calibrate_grad_norm", False)
-        # if calibrate and (batch_idx % 25 == 0) and batch_idx > 0:
-        #     self.log_gradients(trainer, pl_module, batch_idx=batch_idx)
+        if self.enabled and trainer.global_step > 0:
+            self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="val")

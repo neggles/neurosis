@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=2)
-def get_image_font(name: str = "NotoSansMono", size: int = 10) -> ImageFont.ImageFont:
+def get_image_font(name: str = "NotoSansMono", size: int = 10) -> ImageFont.FreeTypeFont:
     with open_package_file("fonts", f"{name}.ttf", "rb") as f:
         font = ImageFont.truetype(f, size=size)
     return font
@@ -80,25 +80,33 @@ def load_partial_from_config(config) -> partial[Any]:
     return partial(get_obj_from_str(target), **params)
 
 
-def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 8) -> Tensor:
+def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor:
     # wh a tuple of (width, height)
     # xc a list of captions to plot
     b = len(xc)
     txts = list()
+    width, height = wh
 
     # load font and get width
-    font = get_image_font(size=size)
-    font_w = font.getlength(" ")  # monospace font
-    nc = wh[0] // font_w  # number of characters per line
+    font: ImageFont.FreeTypeFont = get_image_font(size=size)
+    font_w = font.getlength(" ")
+    nc = width // font_w  # number of characters per line
 
     for bi in range(b):
-        # make a new canvas and set up for drawing
-        txt = Image.new("RGB", wh, color="white")
-        draw = ImageDraw.Draw(txt)
-
         # get text and wrap it at nc
         text_seq = xc[bi][0] if isinstance(xc[bi], list) else xc[bi]
         lines = "\n".join(text_wrap(text_seq, nc, tabsize=4))
+
+        _, _, _, min_h = font.getbbox(lines)  # left, top, right, bottom
+        if min_h > height:
+            logger.warning(
+                "Text too large to fit in image! Use a smaller font?"
+                + f"Image size: {width}x{height}, Text size: {width}x{min_h}"
+            )
+
+        # make a new canvas and set up for drawing
+        txt = Image.new("RGB", wh, color="white")
+        draw = ImageDraw.Draw(txt)
 
         try:
             # actually draw the text

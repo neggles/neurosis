@@ -223,13 +223,26 @@ class DiffusionEngine(L.LightningModule):
 
     def configure_optimizers(self):
         param_groups = []
-        param_groups.append({"params": list(self.model.parameters())})
+        unet_params = {"name": "UNet", "params": list(self.model.parameters())}
+        # add initial_lr if set on the unet
+        if hasattr(self.model, "base_lr") and self.model.base_lr is not None:
+            logger.info(f"Setting initial_lr for unet to {self.model.base_lr:.2e}")
+            unet_params["initial_lr"] = self.model.base_lr
+        param_groups.append(unet_params)
 
         embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
             if embedder.is_trainable:
-                logger.info(f"Adding {embedder.__class__.__name__} to trainable parameter groups")
-                param_groups.append({"params": list(embedder.parameters())})
+                embedder_name = getattr(embedder, "name", embedder.__class__.__name__)
+                logger.info(f"Adding {embedder_name} to trainable parameter groups")
+
+                embedder_params = {"name": embedder_name, "params": list(embedder.parameters())}
+                # add initial_lr if set on the embedder
+                if hasattr(embedder, "base_lr") and embedder.base_lr is not None:
+                    logger.info(f"Setting initial_lr for {embedder_name} to {embedder.base_lr:.2e}")
+                    embedder_params["initial_lr"] = embedder.base_lr
+
+                param_groups.append(embedder_params)
 
         optimizer = self.optimizer(param_groups)
         if self.scheduler is not None:
@@ -256,7 +269,7 @@ class DiffusionEngine(L.LightningModule):
         return samples
 
     @torch.no_grad()
-    def log_conditionings(self, batch: dict, n: int) -> dict:
+    def log_conditionings(self, batch: dict[str, Tensor], n: int) -> dict:
         """
         Defines heuristics to log different conditionings.
         These can be lists of strings (text-to-image), tensors, ints, ...
@@ -272,11 +285,11 @@ class DiffusionEngine(L.LightningModule):
                     if x.dim() == 1:
                         # class-conditional, convert integer to string
                         x = [str(x[i].item()) for i in range(x.shape[0])]
-                        xc = log_txt_as_img((image_h, image_w), x, size=image_h // 4)
+                        xc = log_txt_as_img((image_h, image_w), x, size=min(image_h // 4, 96))
                     elif x.dim() == 2:
                         # size and crop cond and the like
                         x = ["x".join([str(xx) for xx in x[i].tolist()]) for i in range(x.shape[0])]
-                        xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
+                        xc = log_txt_as_img((image_h, image_w), x, size=min(image_h // 20, 24))
                     else:
                         raise NotImplementedError("Tensor conditioning with dim > 2 not implemented")
                 elif isinstance(x, list):
@@ -284,11 +297,11 @@ class DiffusionEngine(L.LightningModule):
                         x = np_text_decode(x)
                     if isinstance(x[0], str):
                         # strings
-                        xc = log_txt_as_img((image_h, image_w), x, size=image_h // 20)
+                        xc = log_txt_as_img((image_h, image_w), x, size=min(image_h // 20, 24))
                     else:
-                        raise NotImplementedError(f"Conditioning for list[{type(x[0])}] not implemented")
+                        raise NotImplementedError(f"Conditioning log for list[{type(x[0])}] not implemented")
                 else:
-                    raise NotImplementedError(f"Conditioning for input of {type(x)} not implemented")
+                    raise NotImplementedError(f"Conditioning log for input of {type(x)} not implemented")
                 log_dict[embedder.input_key] = xc
         return log_dict
 

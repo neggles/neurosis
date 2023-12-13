@@ -15,10 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 class AbstractEmbModel(nn.Module):
+    name: Optional[str]
     input_key: Optional[str]
     input_keys: Optional[List[str]]
     legacy_ucg_val: Optional[float]
     ucg_prng: Optional[np.random.RandomState]
+    base_lr: Optional[float]
 
     def __init__(
         self,
@@ -26,6 +28,7 @@ class AbstractEmbModel(nn.Module):
         ucg_rate: Optional[float] = 0.0,
         input_key: Optional[str] = None,
         base_lr: Optional[float] = None,
+        name: Optional[str] = None,
     ):
         super().__init__()
         if not hasattr(self, "is_trainable"):
@@ -36,6 +39,9 @@ class AbstractEmbModel(nn.Module):
             self.input_key = input_key
         if not hasattr(self, "base_lr") and base_lr is not None:
             self.base_lr = base_lr
+
+        if not hasattr(self, "name"):
+            name = name or str(self.__class__.__name__)
 
         # synchronize ucg_rate and ucg_prng for legacy ucg mode
         if hasattr(self, "legacy_ucg_val") and self.legacy_ucg_val is not None:
