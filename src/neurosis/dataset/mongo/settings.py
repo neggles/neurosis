@@ -1,12 +1,13 @@
 import logging
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from os import PathLike
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import parse_qs
 
-from pydantic import BaseModel, Field, MongoDsn, Protocol
+from pydantic import BaseModel, Field, MongoDsn, computed_field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pymongo import MongoClient
+from pymongo.collection import Collection
 from pymongo.database import Database
 
 from neurosis import get_dir
@@ -21,67 +22,81 @@ class Query(BaseModel):
     sort: Optional[list[tuple[str, int]]] = Field(None)
 
 
-class MongoSettings(BaseModel):
-    uri: MongoDsn = Field(..., env="MONGO_URI")
-    username: Optional[str] = Field(None)
-    password: Optional[str] = Field(None)
-    database: str = Field(..., description="Database to pull from", env="MONGO_DATABASE")
-    collection: str = Field(..., description="Collection to pull from", env="MONGO_COLLECTION")
-    query: Query = Field(default_factory=Query, description="Query to run on the collection")
+class MongoSettings(BaseSettings):
+    uri: MongoDsn = Field(..., description="MongoDB URI")
+    username: Optional[str] = Field(None, description="Username for the user")
+    password: Optional[str] = Field(None, description="Password for the user")
 
-    _client: Optional[MongoClient] = Field(None, allow_mutation=True, init=False, repr=False)
-    _count: Optional[int] = Field(None, allow_mutation=True, init=False, repr=False)
+    authMechanism: Optional[str] = Field(None, description="Authentication mechanism")
+    authSource: Optional[str] = Field(None, description="Database to authenticate against")
+    tls: bool = Field(False, description="Use TLS")
+    tlsInsecure: Optional[bool] = Field(None, description="Allow insecure TLS connections")
 
-    def get_client(self, new: bool = False) -> MongoClient:
-        if not new and self._client is not None:
-            return self._client
+    database_name: str = Field(..., description="Database to query", alias="database")
+    collection_name: str = Field(..., description="Collection to query", alias="collection")
+    query: Query = Field(description="Query to run on the collection")
 
+    model_config: SettingsConfigDict = dict(
+        arbitrary_types_allowed=True,
+        env_prefix="mongo_",
+    )
+
+    @computed_field
+    @cached_property
+    def client(self) -> MongoClient:
+        client = self.new_client()
+        return client
+
+    @computed_field
+    @cached_property
+    def database(self) -> Database:
+        db = self.client[self.database_name]
+        return db
+
+    @computed_field
+    @cached_property
+    def collection(self) -> Collection:
+        coll = self.database[self.collection_name]
+        return coll
+
+    @computed_field
+    @cached_property
+    def count(self) -> int:
+        aggr = [
+            {"$match": self.query.filter},
+            {"$project": {"_id": 1}},
+            {"$count": "count"},
+        ]
+        if self.query.sort is not None:
+            aggr.insert(1, {"$sort": dict(self.query.sort)})
+        count = self.collection.aggregate(aggr).next()["count"]
+        return count
+
+    def new_client(self) -> MongoClient:
         # parse the query string for extra kwargs to pass to MongoClient
-        mongo_kwargs: dict[str, Any] = parse_qs(self.uri.query)
-        user = self.username or self.uri.user
-        password = self.password or self.uri.password
-        # apply some sane defaults for authentication mode
-        mongo_kwargs.setdefault("authSource", "admin")
-        mongo_kwargs.setdefault("authMechanism", "SCRAM-SHA-256")
+        mongo_kwargs: dict[str, Any] = dict(self.uri.query_params())
 
-        client = MongoClient(
-            host=self.uri.host,
-            port=self.uri.port,
-            username=user,
-            password=password,
+        # apply some sane defaults for authentication mode
+        if self.tls is not None:
+            mongo_kwargs.setdefault("tls", self.tls)
+        if self.tlsInsecure is not None:
+            mongo_kwargs.setdefault("tlsInsecure", self.tlsInsecure)
+        mongo_kwargs.setdefault("authSource", self.authSource)
+        mongo_kwargs.setdefault("authMechanism", self.authMechanism)
+
+        return MongoClient(
+            host=self.uri.unicode_string(),
+            username=self.username,
+            password=self.password,
             **mongo_kwargs,
         )
-        if new:
-            # just return the new client
-            return client
-        else:
-            # save the client for future calls and return it
-            self._client = client
-            return self._client
-
-    def get_database(self) -> Database:
-        return self.get_client()[self.database]
-
-    def get_collection(self):
-        return self.get_database()[self.collection]
-
-    def get_count(self) -> int:
-        if self._count is None:
-            aggr = [
-                {"$match": self.query.filter},
-                {"$sort": self.query.sort or []},
-                {"$project": {"_id": 1}},
-                {"$count": "count"},
-            ]
-            self._count: int = self.get_collection().aggregate(aggr).next()["count"]
-        return self._count
 
 
 @lru_cache(maxsize=4)
 def get_mongo_settings(path: PathLike = DEFAULT_MONGO_CONFIG) -> MongoSettings:
     path = Path(path)
     if path.exists() and path.is_file:
-        return MongoSettings.parse_file(path, proto=Protocol.json)
+        return MongoSettings.model_validate_json(path.read_bytes(), strict=True)
     else:
         logger.info(f"Mongo config file {path} does not exist, using env")
         return MongoSettings()
