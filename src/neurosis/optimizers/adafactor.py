@@ -7,7 +7,7 @@ from torch.nn import Parameter
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.optimizer import Optimizer
 
-from .types import ParamGroup, Params, State
+from .types import LossClosure, ParamGroup, Params, State
 
 
 class Adafactor(Optimizer):
@@ -157,7 +157,7 @@ class Adafactor(Optimizer):
         return torch.mul(r_factor, c_factor)
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure: LossClosure = None):
         """
         Performs a single optimization step
 
