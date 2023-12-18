@@ -46,7 +46,7 @@ COPY . /workspace/neurosis
 # install neurosis
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     cd neurosis \
-  && python -m pip install -e .
+  && python -m pip install -e '.[all]'
 
 # this is set upstream but we may as well set it here too
 CMD ["/bin/bash", "-l"]
