@@ -31,10 +31,6 @@ DEFAULT_SCALE = {
 }
 
 
-def is_artist_or_character(tag):
-    return tag.startswith("character:") or tag.startswith("artist:")
-
-
 class TagFreqScale(UserDict):
     data: dict[int, float]
     steps: list[int]
@@ -106,11 +102,12 @@ class TagLoss(UserDict):
 class TagFrequencyHook(LossHook):
     def __init__(
         self,
+        # function to check if a tag is an artist or character tag
+        check_fn: Callable,
+        # input key for caption text
         input_key: str = "caption",
         # separator for tags in tag string
         tag_sep: str = ", ",
-        # function to check if a tag is an artist or character tag
-        check_fn: Callable = is_artist_or_character,
         # strength of loss pull towards historical frequency adjusted tag loss
         alpha: float = 0.2,
         # strength of historical loss accumulation
@@ -183,29 +180,30 @@ class TagFrequencyHook(LossHook):
         batch_len = loss.shape[0]
         tags = self.get_batch_tags(batch_len)
 
-        loss_simple = [x.detach().mean().cpu().item() for x in loss]
-        acc_simple = sum(loss_simple) / batch_len
+        base_loss = [x.detach().mean().cpu().item() for x in loss]
+        base_acc = sum(base_loss) / batch_len
 
         if self.total_loss <= 0.0:
-            self.total_loss = acc_simple
+            self.total_loss = base_acc
         else:
             # first 10 samples get more influence to warm up the stats
             batch_beta = min(self.beta, self.global_step / 10.0)
-            self.total_loss = (self.total_loss * batch_beta) + (acc_simple * (1.0 - batch_beta))
+            self.total_loss = (self.total_loss * batch_beta) + (base_acc * (1.0 - batch_beta))
 
         weights = []
         for i in range(batch_len):
             base_mult = 1
 
             sample_tags = [x for x in tags[i].split(self.tag_sep)]
+            sample_loss = base_loss[i]
+            tag_mults = []
+            base_mults = []
+
             if not self.ucg_batch:
                 adjust_tags = list(filter(self.check_fn, sample_tags))
             else:
                 adjust_tags = []
 
-            sample_loss = loss_simple[i]
-            tag_mults = []
-            base_mults = []
             for tag in adjust_tags:
                 count = self.tag_counter.increment(tag)
                 base_mults.append(self.freq_scale[count])
@@ -234,7 +232,7 @@ class TagFrequencyHook(LossHook):
             # apply rewards/punishments for frequency and good/bad tags
             target_loss *= base_mult
             # get ratio of adjusted loss to rolling average loss
-            loss_weight = target_loss / acc_simple
+            loss_weight = target_loss / base_acc
             # adjust for global modifier strength
             loss_weight = 1.0 + self.strength * (loss_weight - 1.0)
 
@@ -244,3 +242,9 @@ class TagFrequencyHook(LossHook):
         weights = torch.stack(weights).to(loss.device)
 
         return loss * weights, loss_dict
+
+
+## tag classifier functions
+def is_artist_or_character(tag: str) -> bool:
+    """Naive check for artist or character tags, requires tag to start with 'artist:' or 'character:'"""
+    return tag.startswith("character:") or tag.startswith("artist:")
