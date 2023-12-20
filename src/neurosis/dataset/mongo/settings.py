@@ -1,5 +1,5 @@
 import logging
-from functools import cached_property, lru_cache
+from functools import cached_property
 from os import PathLike
 from pathlib import Path
 from typing import Any, Optional
@@ -32,9 +32,11 @@ class MongoSettings(BaseSettings):
     tls: bool = Field(False, description="Use TLS")
     tlsInsecure: Optional[bool] = Field(None, description="Allow insecure TLS connections")
 
-    database_name: str = Field(..., description="Database to query", alias="database")
-    collection_name: str = Field(..., description="Collection to query", alias="collection")
+    db_name: str = Field(..., description="Database to query", alias="database")
+    coll_name: str = Field(..., description="Collection to query", alias="collection")
     query: Query = Field(description="Query to run on the collection")
+
+    caption_array: bool = Field(False, description="True if `caption` is an array of strings")
 
     model_config: SettingsConfigDict = dict(
         arbitrary_types_allowed=True,
@@ -43,20 +45,26 @@ class MongoSettings(BaseSettings):
 
     @computed_field
     @cached_property
+    def query_dict(self) -> dict[str, Any]:
+        qdict = dict(self.query)
+        return qdict
+
+    @computed_field
+    @cached_property
     def client(self) -> MongoClient:
-        client = self.new_client()
-        return client
+        mclient = self.new_client()
+        return mclient
 
     @computed_field
     @cached_property
     def database(self) -> Database:
-        db = self.client[self.database_name]
+        db = self.client[self.db_name]
         return db
 
     @computed_field
     @cached_property
     def collection(self) -> Collection:
-        coll = self.database[self.collection_name]
+        coll = self.database[self.coll_name]
         return coll
 
     @computed_field
@@ -92,7 +100,6 @@ class MongoSettings(BaseSettings):
         )
 
 
-@lru_cache(maxsize=4)
 def get_mongo_settings(path: PathLike = DEFAULT_MONGO_CONFIG) -> MongoSettings:
     path = Path(path)
     if path.exists() and path.is_file:
