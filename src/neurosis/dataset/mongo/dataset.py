@@ -31,7 +31,7 @@ from neurosis.utils import maybe_collect
 logger = logging.getLogger(__name__)
 
 
-def clear_fsspec():
+def clear_fsspec(worker_id: int):
     import fsspec
 
     fsspec.asyn.iothread[0] = None
