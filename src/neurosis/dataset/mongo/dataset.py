@@ -1,5 +1,4 @@
 import logging
-from functools import cached_property
 from io import BytesIO
 from os import PathLike
 from typing import Callable
@@ -9,6 +8,8 @@ import pandas as pd
 import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
+from pymongo import MongoClient
+from pymongo.collection import Collection as MongoCollection
 from pymongoarrow.api import find_pandas_all
 from s3fs import S3FileSystem
 from torch import Tensor
@@ -60,6 +61,7 @@ class MongoAspectDataset(AspectBucketDataset):
         self.shuffle_tags = shuffle_tags
         self.shuffle_keep = shuffle_keep
 
+        self.client: MongoClient = self.settings.new_client()
         self.fs = S3FileSystem(**s3fs_kwargs)
 
         # load meta
@@ -95,13 +97,17 @@ class MongoAspectDataset(AspectBucketDataset):
             "target_size_as_tuple": bucket.size,
         }
 
-    @cached_property
-    def collection(self):
-        return self.settings.new_client()[self.settings.db_name][self.settings.coll_name]
+    def refresh_client(self):
+        """Helper func to replace the current client with a new one."""
+        self.client = self.settings.new_client()
+
+    @property
+    def collection(self) -> MongoCollection:
+        return self.client.get_database(self.settings.db_name).get_collection(self.settings.coll_name)
 
     def _preload(self):
         if self._count is None:
-            logger.info("Counting documents in collection...")
+            logger.info(f"Counting documents in {self.settings.coll_name}")
             self._count = self.settings.count
 
         if not isinstance(self.samples, pd.DataFrame):
@@ -225,6 +231,9 @@ class MongoDbModule(LightningDataModule):
         pass
 
     def setup(self, stage: str):
+        if stage == "fit" or stage is None:
+            logger.info("Refreshing dataset Mongo client...")
+            self.dataset.refresh_client()
         pass
 
     def train_dataloader(self):
