@@ -55,6 +55,7 @@ class DiffusionEngine(L.LightningModule):
         forward_hooks: list[LossHook] = [],
     ):
         super().__init__()
+        logger.info("Initializing DiffusionEngine")
 
         self.log_keys = log_keys
         self.input_key = input_key
@@ -68,6 +69,7 @@ class DiffusionEngine(L.LightningModule):
         self.scheduler = scheduler
 
         # do first stage model setup
+        logger.info("Loading first stage (VAE) model...")
         self._init_first_stage(first_stage_model)
 
         self.loss_fn = loss_fn
@@ -75,6 +77,7 @@ class DiffusionEngine(L.LightningModule):
 
         self.use_ema = use_ema
         if self.use_ema:
+            logger.info("Using EMA")
             self.model_ema = LitEma(self.model, decay=ema_decay_rate)
             logger.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))}.")
         else:
