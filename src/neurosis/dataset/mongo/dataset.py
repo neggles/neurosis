@@ -3,9 +3,11 @@ from io import BytesIO
 from os import PathLike
 from typing import Callable
 
+import fsspec
 import numpy as np
 import pandas as pd
 import torch
+import torch.distributed as dist
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from pymongo import MongoClient
@@ -61,9 +63,11 @@ class MongoAspectDataset(AspectBucketDataset):
         self.shuffle_tags = shuffle_tags
         self.shuffle_keep = shuffle_keep
 
-        self.client: MongoClient = self.settings.new_client()
+        self.client: MongoClient = None
         self._s3fs_kwargs = s3fs_kwargs
-        self.fs = S3FileSystem(**self._s3fs_kwargs)
+        self.fs: S3FileSystem = None
+
+        self.rank = dist.get_rank()
 
         # load meta
         logger.debug(
@@ -101,13 +105,27 @@ class MongoAspectDataset(AspectBucketDataset):
     def refresh_clients(self):
         """Helper func to replace the current clients with new ones"""
         self.client = self.settings.new_client()
-        self.fs = S3FileSystem(**self._s3fs_kwargs)
+
+        # detect forks and reset fsspec
+        forked = self.rank != dist.get_rank()
+        self.fs = S3FileSystem(**self._s3fs_kwargs, skip_instance_cache=forked)
+
+        if forked:
+            # Clear reference to the loop and thread.
+            # See https://github.com/dask/gcsfs/issues/379#issuecomment-839929801
+            # Only relevant for fsspec >= 0.9.0
+            fsspec.asyn.iothread[0] = None
+            fsspec.asyn.loop[0] = None
+            # set the rank to the new rank so we don't refresh again for no reason
+            self.rank = dist.get_rank()
 
     @property
     def collection(self) -> MongoCollection:
         return self.client.get_database(self.settings.db_name).get_collection(self.settings.coll_name)
 
     def _preload(self):
+        self.refresh_clients()
+
         if self._count is None:
             logger.info(f"Counting documents in {self.settings.coll_name}")
             self._count = self.settings.count
