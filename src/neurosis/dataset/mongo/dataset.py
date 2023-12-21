@@ -1,13 +1,12 @@
 import logging
 from io import BytesIO
-from os import PathLike
+from os import PathLike, getpid
 from typing import Callable
 
 import fsspec
 import numpy as np
 import pandas as pd
 import torch
-import torch.distributed as dist
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from pymongo import MongoClient
@@ -66,8 +65,7 @@ class MongoAspectDataset(AspectBucketDataset):
         self.client: MongoClient = None
         self._s3fs_kwargs = s3fs_kwargs
         self.fs: S3FileSystem = None
-
-        self.rank = dist.get_rank() if dist.is_initialized() else -1
+        self.pid = getpid()
 
         # load meta
         logger.debug(
@@ -107,17 +105,14 @@ class MongoAspectDataset(AspectBucketDataset):
         self.client = self.settings.new_client()
 
         # detect forks and reset fsspec
-        forked = dist.is_initialized() and self.rank != dist.get_rank()
-        self.fs = S3FileSystem(**self._s3fs_kwargs, skip_instance_cache=forked)
-
-        if forked:
+        if self.pid != getpid():
             # Clear reference to the loop and thread.
             # See https://github.com/dask/gcsfs/issues/379#issuecomment-839929801
             # Only relevant for fsspec >= 0.9.0
             fsspec.asyn.iothread[0] = None
             fsspec.asyn.loop[0] = None
-            # set the rank to the new rank so we don't refresh again for no reason
-            self.rank = dist.get_rank()
+            self.fs = S3FileSystem(**self._s3fs_kwargs, skip_instance_cache=True)
+            self.pid = getpid()
 
     @property
     def collection(self) -> MongoCollection:
@@ -194,6 +189,8 @@ class MongoAspectDataset(AspectBucketDataset):
             return caption.strip()
 
     def _get_image(self, path: str) -> Image.Image:
+        if self.fs is None:
+            self.refresh_clients()
         image = self.fs.cat(path)
         if not isinstance(image, bytes):
             raise FileNotFoundError(f"Failed to load image from {path}")
@@ -300,4 +297,5 @@ class MongoDbModule(LightningDataModule):
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
             persistent_workers=True,
+            worker_init_fn=self._worker_init_fn,
         )
