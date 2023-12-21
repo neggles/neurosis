@@ -13,7 +13,7 @@ from pymongo.collection import Collection as MongoCollection
 from pymongoarrow.api import find_pandas_all
 from s3fs import S3FileSystem
 from torch import Tensor
-from torch.utils.data import DataLoader
+from torch.utils.data import BatchSampler, DataLoader
 from torchvision.transforms import v2 as T
 
 from neurosis.dataset.aspect import (
@@ -141,8 +141,7 @@ class MongoAspectDataset(AspectBucketDataset):
     def _assign_aspect(self, df: pd.DataFrame) -> pd.DataFrame:
         def get_bucket_indices(df: pd.DataFrame):
             aspects: pd.Series = df["aspect"]
-            indices = aspects.apply(lambda x: self.buckets.bucket_idx(x))
-            return indices
+            return aspects.apply(self.buckets.bucket_idx)
 
         return df.assign(bucket_idx=get_bucket_indices)
 
@@ -182,7 +181,7 @@ class MongoAspectDataset(AspectBucketDataset):
         image = pil_ensure_rgb(image)
 
     def get_batch_iterator(self, return_bucket: bool = False):
-        logger.info("Generating batch iterator...")
+        logger.info("Creating batch iterator")
         max_bucket_len = self.samples.groupby("bucket_idx").size().max()
         index_sched = np.array(range(max_bucket_len), np.int32)
         np.random.shuffle(index_sched)
@@ -233,6 +232,7 @@ class MongoDbModule(LightningDataModule):
         num_workers: int = 0,
         prefetch_factor: int = 2,
         pin_memory: bool = True,
+        drop_last: bool = True,
     ):
         super().__init__()
         self.mongo_settings = get_mongo_settings(config_path)
@@ -256,21 +256,26 @@ class MongoDbModule(LightningDataModule):
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
-        self.sampler = AspectBucketSampler(self.dataset)
+        self.drop_last = drop_last
+        self.sampler: AspectBucketSampler = None
 
     def prepare_data(self) -> None:
         pass
 
     def setup(self, stage: str):
-        if stage == "fit" or stage is None:
-            logger.info("Refreshing dataset Mongo client...")
+        if self.sampler is None:
+            logger.info("Generating sampler")
+            self.sampler = AspectBucketSampler(self.dataset)
+
+        if stage == "fit":
+            logger.info("Refreshing dataset Mongo client")
             self.dataset.refresh_client()
-        pass
 
     def train_dataloader(self):
+        batch_sampler = BatchSampler(self.sampler, self.dataset.batch_size, self.drop_last)
         return DataLoader(
             self.dataset,
-            batch_sampler=self.sampler,
+            batch_sampler=batch_sampler,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
