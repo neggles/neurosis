@@ -572,7 +572,7 @@ class Decoder(nn.Module):
         block_in = ch * ch_mult[self.num_resolutions - 1]
         curr_res = resolution // 2 ** (self.num_resolutions - 1)
         self.z_shape = (1, z_channels, curr_res, curr_res)
-        logger.info("Working with z of shape {} = {} dimensions.".format(self.z_shape, np.prod(self.z_shape)))
+        logger.debug(f"Working with z of shape {self.z_shape} = {np.prod(self.z_shape)} dimensions.")
 
         make_attn_cls = self._make_attn()
         make_resblock_cls = self._make_resblock()
