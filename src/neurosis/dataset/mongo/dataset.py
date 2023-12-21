@@ -181,6 +181,36 @@ class MongoAspectDataset(AspectBucketDataset):
         image = Image.open(BytesIO(image))
         image = pil_ensure_rgb(image)
 
+    def get_batch_iterator(self, return_bucket: bool = False):
+        logger.info("Generating batch iterator...")
+        max_bucket_len = self.samples.groupby("bucket_idx").size().max()
+        index_sched = np.array(range(max_bucket_len), np.int32)
+        np.random.shuffle(index_sched)
+
+        bucket_dict = {
+            idx: (frame.index.values, len(frame), 0)
+            for idx, frame in self.samples.groupby("bucket_idx")
+            if len(frame) >= self.batch_size
+        }
+
+        bucket_sched = []
+        for idx, (bucket, _, _) in bucket_dict.items():
+            bucket_sched.extend([idx] * (len(bucket) // self.batch_size))
+        np.random.shuffle(bucket_sched)
+
+        for idx in bucket_sched:
+            indices, b_len, b_offs = bucket_dict[idx]
+
+            batch = []
+            while len(batch) < self.batch_size:
+                k = index_sched[b_offs]
+                if k < b_len:
+                    batch.append(indices[k].item())
+                b_offs += 1
+
+            bucket_dict[idx] = (indices, b_len, b_offs)
+            yield (batch, self.buckets[idx]) if return_bucket else batch
+
 
 class MongoDbModule(LightningDataModule):
     def __init__(
@@ -246,7 +276,3 @@ class MongoDbModule(LightningDataModule):
             prefetch_factor=self.prefetch_factor,
             persistent_workers=True,
         )
-
-
-def get_pixiv_tags():
-    pass
