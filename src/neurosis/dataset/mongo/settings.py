@@ -24,7 +24,7 @@ class Query(BaseModel):
 
     @computed_field
     @property
-    def kwargs(self):
+    def kwargs(self) -> dict:
         args = {}
         if self.projection is not None:
             args.update({"projection": self.projection})
