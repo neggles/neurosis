@@ -101,8 +101,8 @@ class MongoSettings(BaseSettings):
 
 
 def get_mongo_settings(path: PathLike = DEFAULT_MONGO_CONFIG) -> MongoSettings:
-    path = Path(path)
-    if path.exists() and path.is_file:
+    path = Path(path).resolve()
+    if path.exists() and path.is_file():
         return MongoSettings.model_validate_json(path.read_bytes(), strict=True)
     else:
         logger.info(f"Mongo config file {path} does not exist, using env")
