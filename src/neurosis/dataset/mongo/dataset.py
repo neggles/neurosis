@@ -67,7 +67,7 @@ class MongoAspectDataset(AspectBucketDataset):
         self._s3fs_kwargs = s3fs_kwargs
         self.fs: S3FileSystem = None
 
-        self.rank = dist.get_rank()
+        self.rank = dist.get_rank() if dist.is_initialized() else -1
 
         # load meta
         logger.debug(
@@ -107,7 +107,7 @@ class MongoAspectDataset(AspectBucketDataset):
         self.client = self.settings.new_client()
 
         # detect forks and reset fsspec
-        forked = self.rank != dist.get_rank()
+        forked = dist.is_initialized() and self.rank != dist.get_rank()
         self.fs = S3FileSystem(**self._s3fs_kwargs, skip_instance_cache=forked)
 
         if forked:
