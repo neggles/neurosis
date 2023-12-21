@@ -110,7 +110,7 @@ class MongoAspectDataset(AspectBucketDataset):
 
         if "bucket_idx" not in self.samples.columns:
             logger.info("Mapping aspect ratios to buckets...")
-            self.samples = self.samples.assign(bucket_idx=self._assign_aspect)
+            self.samples = self._assign_aspect(self.samples)
 
         modified = False
         for bucket_id, sample_ids in enumerate(self.bucket2idx.items()):
@@ -128,9 +128,13 @@ class MongoAspectDataset(AspectBucketDataset):
         logger.debug("Preload complete!")
         maybe_collect()
 
-    def _assign_aspect(self, df: pd.DataFrame) -> pd.Series:
-        aspects: pd.Series = df["aspect"]
-        return aspects.apply(self.buckets.bucket_idx)
+    def _assign_aspect(self, df: pd.DataFrame) -> pd.DataFrame:
+        def get_bucket_indices(df: pd.DataFrame):
+            aspects: pd.Series = df["aspect"]
+            indices = aspects.apply(lambda x: self.buckets.bucket_idx(x))
+            return indices
+
+        return df.assign(bucket_idx=get_bucket_indices)
 
     def _get_osize(self, resolution: tuple[int, int], bucket: AspectBucket) -> tuple[int, int]:
         if self.clamp_orig:
