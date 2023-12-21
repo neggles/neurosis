@@ -114,7 +114,8 @@ class MongoAspectDataset(AspectBucketDataset):
             logger.info(f"Loading metadata for {self._count} documents, this may take a while...")
             self.samples: pd.DataFrame = find_pandas_all(
                 self.collection,
-                query=dict(self.settings.query),
+                query=dict(self.settings.query.filter),
+                **self.settings.query.kwargs,
             )
 
         if "bucket_idx" not in self.samples.columns:
