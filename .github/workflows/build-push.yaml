@@ -13,6 +13,8 @@ on:
       - "docker-bake.hcl"
       - "docker-compose.yml"
       - "!**.md"
+      - "setup.cfg"
+      - "pyproject.toml"
 
   workflow_dispatch:
     inputs:
@@ -30,6 +32,8 @@ on:
       - "docker-bake.hcl"
       - "docker-compose.yml"
       - "!**.md"
+      - "setup.cfg"
+      - "pyproject.toml"
 
 defaults:
   run:
