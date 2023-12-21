@@ -62,7 +62,8 @@ class MongoAspectDataset(AspectBucketDataset):
         self.shuffle_keep = shuffle_keep
 
         self.client: MongoClient = self.settings.new_client()
-        self.fs = S3FileSystem(**s3fs_kwargs)
+        self._s3fs_kwargs = s3fs_kwargs
+        self.fs = S3FileSystem(**self._s3fs_kwargs)
 
         # load meta
         logger.debug(
@@ -97,9 +98,10 @@ class MongoAspectDataset(AspectBucketDataset):
             "target_size_as_tuple": bucket.size,
         }
 
-    def refresh_client(self):
-        """Helper func to replace the current client with a new one."""
+    def refresh_clientss(self):
+        """Helper func to replace the current clients with new ones"""
         self.client = self.settings.new_client()
+        self.fs = S3FileSystem(**self._s3fs_kwargs)
 
     @property
     def collection(self) -> MongoCollection:
@@ -268,8 +270,8 @@ class MongoDbModule(LightningDataModule):
             self.sampler = AspectBucketSampler(self.dataset)
 
         if stage == "fit":
-            logger.info("Refreshing dataset Mongo client")
-            self.dataset.refresh_client()
+            logger.info("Refreshing dataset clients")
+            self.dataset.refresh_clients()
 
     def train_dataloader(self):
         batch_sampler = BatchSampler(self.sampler, self.dataset.batch_size, self.drop_last)
