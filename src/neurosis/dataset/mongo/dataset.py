@@ -66,7 +66,7 @@ class MongoAspectDataset(AspectBucketDataset):
         logger.debug(
             f"Preloading dataset from mongodb://<host>/{self.settings.database}.{self.settings.collection}"
         )
-        self._count: int = 0
+        self._count: int = None
         self._preload()
         # transforms
         self.transforms: Callable = T.Compose(
@@ -77,7 +77,9 @@ class MongoAspectDataset(AspectBucketDataset):
         )
 
     def __len__(self):
-        return len(self.samples)
+        if self.samples is not None:
+            return len(self.samples)
+        return self._count
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         sample: pd.Series = self.samples.iloc[index]
@@ -98,7 +100,11 @@ class MongoAspectDataset(AspectBucketDataset):
         return self.settings.new_client()[self.settings.db_name][self.settings.coll_name]
 
     def _preload(self):
-        if self.samples is None:
+        if self._count is None:
+            logger.info("Counting documents in collection...")
+            self._count = self.settings.count
+
+        if not isinstance(self.samples, pd.DataFrame):
             logger.info(f"Loading metadata for {self._count} documents, this may take a while...")
             self.samples: pd.DataFrame = find_pandas_all(self.collection, query=dict(self.settings.query))
 
