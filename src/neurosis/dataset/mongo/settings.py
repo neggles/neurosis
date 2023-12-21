@@ -22,6 +22,18 @@ class Query(BaseModel):
     sort: Optional[list[tuple[str, int]]] = Field(None)
     limit: Optional[int] = Field(None)
 
+    @computed_field
+    @property
+    def kwargs(self):
+        args = {}
+        if self.projection is not None:
+            args.update({"projection": self.projection})
+        if self.sort is not None:
+            args.update({"sort": self.sort})
+        if self.limit is not None:
+            args.update({"limit": self.limit})
+        return args
+
 
 class MongoSettings(BaseSettings):
     uri: MongoDsn = Field(..., description="MongoDB URI")
