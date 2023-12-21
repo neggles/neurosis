@@ -98,7 +98,7 @@ class MongoAspectDataset(AspectBucketDataset):
             "target_size_as_tuple": bucket.size,
         }
 
-    def refresh_clientss(self):
+    def refresh_clients(self):
         """Helper func to replace the current clients with new ones"""
         self.client = self.settings.new_client()
         self.fs = S3FileSystem(**self._s3fs_kwargs)
