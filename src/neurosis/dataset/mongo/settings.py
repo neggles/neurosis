@@ -20,6 +20,7 @@ class Query(BaseModel):
     filter: dict[str, Any] = Field(default_factory=dict)
     projection: Optional[dict[str, Any]] = Field(None)
     sort: Optional[list[tuple[str, int]]] = Field(None)
+    limit: Optional[int] = Field(None)
 
 
 class MongoSettings(BaseSettings):
@@ -77,6 +78,8 @@ class MongoSettings(BaseSettings):
         ]
         if self.query.sort is not None:
             aggr.insert(1, {"$sort": dict(self.query.sort)})
+        if self.query.limit is not None:
+            aggr.insert(1, {"$limit": self.query.limit})
         count = self.collection.aggregate(aggr).next()["count"]
         return count
 
@@ -103,7 +106,8 @@ class MongoSettings(BaseSettings):
 def get_mongo_settings(path: PathLike = DEFAULT_MONGO_CONFIG) -> MongoSettings:
     path = Path(path).resolve()
     if path.exists() and path.is_file():
+        logger.info(f"Loading Mongo config from {path}")
         return MongoSettings.model_validate_json(path.read_bytes(), strict=True)
     else:
-        logger.info(f"Mongo config file {path} does not exist, using env")
+        logger.warning(f"Mongo config file {path} does not exist, using env")
         return MongoSettings()

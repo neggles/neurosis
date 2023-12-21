@@ -2,7 +2,7 @@ import logging
 from functools import cached_property
 from io import BytesIO
 from os import PathLike
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -106,7 +106,10 @@ class MongoAspectDataset(AspectBucketDataset):
 
         if not isinstance(self.samples, pd.DataFrame):
             logger.info(f"Loading metadata for {self._count} documents, this may take a while...")
-            self.samples: pd.DataFrame = find_pandas_all(self.collection, query=dict(self.settings.query))
+            self.samples: pd.DataFrame = find_pandas_all(
+                self.collection,
+                query=dict(self.settings.query),
+            )
 
         if "bucket_idx" not in self.samples.columns:
             logger.info("Mapping aspect ratios to buckets...")
@@ -175,7 +178,7 @@ class MongoAspectDataset(AspectBucketDataset):
 class MongoDbModule(LightningDataModule):
     def __init__(
         self,
-        config_path: Optional[PathLike] = None,
+        config_path: PathLike,
         buckets: AspectBucketList = SDXLBucketList(),
         batch_size: int = 1,
         image_key: str = "image",
