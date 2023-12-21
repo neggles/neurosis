@@ -31,6 +31,13 @@ from neurosis.utils import maybe_collect
 logger = logging.getLogger(__name__)
 
 
+def clear_fsspec():
+    import fsspec
+
+    fsspec.asyn.iothread[0] = None
+    fsspec.asyn.loop[0] = None
+
+
 class MongoAspectDataset(AspectBucketDataset):
     def __init__(
         self,
@@ -297,5 +304,5 @@ class MongoDbModule(LightningDataModule):
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
             persistent_workers=True,
-            worker_init_fn=self._worker_init_fn,
+            worker_init_fn=clear_fsspec,
         )
