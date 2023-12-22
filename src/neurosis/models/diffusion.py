@@ -300,8 +300,10 @@ class DiffusionEngine(L.LightningModule):
                         raise NotImplementedError("Tensor conditioning with dim > 2 not implemented")
 
                 elif isinstance(x, list):
-                    if isinstance(x[0], (str, np.bytes_, bytes)):
+                    if isinstance(x[0], np.bytes_):
                         x = np_text_decode(x)
+                    if isinstance(x[0], str):
+                        # strings
                         xc = log_txt_as_img(wh, x, size=min(wh[0] // 20, 24))
                     else:
                         raise NotImplementedError(f"Conditioning log for list[{type(x[0])}] not implemented")
