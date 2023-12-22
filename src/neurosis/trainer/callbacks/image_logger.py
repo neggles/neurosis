@@ -17,6 +17,7 @@ from torch.amp.autocast_mode import autocast
 from torchvision.utils import make_grid
 
 from neurosis.utils import isheatmap, ndimage_to_u8
+from neurosis.utils.text import np_text_decode
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,8 @@ class ImageLogger(Callback):
         self,
         save_dir: PathLike,
         split: str,
-        images: Union[Tensor, dict[str, Tensor]],
+        log_dict: Union[Tensor, dict[str, Tensor]],
+        log_strings: dict[str, list[str]],
         global_step: int,
         current_epoch: int,
         batch_idx: int,
@@ -137,10 +139,10 @@ class ImageLogger(Callback):
         root = Path(save_dir).joinpath("images", split)
         root.mkdir(exist_ok=True, parents=True)
 
-        for k in images:
-            if isheatmap(images[k]):
+        for k in log_dict:
+            if isheatmap(log_dict[k]):
                 fig, ax = plt.subplots()
-                ax = ax.matshow(images[k].cpu().numpy(), cmap="hot", interpolation="lanczos")
+                ax = ax.matshow(log_dict[k].cpu().numpy(), cmap="hot", interpolation="lanczos")
                 plt.colorbar(ax)
                 plt.axis("off")
 
@@ -152,7 +154,7 @@ class ImageLogger(Callback):
 
                 img = Image.open(path)
             else:
-                grid: Tensor = make_grid(images[k], nrow=4).permute((1, 2, 0)).squeeze(-1).cpu().numpy()
+                grid: Tensor = make_grid(log_dict[k], nrow=4).permute((1, 2, 0)).squeeze(-1).cpu()
 
                 if grid.dtype != np.uint8:
                     if self.rescale:
@@ -166,9 +168,12 @@ class ImageLogger(Callback):
                 img = Image.fromarray(grid)
                 img.save(path)
 
-            for logger in pl_module.loggers:
-                if isinstance(logger, WandbLogger):
-                    logger.log_image(key=f"{split}/{k}", images=[img], step=global_step)
+            log_key = f"{split}/{k}"
+            for logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
+                if k in log_strings:
+                    logger.log_image(key=log_key, log_dict=[img], step=global_step, caption=[log_strings[k]])
+                else:
+                    logger.log_image(key=log_key, log_dict=[img], step=global_step)
 
     @rank_zero_only
     def maybe_log_images(
@@ -212,7 +217,7 @@ class ImageLogger(Callback):
         )
         # call the actual log_images method
         with torch.inference_mode(), autocast(**autocast_kwargs):
-            images: list[Tensor] = pl_module.log_images(
+            log_dict: list[Tensor] = pl_module.log_images(
                 batch, num_img=self.max_images, split=split, **self.log_func_kwargs
             )
 
@@ -221,32 +226,45 @@ class ImageLogger(Callback):
             pl_module.train()
 
         # if the model returned None, warn and return early
-        if images is None:
+        if log_dict is None:
             warn(f"{pl_module.__class__.__name__} returned None from log_images")
             return
 
-        for k in images:
-            # take the first max_images images from the sample batch, unless it's a heatmap
-            if not isheatmap(images[k]):
-                num_imgs = min(images[k].shape[0], self.max_images)
-                images[k] = images[k][:num_imgs]
+        for k in log_dict:
+            # take the first max_images log_dict from the sample batch, unless it's a heatmap
+            if not isheatmap(log_dict[k]):
+                num_imgs = min(log_dict[k].shape[0], self.max_images)
+                log_dict[k] = log_dict[k][:num_imgs]
 
             # detach, move to cpu, and clamp range if necessary
-            if isinstance(images[k], Tensor):
-                images[k] = images[k].detach().float().cpu()
-                if self.clamp and not isheatmap(images[k]):
-                    images[k] = torch.clamp(images[k], -1.0, 1.0)
+            if isinstance(log_dict[k], Tensor):
+                log_dict[k] = log_dict[k].detach().float().cpu()
+                if self.clamp and not isheatmap(log_dict[k]):
+                    log_dict[k] = torch.clamp(log_dict[k], -1.0, 1.0)
 
-            # log the images
-            self.log_local(
-                self.local_dir,
-                split,
-                images,
-                trainer.global_step,
-                pl_module.current_epoch,
-                batch_idx,
-                pl_module=pl_module,
-            )
+        log_strings = {}
+        if "caption" in batch:
+            log_strings["caption"] = [np_text_decode(x) for x in batch["caption"][: self.max_images]]
+
+        if "post_id" in batch and "source" in batch:
+            log_strings["inputs"] = [
+                f"source={x}, post_id={y}"
+                for x, y in zip(batch["source"][: self.max_images], batch["post_id"][: self.max_images])
+            ]
+        elif "post_id" in batch:
+            log_strings["inputs"] = [f"post_id: {x}" for x in batch["post_id"][: self.max_images]]
+
+        # log the images
+        self.log_local(
+            self.local_dir,
+            split,
+            log_dict,
+            log_strings,
+            trainer.global_step,
+            pl_module.current_epoch,
+            batch_idx,
+            pl_module=pl_module,
+        )
 
     @rank_zero_only
     def on_train_batch_end(

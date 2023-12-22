@@ -277,35 +277,39 @@ class DiffusionEngine(L.LightningModule):
         Defines heuristics to log different conditionings.
         These can be lists of strings (text-to-image), tensors, ints, ...
         """
-        image_h, image_w = batch[self.input_key].shape[2:]
         log_dict = dict()
+        if self.no_cond_log is True:
+            return log_dict
+
+        wh = batch[self.input_key].shape[2:]
 
         embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
-            if ((self.log_keys is None) or (embedder.input_key in self.log_keys)) and not self.no_cond_log:
+            if (self.log_keys is None) or (embedder.input_key in self.log_keys):
                 x = batch[embedder.input_key][:n]
                 if isinstance(x, Tensor):
                     if x.dim() == 1:
                         # class-conditional, convert integer to string
                         x = [str(x[i].item()) for i in range(x.shape[0])]
-                        xc = log_txt_as_img((image_h, image_w), x, size=min(image_h // 4, 96))
+                        xc = log_txt_as_img(wh, x, size=min(wh[0] // 4, 96))
                     elif x.dim() == 2:
                         # size and crop cond and the like
                         x = ["x".join([str(xx) for xx in x[i].tolist()]) for i in range(x.shape[0])]
-                        xc = log_txt_as_img((image_h, image_w), x, size=min(image_h // 20, 24))
+                        xc = log_txt_as_img(wh, x, size=min(wh[0] // 20, 24))
                     else:
                         raise NotImplementedError("Tensor conditioning with dim > 2 not implemented")
+
                 elif isinstance(x, list):
-                    if isinstance(x[0], np.bytes_):
+                    if isinstance(x[0], (str, np.bytes_, bytes)):
                         x = np_text_decode(x)
-                    if isinstance(x[0], str):
-                        # strings
-                        xc = log_txt_as_img((image_h, image_w), x, size=min(image_h // 20, 24))
+                        xc = log_txt_as_img(wh, x, size=min(wh[0] // 20, 24))
                     else:
                         raise NotImplementedError(f"Conditioning log for list[{type(x[0])}] not implemented")
+
                 else:
                     raise NotImplementedError(f"Conditioning log for input of {type(x)} not implemented")
                 log_dict[embedder.input_key] = xc
+
         return log_dict
 
     @torch.no_grad()
@@ -333,8 +337,8 @@ class DiffusionEngine(L.LightningModule):
             force_uc_zero_embeddings=ucg_keys if len(self.conditioner.embedders) > 0 else [],
         )
 
-        sampling_kwargs = {}
         num_img = min(x.shape[0], num_img)
+
         x = x.to(self.device)[:num_img]
         log_dict["inputs"] = x
 
@@ -348,7 +352,7 @@ class DiffusionEngine(L.LightningModule):
 
         if sample:
             with self.ema_scope("Plotting"):
-                samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=num_img, **sampling_kwargs)
+                samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=num_img, **kwargs)
             samples = self.decode_first_stage(samples)
             log_dict["samples"] = samples
         return log_dict
