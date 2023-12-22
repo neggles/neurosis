@@ -74,11 +74,16 @@ def main(
     """
     Main entrypoint for training Stable Diffusion models.
     """
+    logger.info(f"neurosis v{__version__} training script running!")
+    logger.debug(f"PyTorch {torch.__version__}, Lightning {lightning.__version__}")
 
+    default_config_files: List[str] = []
     if Path.cwd().joinpath("configs/lightning/defaults.yaml").exists():
-        default_config_files: List[str] = ["configs/lightning/defaults.yaml"]
-    else:
-        default_config_files: List[str] = []
+        default_config_files.append("configs/lightning/defaults.yaml")
+
+    if hasattr(torch.backends, "cudnn") and torch.backends.cudnn.is_available():
+        logger.info("Enabling TensorFloat32 in cuDNN library")
+        torch.backends.cudnn.allow_tf32 = True
 
     torch.set_float32_matmul_precision("high")  # it whines if we don't do this
 
