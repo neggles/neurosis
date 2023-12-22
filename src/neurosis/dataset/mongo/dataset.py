@@ -99,7 +99,7 @@ class MongoAspectDataset(AspectBucketDataset):
         return {
             self.image_key: self.transforms(image),
             self.caption_key: self.__clean_caption(sample.caption),
-            "original_size_as_tuple": self._get_osize(sample.resolution, bucket),
+            "original_size_as_tuple": self._get_osize((image.width, image.height), bucket),
             "crop_coords_top_left": crop_coords,
             "target_size_as_tuple": bucket.size,
         }
