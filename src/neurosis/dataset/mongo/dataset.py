@@ -11,6 +11,7 @@ from PIL import Image
 from pymongo import MongoClient
 from pymongo.collection import Collection as MongoCollection
 from pymongoarrow.api import find_pandas_all
+from pymongoarrow.schema import Schema
 from s3fs import S3FileSystem
 from torch import Tensor
 from torch.utils.data import BatchSampler, DataLoader
@@ -49,6 +50,7 @@ class MongoAspectDataset(AspectBucketDataset):
         shuffle_keep: int = 0,
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
+        pma_schema: Optional[Schema] = None,
     ):
         super().__init__(buckets, batch_size, image_key, caption_key)
         self.pid = getpid()
@@ -67,6 +69,7 @@ class MongoAspectDataset(AspectBucketDataset):
         self.s3_bucket = s3_bucket
         self.fs: S3FileSystem = None
         self.client: MongoClient = None
+        self.pma_schema: Schema = pma_schema
 
         # load meta
         logger.debug(
@@ -128,6 +131,7 @@ class MongoAspectDataset(AspectBucketDataset):
             self.samples: pd.DataFrame = find_pandas_all(
                 self.collection,
                 query=dict(self.settings.query.filter),
+                schema=self.pma_schema,
                 **self.settings.query.kwargs,
             )
 
@@ -166,10 +170,12 @@ class MongoAspectDataset(AspectBucketDataset):
 
     def __clean_caption(self, caption: str | list[str]) -> str:
         if self.process_tags:
-            if isinstance(caption, list):
+            if isinstance(caption, str):
+                caption = [clean_word(self.word_sep, x) for x in caption.split(", ")]
+            elif isinstance(caption, (list, np.ndarray)):
                 caption = [clean_word(self.word_sep, x) for x in caption]
             else:
-                caption = [clean_word(self.word_sep, x) for x in caption.split(", ")]
+                raise TypeError(f"Unexpected type for caption: {type(caption)}")
 
             if self.shuffle_tags:
                 if self.shuffle_keep > 0:
@@ -251,6 +257,7 @@ class MongoDbModule(LightningDataModule):
         shuffle_keep: int = 0,
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
+        pma_schema: Optional[Schema] = None,
         num_workers: int = 0,
         prefetch_factor: int = 2,
         pin_memory: bool = True,
@@ -275,6 +282,7 @@ class MongoDbModule(LightningDataModule):
             shuffle_keep=shuffle_keep,
             s3_bucket=s3_bucket,
             s3fs_kwargs=s3fs_kwargs,
+            pma_schema=pma_schema,
         )
         self.num_workers = num_workers
         self.pin_memory = pin_memory
