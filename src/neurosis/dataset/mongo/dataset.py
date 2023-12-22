@@ -1,9 +1,8 @@
 import logging
 from io import BytesIO
 from os import PathLike, getpid
-from typing import Callable
+from typing import Callable, Optional
 
-import fsspec
 import numpy as np
 import pandas as pd
 import torch
@@ -25,17 +24,10 @@ from neurosis.dataset.aspect import (
     SDXLBucketList,
 )
 from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
-from neurosis.dataset.utils import clean_word, pil_crop_bucket, pil_ensure_rgb
+from neurosis.dataset.utils import clean_word, clear_fsspec, pil_crop_bucket, pil_ensure_rgb
 from neurosis.utils import maybe_collect
 
 logger = logging.getLogger(__name__)
-
-
-def clear_fsspec(worker_id: int):
-    import fsspec
-
-    fsspec.asyn.iothread[0] = None
-    fsspec.asyn.loop[0] = None
 
 
 class MongoAspectDataset(AspectBucketDataset):
@@ -55,9 +47,11 @@ class MongoAspectDataset(AspectBucketDataset):
         process_tags: bool = True,
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
+        s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
     ):
         super().__init__(buckets, batch_size, image_key, caption_key)
+        self.pid = getpid()
         self.settings = settings
 
         self.path_key = path_key
@@ -69,10 +63,10 @@ class MongoAspectDataset(AspectBucketDataset):
         self.shuffle_tags = shuffle_tags
         self.shuffle_keep = shuffle_keep
 
-        self.client: MongoClient = None
-        self._s3fs_kwargs = s3fs_kwargs
+        self.s3fs_kwargs = s3fs_kwargs
+        self.s3_bucket = s3_bucket
         self.fs: S3FileSystem = None
-        self.pid = getpid()
+        self.client: MongoClient = None
 
         # load meta
         logger.debug(
@@ -112,14 +106,11 @@ class MongoAspectDataset(AspectBucketDataset):
         self.client = self.settings.new_client()
 
         # detect forks and reset fsspec
-        if self.pid != getpid():
-            # Clear reference to the loop and thread.
-            # See https://github.com/dask/gcsfs/issues/379#issuecomment-839929801
-            # Only relevant for fsspec >= 0.9.0
-            fsspec.asyn.iothread[0] = None
-            fsspec.asyn.loop[0] = None
-            self.fs = S3FileSystem(**self._s3fs_kwargs, skip_instance_cache=True)
-            self.pid = getpid()
+        pid = getpid()
+        if self.pid != pid:
+            logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
+            self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
+            self.pid = pid
 
     @property
     def collection(self) -> MongoCollection:
@@ -198,11 +189,17 @@ class MongoAspectDataset(AspectBucketDataset):
     def _get_image(self, path: str) -> Image.Image:
         if self.fs is None:
             self.refresh_clients()
+        # prepend bucket if not already present
+        path = f"{self.s3_bucket}/{path}" if self.s3_bucket is not None else path
+
+        # get image
         image = self.fs.cat(path)
         if not isinstance(image, bytes):
             raise FileNotFoundError(f"Failed to load image from {path}")
+        # load image and ensure RGB colorspace
         image = Image.open(BytesIO(image))
         image = pil_ensure_rgb(image)
+        return image
 
     def get_batch_iterator(self, return_bucket: bool = False):
         logger.info("Creating batch iterator")
@@ -252,6 +249,7 @@ class MongoDbModule(LightningDataModule):
         process_tags: bool = True,
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
+        s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         num_workers: int = 0,
         prefetch_factor: int = 2,
@@ -275,6 +273,7 @@ class MongoDbModule(LightningDataModule):
             process_tags=process_tags,
             shuffle_tags=shuffle_tags,
             shuffle_keep=shuffle_keep,
+            s3_bucket=s3_bucket,
             s3fs_kwargs=s3fs_kwargs,
         )
         self.num_workers = num_workers
@@ -304,5 +303,10 @@ class MongoDbModule(LightningDataModule):
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
             persistent_workers=True,
-            worker_init_fn=clear_fsspec,
+            worker_init_fn=mongo_worker_init,
         )
+
+
+def mongo_worker_init(worker_id: int = -1):
+    logger.info(f"Worker {worker_id} initializing")
+    clear_fsspec()
