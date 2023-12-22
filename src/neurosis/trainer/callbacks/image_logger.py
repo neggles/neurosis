@@ -137,6 +137,7 @@ class ImageLogger(Callback):
         root = Path(save_dir).joinpath("images", split)
         root.mkdir(exist_ok=True, parents=True)
 
+        logger_images = []
         for k in images:
             if isheatmap(images[k]):
                 fig, ax = plt.subplots()
@@ -150,10 +151,7 @@ class ImageLogger(Callback):
                 plt.savefig(path)
                 plt.close()
 
-                for logger in pl_module.loggers:
-                    if isinstance(logger, WandbLogger):
-                        img = Image.open(path)
-                        logger.log_image(key=f"{split}/{k}", images=[img])
+                logger_images.append(Image.open(path))
             else:
                 grid: Tensor = make_grid(images[k], nrow=4).permute((1, 2, 0)).squeeze(-1).cpu().numpy()
 
@@ -168,10 +166,12 @@ class ImageLogger(Callback):
 
                 img = Image.fromarray(grid)
                 img.save(path)
+                logger_images.append(img)
 
-                for logger in pl_module.loggers:
-                    if isinstance(logger, WandbLogger):
-                        logger.log_image(key=f"{split}/{k}", images=[img])
+        if len(logger_images) > 0:
+            for logger in pl_module.loggers:
+                if isinstance(logger, WandbLogger):
+                    logger.log_image(key=f"{split}/{k}", images=logger_images, step=global_step)
 
     @rank_zero_only
     def maybe_log_images(
@@ -245,7 +245,7 @@ class ImageLogger(Callback):
                 self.local_dir,
                 split,
                 images,
-                pl_module.global_step,
+                trainer.global_step,
                 pl_module.current_epoch,
                 batch_idx,
                 pl_module=pl_module,
