@@ -151,7 +151,7 @@ class ImageLogger(Callback):
                 plt.savefig(path)
                 plt.close()
 
-                logger_images.append(Image.open(path))
+                img = Image.open(path)
             else:
                 grid: Tensor = make_grid(images[k], nrow=4).permute((1, 2, 0)).squeeze(-1).cpu().numpy()
 
@@ -168,10 +168,9 @@ class ImageLogger(Callback):
                 img.save(path)
                 logger_images.append(img)
 
-        if len(logger_images) > 0:
             for logger in pl_module.loggers:
                 if isinstance(logger, WandbLogger):
-                    logger.log_image(key=f"{split}/{k}", images=logger_images, step=global_step)
+                    logger.log_image(key=f"{split}/{k}", images=img, step=global_step)
 
     @rank_zero_only
     def maybe_log_images(
