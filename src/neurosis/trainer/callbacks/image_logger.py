@@ -169,9 +169,9 @@ class ImageLogger(Callback):
             log_key = f"{split}/{k}"
             for logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
                 if k in log_strings:
-                    logger.log_image(key=log_key, log_dict=[img], step=global_step, caption=[log_strings[k]])
+                    logger.log_image(key=log_key, images=[img], step=global_step, caption=[log_strings[k]])
                 else:
-                    logger.log_image(key=log_key, log_dict=[img], step=global_step)
+                    logger.log_image(key=log_key, images=[img], step=global_step)
 
     @rank_zero_only
     def maybe_log_images(
