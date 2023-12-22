@@ -80,7 +80,9 @@ def load_bucket_image_file(
     return image, (top, left)
 
 
-def clean_word(word_sep: str, word: str) -> str:
+def clean_word(word_sep: str, word: str | bytes) -> str:
+    if isinstance(word, (bytes, np.bytes_)):
+        word = word.decode("utf-8")
     word = word.replace("_", word_sep)
     word = word.replace(" ", word_sep)
     return word.strip()
