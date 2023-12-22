@@ -3,6 +3,7 @@ import math
 import re
 from abc import abstractmethod
 from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -462,7 +463,7 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
         self,
         *,
         embed_dim: int,
-        loss: nn.Module = None,
+        loss: Optional[nn.Module] = None,
         regularizer: Optional[AbstractRegularizer] = None,
         ddconfig: dict,
         **kwargs,
@@ -478,7 +479,7 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
             encoder=Encoder(**ddconfig),
             decoder=Decoder(**ddconfig),
             regularizer=regularizer,
-            loss=loss,
+            loss=loss or nn.Identity(),
             **kwargs,
         )
 
@@ -546,6 +547,7 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
 class AutoencoderKL(AutoencodingEngineLegacy):
     """just an always-diagonal-gaussian-regulized autoencoder aka VAE"""
 
+    @wraps(AutoencodingEngineLegacy.__init__)
     def __init__(self, **kwargs):
         _ = kwargs.pop("regularizer", None)
         regularizer = DiagonalGaussianRegularizer(sample=False)
