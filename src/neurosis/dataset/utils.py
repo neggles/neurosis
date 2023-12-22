@@ -4,7 +4,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageOps
 from torch import Tensor
-from torchvision.transforms import v2 as T
 
 from neurosis.dataset.aspect.bucket import AspectBucket
 
@@ -60,7 +59,7 @@ def pil_crop_bucket(
 
     top = np.random.randint(delta_h + 1)
     left = np.random.randint(delta_w + 1)
-    image = T.functional.crop(image, top, left, bucket.height, bucket.width)
+    image = image.crop((left, top, left + bucket.width, top + bucket.height))
 
     return {"image": image, "crop_coords_top_left": (top, left)} if return_dict else (image, (top, left))
 
