@@ -137,7 +137,6 @@ class ImageLogger(Callback):
         root = Path(save_dir).joinpath("images", split)
         root.mkdir(exist_ok=True, parents=True)
 
-        logger_images = []
         for k in images:
             if isheatmap(images[k]):
                 fig, ax = plt.subplots()
@@ -166,7 +165,6 @@ class ImageLogger(Callback):
 
                 img = Image.fromarray(grid)
                 img.save(path)
-                logger_images.append(img)
 
             for logger in pl_module.loggers:
                 if isinstance(logger, WandbLogger):
