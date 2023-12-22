@@ -170,7 +170,7 @@ class ImageLogger(Callback):
 
             for logger in pl_module.loggers:
                 if isinstance(logger, WandbLogger):
-                    logger.log_image(key=f"{split}/{k}", images=img, step=global_step)
+                    logger.log_image(key=f"{split}/{k}", images=[img], step=global_step)
 
     @rank_zero_only
     def maybe_log_images(
