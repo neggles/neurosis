@@ -9,6 +9,13 @@ from torchvision.transforms import v2 as T
 from neurosis.dataset.aspect.bucket import AspectBucket
 
 
+def clear_fsspec():
+    import fsspec
+
+    fsspec.asyn.iothread[0] = None
+    fsspec.asyn.loop[0] = None
+
+
 def pil_ensure_rgb(image: Image.Image) -> Image.Image:
     # convert to RGB/RGBA if not already (deals with palette images etc.)
     if image.mode not in ["RGB", "RGBA"]:
