@@ -242,7 +242,10 @@ class ImageLogger(Callback):
 
         log_strings = {}
         if "caption" in batch:
-            log_strings["caption"] = [np_text_decode(x) for x in batch["caption"][: self.max_images]]
+            if "inputs" in log_dict:
+                log_strings["inputs"] = np_text_decode(batch["caption"][: self.max_images])
+            else:
+                log_strings["caption"] = np_text_decode(batch["caption"][: self.max_images])
 
         if "post_id" in batch and "source" in batch:
             log_strings["inputs"] = [
