@@ -154,13 +154,11 @@ class ImageLogger(Callback):
 
                 img = Image.open(path)
             else:
-                grid: Tensor = make_grid(log_dict[k], nrow=4).permute((1, 2, 0)).squeeze(-1).cpu()
+                grid: Tensor = make_grid(log_dict[k], nrow=4)
+                grid = grid.permute((1, 2, 0)).squeeze(-1).cpu().numpy()
 
                 if grid.dtype != np.uint8:
-                    if self.rescale:
-                        grid = ndimage_to_u8(grid)
-                    else:
-                        grid = ndimage_to_u8(grid, zero_min=True)
+                    grid = ndimage_to_u8(grid) if self.rescale else ndimage_to_u8(grid, zero_min=True)
 
                 filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
                 path = root / filename
@@ -240,7 +238,7 @@ class ImageLogger(Callback):
             if isinstance(log_dict[k], Tensor):
                 log_dict[k] = log_dict[k].detach().float().cpu()
                 if self.clamp and not isheatmap(log_dict[k]):
-                    log_dict[k] = torch.clamp(log_dict[k], -1.0, 1.0)
+                    log_dict[k] = torch.clamp(log_dict[k], 0.0, 1.0)
 
         log_strings = {}
         if "caption" in batch:
