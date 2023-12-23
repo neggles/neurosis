@@ -6,7 +6,7 @@ from torch import Tensor
 
 def numpy_to_pil(images: np.ndarray) -> list[Image.Image]:
     """
-    Convert a numpy image or a batch of images to a PIL image.
+    Convert a numpy image or a batch of images to a list of PIL images.
     """
     if images.ndim == 3:
         images = images[None, ...]
@@ -45,7 +45,7 @@ def numpy_to_pt(images: np.ndarray) -> Tensor:
 
 def pt_to_numpy(images: Tensor) -> np.ndarray:
     """
-    Convert a PyTorch tensor to a NumPy image.
+    Convert a PyTorch tensor to a NumPy array.
     """
     if images.ndim == 4:
         images = images.cpu().permute(0, 2, 3, 1).float().numpy()  # b, h, w, c
@@ -56,8 +56,9 @@ def pt_to_numpy(images: Tensor) -> np.ndarray:
 
 def pt_to_pil(images: Tensor) -> list[Image.Image]:
     """
-    Convert a PyTorch tensor to a PIL image.
+    Convert a PyTorch tensor to a PIL image or list of PIL images.
     """
+
     images = pt_to_numpy(images)
     images = numpy_to_pil(images)
     return images
@@ -65,7 +66,7 @@ def pt_to_pil(images: Tensor) -> list[Image.Image]:
 
 def pil_to_pt(images: list[Image.Image] | Image.Image) -> Tensor:
     """
-    Convert a PIL image to a PyTorch tensor.
+    Convert a PIL image or a list of PIL images to a PyTorch tensor.
     """
     if not isinstance(images, list):
         images = [images]
