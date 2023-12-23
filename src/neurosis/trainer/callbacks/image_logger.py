@@ -17,6 +17,7 @@ from torch.amp.autocast_mode import autocast
 from torchvision.utils import make_grid
 
 from neurosis.utils import isheatmap, ndimage_to_u8
+from neurosis.utils.image.grid import CaptionGrid
 from neurosis.utils.text import np_text_decode
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ class ImageLogger(Callback):
         self,
         save_dir: PathLike,
         split: str,
-        log_dict: Union[Tensor, dict[str, Tensor]],
+        log_dict: dict[str, Tensor],
         log_strings: dict[str, list[str]],
         global_step: int,
         current_epoch: int,
@@ -138,6 +139,17 @@ class ImageLogger(Callback):
             return
         root = Path(save_dir).joinpath("images", split)
         root.mkdir(exist_ok=True, parents=True)
+
+        if "samples" in log_dict and "samples" in log_strings:
+            samples = log_dict.pop("samples")
+            captions = log_strings.pop("samples")
+            grid = CaptionGrid()
+            img = grid(
+                samples,
+                captions,
+                title=f"GStep {global_step:06} Epoch {current_epoch:06} Batch {batch_idx:06} Samples",
+            )
+            log_dict["samples"] = img
 
         for k in log_dict:
             if isheatmap(log_dict[k]):
@@ -154,11 +166,14 @@ class ImageLogger(Callback):
 
                 img = Image.open(path)
             else:
-                grid: Tensor = make_grid(log_dict[k], nrow=4)
-                grid = grid.permute((1, 2, 0)).squeeze(-1).cpu().numpy()
+                if isinstance(log_dict[k], Image.Image):
+                    grid = log_dict[k]
+                else:
+                    grid: Tensor = make_grid(log_dict[k], nrow=4)
+                    grid = grid.permute((1, 2, 0)).squeeze(-1).cpu().numpy()
 
-                if grid.dtype != np.uint8:
-                    grid = ndimage_to_u8(grid) if self.rescale else ndimage_to_u8(grid, zero_min=True)
+                    if grid.dtype != np.uint8:
+                        grid = ndimage_to_u8(grid) if self.rescale else ndimage_to_u8(grid, zero_min=True)
 
                 filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
                 path = root / filename
@@ -242,8 +257,8 @@ class ImageLogger(Callback):
 
         log_strings = {}
         if "caption" in batch:
-            if "inputs" in log_dict:
-                log_strings["inputs"] = np_text_decode(batch["caption"][: self.max_images])
+            if "samples" in log_dict:
+                log_strings["samples"] = np_text_decode(batch["caption"][: self.max_images])
             else:
                 log_strings["caption"] = np_text_decode(batch["caption"][: self.max_images])
 
