@@ -258,7 +258,6 @@ src/neurosis/_version.py
 .env.*
 !.env.example
 
-# dvc
-/.dvc/config.local
-/.dvc/tmp
-/.dvc/cache
+# temp files
+**/tmp_*.*
+**/*.tmp.*
