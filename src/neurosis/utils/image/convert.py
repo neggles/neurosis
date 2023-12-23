@@ -47,7 +47,10 @@ def pt_to_numpy(images: Tensor) -> np.ndarray:
     """
     Convert a PyTorch tensor to a NumPy image.
     """
-    images = images.cpu().permute(0, 2, 3, 1).float().numpy()
+    if images.ndim == 4:
+        images = images.cpu().permute(0, 2, 3, 1).float().numpy()  # b, h, w, c
+    else:
+        images = images.cpu().permute(1, 2, 0).float().numpy()  # h, w, c
     return images
 
 
