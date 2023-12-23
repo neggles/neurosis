@@ -173,7 +173,7 @@ class ImageLogger(Callback):
                 img = Image.open(path)
             else:
                 if isinstance(log_dict[k], Image.Image):
-                    grid = log_dict[k]
+                    img = log_dict[k]
                 else:
                     grid: Tensor = make_grid(log_dict[k], nrow=4)
                     grid = grid.permute((1, 2, 0)).squeeze(-1).cpu().numpy()
@@ -181,10 +181,11 @@ class ImageLogger(Callback):
                     if grid.dtype != np.uint8:
                         grid = ndimage_to_u8(grid) if self.rescale else ndimage_to_u8(grid, zero_min=True)
 
+                    img = Image.fromarray(grid)
+
                 filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
                 path = root / filename
 
-                img = Image.fromarray(grid)
                 img.save(path)
 
             log_key = f"{split}/{k}"
