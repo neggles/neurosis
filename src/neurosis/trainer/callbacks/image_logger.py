@@ -143,6 +143,10 @@ class ImageLogger(Callback):
         if "samples" in log_dict and "samples" in log_strings:
             samples = log_dict.pop("samples")
             captions = log_strings.pop("samples")
+            if not isinstance(captions, list):
+                captions = [captions]
+            if not isinstance(samples, list):
+                samples = [samples]
             grid = CaptionGrid()
             img = grid(
                 samples,
