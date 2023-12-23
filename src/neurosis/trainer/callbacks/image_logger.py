@@ -7,6 +7,7 @@ from warnings import warn
 
 import numpy as np
 import torch
+import wandb
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
@@ -141,9 +142,9 @@ class ImageLogger(Callback):
         root = Path(save_dir).joinpath("images", split)
         root.mkdir(exist_ok=True, parents=True)
 
-        if "samples" in log_dict and "samples" in log_strings:
+        if "samples" in log_dict and "caption" in log_strings:
             samples = log_dict.pop("samples")
-            captions = log_strings.pop("samples")
+            captions = log_strings["caption"]
             if not isinstance(captions, list):
                 captions = [captions]
             if isinstance(samples, Tensor):
@@ -153,10 +154,11 @@ class ImageLogger(Callback):
             img = grid(
                 samples,
                 captions,
-                title=f"GStep {global_step:06} Epoch {current_epoch:06} Batch {batch_idx:06} Samples",
+                title=f"E{current_epoch:06} S{global_step:06} B{batch_idx:06} samples",
             )
             log_dict["samples"] = img
 
+        wandb_dict = {"trainer/global_step": global_step}
         for k in log_dict:
             if isheatmap(log_dict[k]):
                 fig, ax = plt.subplots()
@@ -169,7 +171,6 @@ class ImageLogger(Callback):
 
                 plt.savefig(path)
                 plt.close()
-
                 img = Image.open(path)
             else:
                 if isinstance(log_dict[k], Image.Image):
@@ -177,10 +178,8 @@ class ImageLogger(Callback):
                 else:
                     grid: Tensor = make_grid(log_dict[k], nrow=4)
                     grid = grid.permute((1, 2, 0)).squeeze(-1).cpu().numpy()
-
                     if grid.dtype != np.uint8:
                         grid = ndimage_to_u8(grid) if self.rescale else ndimage_to_u8(grid, zero_min=True)
-
                     img = Image.fromarray(grid)
 
                 filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
@@ -189,11 +188,13 @@ class ImageLogger(Callback):
                 img.save(path)
 
             log_key = f"{split}/{k}"
-            for logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
-                if k in log_strings:
-                    logger.log_image(key=log_key, images=[img], step=global_step, caption=[log_strings[k]])
-                else:
-                    logger.log_image(key=log_key, images=[img], step=global_step)
+            if k in log_strings:
+                wandb_dict.update({log_key: wandb.Image(img, caption=log_strings[k])})
+            else:
+                wandb_dict.update({log_key: wandb.Image(img)})
+
+        for logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
+            logger.log_metrics(metrics=wandb_dict)
 
     @rank_zero_only
     def maybe_log_images(
@@ -264,10 +265,7 @@ class ImageLogger(Callback):
 
         log_strings = {}
         if "caption" in batch:
-            if "samples" in log_dict:
-                log_strings["samples"] = np_text_decode(batch["caption"][: self.max_images])
-            else:
-                log_strings["caption"] = np_text_decode(batch["caption"][: self.max_images])
+            log_strings["caption"] = np_text_decode(batch["caption"][: self.max_images])
 
         if "post_id" in batch and "source" in batch:
             log_strings["inputs"] = [
