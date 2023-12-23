@@ -187,9 +187,9 @@ class DiffusionEngine(L.LightningModule):
             loss, loss_dict = hook(self, batch, loss, loss_dict)
 
         # log the adjusted loss
-        loss = loss.mean().detach()
-        self.loss_ema.update(loss.item())
-        loss_dict.update({"train/loss": loss, "train/loss_ema": self.loss_ema.value})
+
+        self.loss_ema.update(loss.mean().item())
+        loss_dict.update({"train/loss": loss.mean(), "train/loss_ema": self.loss_ema.value})
 
         self.log_dict(
             loss_dict,
@@ -200,7 +200,7 @@ class DiffusionEngine(L.LightningModule):
             batch_size=batch[self.input_key].shape[0],
         )
 
-        return loss
+        return loss.mean()
 
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
