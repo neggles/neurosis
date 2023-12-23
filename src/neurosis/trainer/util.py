@@ -10,6 +10,23 @@ from packaging.version import Version
 logger = logging.getLogger(__name__)
 
 
+class EMATracker:
+    def __init__(self, alpha: float = 0.05):
+        super().__init__()
+        self.alpha = alpha
+        self._value = None
+
+    def update(self, new_value):
+        if self._value is None:
+            self._value = new_value
+        else:
+            self._value = new_value * self.alpha + self._value * (1 - self.alpha)
+
+    @property
+    def value(self):
+        return self._value
+
+
 def default_trainer_args() -> dict[str, Any]:
     argspec = dict(signature(Trainer.__init__).parameters)
     argspec.pop("self")

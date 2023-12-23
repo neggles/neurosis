@@ -26,6 +26,7 @@ from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
+from neurosis.trainer.util import EMATracker
 from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,7 @@ class DiffusionEngine(L.LightningModule):
         self.first_stage_autocast: bool = not disable_first_stage_autocast
         self.no_cond_log: bool = no_cond_log
         self.vae_batch_size = vae_batch_size
+        self.loss_ema = EMATracker(alpha=0.02)
 
         if ckpt_path is not None:
             self.init_from_ckpt(Path(ckpt_path))
@@ -185,7 +187,9 @@ class DiffusionEngine(L.LightningModule):
             loss, loss_dict = hook(self, batch, loss, loss_dict)
 
         # log the adjusted loss
-        loss_dict.update({"train/loss": loss.mean()})
+        loss = loss.mean().detach()
+        self.loss_ema.update(loss.item())
+        loss_dict.update({"train/loss": loss, "train/loss_ema": self.loss_ema.value})
 
         self.log_dict(
             loss_dict,
@@ -196,7 +200,7 @@ class DiffusionEngine(L.LightningModule):
             batch_size=batch[self.input_key].shape[0],
         )
 
-        return loss.mean()
+        return loss
 
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
