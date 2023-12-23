@@ -1,5 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import lightning.pytorch as L
 from torch import Tensor
@@ -10,7 +11,11 @@ logger = logging.getLogger(__name__)
 class LossHook(ABC):
     """A hook for the loss function in DiffusionEngine that modifies the loss before it is backpropagated."""
 
-    def __init__(self, name: str = None, **kwargs):
+    def __init__(
+        self,
+        name: Optional[str] = None,
+        **kwargs,
+    ):
         self.name = name or self.__class__.__name__
         if len(kwargs) > 0:
             logger.info(f"{self.__class__.__name__} superclass received unexpected kwargs:\n" + f"{kwargs}")
