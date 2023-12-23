@@ -47,6 +47,9 @@ def pt_to_numpy(images: Tensor) -> np.ndarray:
     """
     Convert a PyTorch tensor to a NumPy array.
     """
+    if isinstance(images, list):
+        images = torch.stack(images, dim=0)
+
     if images.ndim == 4:
         images = images.cpu().permute(0, 2, 3, 1).float().numpy()  # b, h, w, c
     else:

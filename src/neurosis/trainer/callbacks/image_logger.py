@@ -146,10 +146,7 @@ class ImageLogger(Callback):
             captions = log_strings.pop("samples")
             if not isinstance(captions, list):
                 captions = [captions]
-            if not isinstance(samples, list):
-                samples = [samples]
-
-            if isinstance(samples[0], Tensor):
+            if isinstance(samples, Tensor):
                 samples = pt_to_pil(samples)
 
             grid = CaptionGrid()
