@@ -17,6 +17,7 @@ from torch.amp.autocast_mode import autocast
 from torchvision.utils import make_grid
 
 from neurosis.utils import isheatmap, ndimage_to_u8
+from neurosis.utils.image.convert import pt_to_pil
 from neurosis.utils.image.grid import CaptionGrid
 from neurosis.utils.text import np_text_decode
 
@@ -147,6 +148,10 @@ class ImageLogger(Callback):
                 captions = [captions]
             if not isinstance(samples, list):
                 samples = [samples]
+
+            if isinstance(samples[0], Tensor):
+                samples = pt_to_pil(samples)
+
             grid = CaptionGrid()
             img = grid(
                 samples,
