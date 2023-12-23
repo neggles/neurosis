@@ -1,6 +1,6 @@
 import importlib
 import logging
-from functools import lru_cache, partial
+from functools import partial
 from os import PathLike
 from pathlib import Path
 from textwrap import wrap as text_wrap
@@ -14,7 +14,7 @@ from safetensors.torch import load_file as load_safetensors
 from torch import Tensor
 from torch.nn import Module
 
-from neurosis.data import open_package_file
+from neurosis.data import get_image_font
 
 # generic wrapper typevar
 T = TypeVar("T")
@@ -23,13 +23,6 @@ T = TypeVar("T")
 M = TypeVar("M", bound=Module)
 
 logger = logging.getLogger(__name__)
-
-
-@lru_cache(maxsize=2)
-def get_image_font(name: str = "NotoSansMono", size: int = 10) -> ImageFont.FreeTypeFont:
-    with open_package_file("fonts", f"{name}.ttf", "rb") as f:
-        font = ImageFont.truetype(f, size=size)
-    return font
 
 
 def disabled_train(self: M, mode: bool = True) -> M:
