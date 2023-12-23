@@ -97,13 +97,13 @@ class ImageFolderDataset(AspectBucketDataset):
         )
 
         modified = False
-        for bucket_id, sample_ids in enumerate(self.bucket2idx.items()):
+        for bucket_id, sample_ids in self.bucket2idx.items():
             n_samples = len(sample_ids)
             if n_samples >= self.batch_size:
                 continue
             logger.warn(f"Bucket #{bucket_id} has less than one batch of samples, merging with next bucket.")
             if self.buckets[bucket_id].aspect < 1.0:
-                self.samples[sample_ids, "bucket_idx"] = bucket_id + 1
+                self.samples.loc[sample_ids, "bucket_idx"] = bucket_id + 1
 
         if modified:
             self._bucket2idx = None
