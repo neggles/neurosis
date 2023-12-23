@@ -1,7 +1,6 @@
 from contextlib import contextmanager
 from importlib import resources
 from importlib.abc import Traversable
-from io import BufferedReader
 from typing import Any, Generator
 
 
@@ -23,16 +22,5 @@ def open_package_file(dir: str, name: str, mode: str = "r") -> Generator[Travers
         raise FileNotFoundError(f"File {file} not found in {resources.files(__package__)}")
     try:
         yield file.open(mode)
-    finally:
-        pass
-
-
-@contextmanager
-def lpips_checkpoint(name: str = "vgg_lpips") -> Generator[BufferedReader, Any, None]:
-    lpips_file = resources.files(f"{__package__}.lpips").joinpath(f"{name}.pth")
-    if not lpips_file.exists():
-        raise FileNotFoundError(f"File {lpips_file} not found in {__package__}.lpips")
-    try:
-        yield lpips_file.open("rb")
     finally:
         pass

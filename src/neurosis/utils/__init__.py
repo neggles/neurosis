@@ -1,4 +1,10 @@
-from .misc import ndimage_to_f32, ndimage_to_u8, ndimage_to_u8_norm, silence_hf_load_warnings
+from .misc import (
+    batched,
+    ndimage_to_f32,
+    ndimage_to_u8,
+    ndimage_to_u8_norm,
+    silence_hf_load_warnings,
+)
 from .module import (
     CheckpointFunction,
     MixedCheckpointFunction,
@@ -46,6 +52,7 @@ __all__ = [
     "append_zero",
     "autocast",
     "avg_pool_nd",
+    "batched",
     "checkpoint",
     "CheckpointFunction",
     "conv_nd",
