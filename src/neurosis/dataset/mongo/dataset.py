@@ -1,11 +1,13 @@
 import logging
 from io import BytesIO
 from os import PathLike, getpid
+from time import sleep
 from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
 import torch
+from botocore.exceptions import ConnectionError
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from pymongo import MongoClient
@@ -25,8 +27,9 @@ from neurosis.dataset.aspect import (
     SDXLBucketList,
 )
 from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
-from neurosis.dataset.utils import clean_word, clear_fsspec, pil_crop_bucket, pil_ensure_rgb
+from neurosis.dataset.utils import clean_word, clear_fsspec, pil_crop_bucket, set_s3fs_opts
 from neurosis.utils import maybe_collect
+from neurosis.utils.image import pil_ensure_rgb
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,8 @@ class MongoAspectDataset(AspectBucketDataset):
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
+        retries: int = 3,
+        retry_delay: int = 5,
     ):
         super().__init__(buckets, batch_size, image_key, caption_key)
         self.pid = getpid()
@@ -70,6 +75,9 @@ class MongoAspectDataset(AspectBucketDataset):
         self.fs: S3FileSystem = None
         self.client: MongoClient = None
         self.pma_schema: Schema = pma_schema
+
+        self.retries = retries
+        self.retry_delay = retry_delay
 
         # load meta
         logger.debug(
@@ -195,11 +203,21 @@ class MongoAspectDataset(AspectBucketDataset):
     def _get_image(self, path: str) -> Image.Image:
         if self.fs is None:
             self.refresh_clients()
+
         # prepend bucket if not already present
+        image = None
         path = f"{self.s3_bucket}/{path}" if self.s3_bucket is not None else path
 
         # get image
-        image = self.fs.cat(path)
+        attempts = 0
+        while attempts < self.retries and image is None:
+            try:
+                image = self.fs.cat(path)
+            except ConnectionError:
+                logger.exception(f"Caught connection error on {path}, retry in {self.retry_delay}s")
+                sleep(self.retry_delay)
+            attempts += 1
+
         if not isinstance(image, bytes):
             raise FileNotFoundError(f"Failed to load image from {path}")
         # load image and ensure RGB colorspace
@@ -318,3 +336,4 @@ class MongoDbModule(LightningDataModule):
 def mongo_worker_init(worker_id: int = -1):
     logger.info(f"Worker {worker_id} initializing")
     clear_fsspec()
+    set_s3fs_opts()

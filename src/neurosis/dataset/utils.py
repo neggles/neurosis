@@ -6,6 +6,7 @@ from PIL import Image, ImageOps
 from torch import Tensor
 
 from neurosis.dataset.aspect.bucket import AspectBucket
+from neurosis.utils.image import pil_ensure_rgb
 
 
 def clear_fsspec():
@@ -15,29 +16,11 @@ def clear_fsspec():
     fsspec.asyn.loop[0] = None
 
 
-def pil_ensure_rgb(image: Image.Image) -> Image.Image:
-    # convert to RGB/RGBA if not already (deals with palette images etc.)
-    if image.mode not in ["RGB", "RGBA"]:
-        image = image.convert("RGBA") if "transparency" in image.info else image.convert("RGB")
-    # convert RGBA to RGB with white background
-    if image.mode == "RGBA":
-        canvas = Image.new("RGBA", image.size, (255, 255, 255))
-        canvas.alpha_composite(image)
-        image = canvas.convert("RGB")
-    return image
+def set_s3fs_opts():
+    import s3fs
 
-
-def pil_pad_square(
-    image: Image.Image,
-    fill: tuple[int, int, int] = (255, 255, 255),
-) -> Image.Image:
-    w, h = image.size
-    # get the largest dimension so we can pad to a square
-    px = max(image.size)
-    # pad to square with white background
-    canvas = Image.new("RGB", (px, px), fill)
-    canvas.paste(image, ((px - w) // 2, (px - h) // 2))
-    return canvas
+    s3fs.S3FileSystem.retries = 10
+    s3fs.S3FileSystem.connect_timeout = 30
 
 
 def pil_crop_bucket(
