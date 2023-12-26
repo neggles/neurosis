@@ -239,7 +239,7 @@ class TagFrequencyHook(LossHook):
             weights.append(torch.ones(loss.shape[1:]) * loss_weight)
 
         loss_dict.update({"train/frequency_weight": torch.stack(weights).detach().mean().cpu()})
-        weights = torch.stack(weights).to(loss.device)
+        weights = torch.stack(weights).to(loss)
 
         return loss * weights, loss_dict
 
