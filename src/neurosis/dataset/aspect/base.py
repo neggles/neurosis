@@ -1,10 +1,12 @@
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
+import torch
 from PIL import Image, PngImagePlugin
 from torch.utils.data import Dataset
+from torchvision.transforms import v2 as T
 
 from neurosis.dataset.aspect.lists import AspectBucketList
 
@@ -39,6 +41,15 @@ class AspectBucketDataset(Dataset):
         self.samples: pd.DataFrame = None
         self._bucket2idx: dict[int, np.ndarray] = None
         self._idx2bucket: dict[int, int] = None
+
+        # set default transforms
+        self.transforms: Callable = T.Compose(
+            [
+                T.ToImage(),
+                T.ToDtype(torch.float32, scale=True),
+                T.Normalize(mean=[0.5], std=[0.5]),
+            ]
+        )
 
     @property
     def bucket2idx(self) -> dict[int, np.ndarray]:
