@@ -481,21 +481,12 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
             **kwargs,
         )
 
-        z_channels = ddconfig.get("z_channels", embed_dim)
-        double_z = ddconfig.get("double_z", False)
+        quant_conv_in_ch = (1 + ddconfig["double_z"]) * ddconfig["z_channels"]
+        quant_conv_out_ch = (1 + ddconfig["double_z"]) * embed_dim
 
-        pq_in_channels = z_channels * 2 if double_z else z_channels
-        pq_out_channels = embed_dim * 2 if double_z else embed_dim
-
-        self.quant_conv = nn.Conv2d(
-            in_channels=pq_in_channels,
-            out_channels=pq_out_channels,
-            kernel_size=1,
-            bias=True,
-        )
-        self.post_quant_conv = nn.Conv2d(
-            in_channels=embed_dim, out_channels=z_channels, kernel_size=1, bias=True
-        )
+        self.quant_conv = nn.Conv2d(quant_conv_in_ch, quant_conv_out_ch, 1)
+        self.post_quant_conv = nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
+        self.embed_dim = embed_dim
 
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys)
