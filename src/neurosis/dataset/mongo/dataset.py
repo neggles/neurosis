@@ -2,11 +2,10 @@ import logging
 from io import BytesIO
 from os import PathLike, getpid
 from time import sleep
-from typing import Callable, Optional
+from typing import Optional
 
 import numpy as np
 import pandas as pd
-import torch
 from botocore.exceptions import ConnectionError
 from lightning.pytorch import LightningDataModule
 from PIL import Image
@@ -17,7 +16,6 @@ from pymongoarrow.schema import Schema
 from s3fs import S3FileSystem
 from torch import Tensor
 from torch.utils.data import BatchSampler, DataLoader
-from torchvision.transforms import v2 as T
 
 from neurosis.dataset.aspect import (
     AspectBucket,
@@ -85,13 +83,6 @@ class MongoAspectDataset(AspectBucketDataset):
         )
         self._count: int = None
         self._preload()
-        # transforms
-        self.transforms: Callable = T.Compose(
-            [
-                T.ToImage(),
-                T.ToDtype(torch.float32, scale=True),
-            ]
-        )
 
     def __len__(self):
         if self.samples is not None:

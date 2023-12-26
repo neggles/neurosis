@@ -1,16 +1,13 @@
 import logging
 from os import PathLike
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import pandas as pd
-import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader
-from torchvision.transforms import v2 as T
 
 from neurosis.constants import IMAGE_EXTNS
 from neurosis.dataset.aspect import (
@@ -62,13 +59,6 @@ class ImageFolderDataset(AspectBucketDataset):
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
         self._preload()
-        # transforms
-        self.transforms: Callable = T.Compose(
-            [
-                T.ToImage(),
-                T.ToDtype(torch.float32, scale=True),
-            ]
-        )
 
     def __len__(self):
         return len(self.samples)
