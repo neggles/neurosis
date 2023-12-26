@@ -102,9 +102,7 @@ class GPUMemoryUsage(Callback):
     ) -> None:
         if not (self.before_batch and self.check_interval(trainer, batch_idx)):
             return  # skip
-        pl_module.log_dict(
-            self.get_memory_usage("gpu/memory"), prog_bar=False, logger=True, on_step=True, on_epoch=True
-        )
+        pl_module.log_dict(self.get_memory_usage("gpu/memory"), prog_bar=False, logger=True, on_step=True)
 
     def on_train_batch_end(
         self,
@@ -116,6 +114,4 @@ class GPUMemoryUsage(Callback):
     ) -> None:
         if not (self.after_batch and self.check_interval(trainer, batch_idx)):
             return  # skip
-        pl_module.log_dict(
-            self.get_memory_usage("gpu/memory"), prog_bar=False, logger=True, on_step=True, on_epoch=True
-        )
+        pl_module.log_dict(self.get_memory_usage("gpu/memory"), prog_bar=False, logger=True, on_step=True)

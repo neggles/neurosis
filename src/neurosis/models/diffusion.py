@@ -196,7 +196,6 @@ class DiffusionEngine(L.LightningModule):
             prog_bar=True,
             logger=True,
             on_step=True,
-            on_epoch=True,
             batch_size=batch[self.input_key].shape[0],
         )
 

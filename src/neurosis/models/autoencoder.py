@@ -283,7 +283,6 @@ class AutoencodingEngine(AbstractAutoencoder):
                 prog_bar=False,
                 logger=True,
                 on_step=True,
-                on_epoch=True,
                 sync_dist=False,
             )
             self.log(
@@ -291,7 +290,6 @@ class AutoencodingEngine(AbstractAutoencoder):
                 aeloss.mean().detach(),
                 prog_bar=True,
                 logger=False,
-                on_epoch=False,
                 on_step=True,
             )
             return aeloss
@@ -299,7 +297,7 @@ class AutoencodingEngine(AbstractAutoencoder):
             # discriminator
             discloss, log_dict_disc = self.loss(x, xrec, **extra_info)
             # -> discriminator always needs to return a tuple
-            self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True)
+            self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True)
             return discloss
         else:
             raise ValueError(f"Unknown optimizer {optimizer_idx}")
