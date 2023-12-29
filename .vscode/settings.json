@@ -66,7 +66,6 @@
         "editor.formatOnSaveMode": "file",
         "diffEditor.ignoreTrimWhitespace": false
     },
-
     "yaml.format.bracketSpacing": true,
     "yaml.format.proseWrap": "preserve",
     "yaml.format.singleQuote": false,
