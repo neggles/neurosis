@@ -1,6 +1,6 @@
 import logging
 from io import BytesIO
-from os import PathLike, getpid
+from os import PathLike, getenv, getpid
 from time import sleep
 from typing import Optional
 
@@ -67,6 +67,10 @@ class MongoAspectDataset(AspectBucketDataset):
         self.process_tags = process_tags
         self.shuffle_tags = shuffle_tags
         self.shuffle_keep = shuffle_keep
+
+        # load S3_ENDPOINT_URL from env if not already present
+        if s3_endpoint_env := getenv("S3_ENDPOINT_URL", None):
+            s3fs_kwargs.setdefault("endpoint_url", s3_endpoint_env)
 
         self.s3fs_kwargs = s3fs_kwargs
         self.s3_bucket = s3_bucket
