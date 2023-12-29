@@ -95,6 +95,7 @@ def main(
         auto_configure_optimizers=False,
         args=args,
         parser_kwargs=dict(
+            default_env=True,
             default_config_files=default_config_files,
             parser_mode="omegaconf",
         ),
