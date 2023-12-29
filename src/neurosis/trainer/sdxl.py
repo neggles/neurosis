@@ -22,6 +22,7 @@ from rich.traceback import install as install_traceback
 
 from neurosis import __version__, console, is_debug  # noqa: F401
 from neurosis.models.diffusion import DiffusionEngine
+from neurosis.trainer.callbacks.exception import ExceptionHandlerCallback  # noqa: F401
 from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
 
