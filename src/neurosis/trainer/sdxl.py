@@ -1,5 +1,5 @@
 import logging
-from os import isatty
+from os import getenv, isatty
 from pathlib import Path
 from typing import Annotated, List, Optional
 
@@ -26,8 +26,8 @@ from neurosis.trainer.callbacks.exception import ExceptionHandlerCallback  # noq
 from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
 
-# set up rich if we're in a tty/interactive
-if isatty(1):
+# set up rich if we're in a tty/interactive and NOT in kube
+if isatty(1) and getenv("KUBERNETES_PORT", None) is not None:
     _ = install_pretty(console=console)
     _ = install_traceback(
         console=console,
