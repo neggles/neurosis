@@ -8,8 +8,8 @@ on:
       - "release"
     paths:
       - ".github/workflows/build-push.yaml"
-      - "src/*"
-      - "docker/*"
+      - "src/**"
+      - "docker/**"
       - "docker-bake.hcl"
       - "docker-compose.yml"
       - "!**.md"
@@ -27,8 +27,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/build-push.yaml"
-      - "src/*"
-      - "docker/*"
+      - "src/**"
+      - "docker/**"
       - "docker-bake.hcl"
       - "docker-compose.yml"
       - "!**.md"
@@ -62,10 +62,10 @@ jobs:
         include:
           - target: neurosis
             cuda-ver: "cu121"
-            torch-ver: "torch201"
+            torch-ver: "torch210"
 
           - target: neurosis
-            cuda-ver: "cu121"
+            cuda-ver: "cu118"
             torch-ver: "torch210"
 
     steps:
