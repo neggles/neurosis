@@ -7,12 +7,16 @@ variable "IMAGE_REGISTRY" {
   default = "ghcr.io"
 }
 
-variable "IMAGE_NAME" {
+variable "IMAGE_NAMESPACE" {
   default = "neggles/neurosis"
 }
 
-variable "BASE_IMAGE" {
-  default = "ghcr.io/neggles/tensorpods/base"
+variable "BASE_NAMESPACE" {
+  default = "ghcr.io/neggles/tensorpods"
+}
+
+variable "BASE_NAME" {
+  default = "base"
 }
 
 variable "CUDA_VERSION" {
@@ -43,7 +47,7 @@ target "common" {
   context    = "."
   dockerfile = "docker/Dockerfile"
   args = {
-    BASE_IMAGE           = "${BASE_IMAGE}:${CUDA_VERSION}-${TORCH_VERSION}"
+    BASE_IMAGE           = "${BASE_NAMESPACE}/${BASE_NAME}:${CUDA_VERSION}-${TORCH_VERSION}"
     TORCH_CUDA_ARCH_LIST = TORCH_CUDA_ARCH_LIST
   }
   platforms = ["linux/amd64"]
@@ -56,5 +60,14 @@ target "neurosis" {
   args = {
     XFORMERS_VERSION = XFORMERS_VERSION
     BNB_VERSION      = BNB_VERSION
+  }
+}
+
+# Base trainer image
+target "coreweave" {
+  inherits = ["common", "docker-metadata-action", "neurosis"]
+  target   = "neurosis"
+  args = {
+    BASE_IMAGE = "${BASE_NAMESPACE}/coreweave:${CUDA_VERSION}-${TORCH_VERSION}"
   }
 }
