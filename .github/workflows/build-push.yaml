@@ -61,12 +61,12 @@ jobs:
       matrix:
         include:
           - target: neurosis
-            cuda-ver: "cu121"
-            torch-ver: "torch210"
+            cuda-ver: cu121
+            torch-ver: torch210
 
           - target: neurosis
-            cuda-ver: "cu118"
-            torch-ver: "torch210"
+            cuda-ver: cu118
+            torch-ver: torch210
 
     steps:
       - name: Checkout
