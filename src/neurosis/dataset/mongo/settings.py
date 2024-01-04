@@ -47,7 +47,7 @@ class MongoSettings(BaseSettings):
 
     db_name: str = Field(..., description="Database to query", alias="database")
     coll_name: str = Field(..., description="Collection to query", alias="collection")
-    query: Query = Field(description="Query to run on the collection")
+    query: Query = Field(description="Query to run on the collection", default_factory=Query)
 
     caption_array: bool = Field(False, description="True if `caption` is an array of strings")
 
