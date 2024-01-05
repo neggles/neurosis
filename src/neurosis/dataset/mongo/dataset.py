@@ -113,7 +113,7 @@ class MongoAspectDataset(AspectBucketDataset):
 
         # detect forks and reset fsspec
         pid = getpid()
-        if self.pid != pid:
+        if self.pid != pid or self.fs is None:
             logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
             self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
             self.pid = pid
