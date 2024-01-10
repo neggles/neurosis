@@ -23,6 +23,35 @@ def set_s3fs_opts():
     s3fs.S3FileSystem.connect_timeout = 30
 
 
+def pil_crop_square(
+    image: Image.Image,
+    size: int | tuple[int, int],
+    resampling: Image.Resampling = Image.Resampling.BICUBIC,
+    return_dict: bool = False,
+) -> Image.Image:
+    if isinstance(size, int):
+        size = (size, size)
+
+    # crop short edge to match size
+    image = ImageOps.cover(image, size, method=resampling)
+
+    # crop long edge to match bucket long edge
+    min_edge = min(image.size)
+
+    delta_w = image.size[0] - min_edge
+    delta_h = image.size[1] - min_edge
+    if all([delta_w, delta_h]):
+        raise ValueError(f"Failed to crop short edge to match {size}!")
+
+    top = np.random.randint(delta_h + 1)
+    left = np.random.randint(delta_w + 1)
+    image = image.crop((left, top, left + size[0], top + size[1]))
+
+    if return_dict:
+        return {"image": image, "crop_coords_top_left": (top, left)}
+    return (image, (top, left))
+
+
 def pil_crop_bucket(
     image: Image.Image,
     bucket: AspectBucket,
@@ -44,7 +73,9 @@ def pil_crop_bucket(
     left = np.random.randint(delta_w + 1)
     image = image.crop((left, top, left + bucket.width, top + bucket.height))
 
-    return {"image": image, "crop_coords_top_left": (top, left)} if return_dict else (image, (top, left))
+    if return_dict:
+        return {"image": image, "crop_coords_top_left": (top, left)}
+    return (image, (top, left))
 
 
 def load_bucket_image_file(
