@@ -5,11 +5,12 @@ from abc import abstractmethod
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 import lightning as L
 import torch
 from einops import rearrange
+from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from packaging import version
 from safetensors.torch import load_file as load_safetensors
 from torch import Tensor, nn
@@ -39,12 +40,14 @@ class AbstractAutoencoder(L.LightningModule):
         input_key: str = "jpg",
         ckpt_path: Union[None, str] = None,
         ignore_keys: Union[tuple, list] = tuple(),
+        base_lr: Optional[float] = None,
     ):
         super().__init__()
         self.encoder: nn.Module
         self.decoder: nn.Module
 
         self.input_key = input_key
+        self.base_lr = base_lr
         self.use_ema = ema_decay is not None
         if monitor is not None:
             self.monitor = monitor
@@ -58,13 +61,6 @@ class AbstractAutoencoder(L.LightningModule):
 
         if version.parse(L.__version__) >= version.parse("2.0.0"):
             self.automatic_optimization = False
-
-    @property
-    def accumulate_grad_batches(self) -> int:
-        try:
-            return self.trainer.accumulate_grad_batches
-        except Exception:
-            return 1
 
     def init_from_ckpt(self, path: Path, ignore_keys: Union[tuple, list] = tuple()) -> None:
         path = Path(path)
@@ -142,6 +138,12 @@ class AbstractAutoencoder(L.LightningModule):
     def configure_optimizers(self) -> Any:
         raise NotImplementedError("Abstract base class was called ;_;")
 
+    def unfreeze_decoder(self):
+        if not hasattr(self, "decoder"):
+            raise ValueError("No decoder found!")
+        self.decoder.train()
+        self.decoder.requires_grad_(True)
+
 
 class AutoencodingEngine(AbstractAutoencoder):
     """
@@ -159,10 +161,8 @@ class AutoencodingEngine(AbstractAutoencoder):
         regularizer: Optional[AbstractRegularizer] = None,
         optimizer_config: Optional[dict] = None,
         lr_g_factor: float = 1.0,
-        trainable_ae_params: Optional[list[list[str]]] = None,
-        ae_optimizer_args: Optional[list[dict]] = None,
-        trainable_disc_params: Optional[list[list[str]]] = None,
-        disc_optimizer_args: Optional[list[dict]] = None,
+        optimizer: OptimizerCallable,
+        scheduler: LRSchedulerCallable,
         disc_start_iter: int = 0,
         diff_boost_factor: float = 3.0,
         additional_decode_keys: Optional[list[str]] = None,
@@ -181,48 +181,35 @@ class AutoencodingEngine(AbstractAutoencoder):
         self.disc_start_iter = disc_start_iter
         self.lr_g_factor = lr_g_factor
 
-        self.trainable_ae_params = trainable_ae_params
-        if self.trainable_ae_params is not None:
-            self.ae_optimizer_args = (
-                ae_optimizer_args or [{} for _ in range(len(self.trainable_ae_params))],
-            )
-
-            assert len(self.ae_optimizer_args) == len(self.trainable_ae_params)
-        else:
-            self.ae_optimizer_args = [{}]  # makes type consitent
-
-        self.trainable_disc_params = trainable_disc_params
-        if self.trainable_disc_params is not None:
-            self.disc_optimizer_args = (
-                disc_optimizer_args or [{} for _ in range(len(self.trainable_disc_params))],
-            )
-            assert len(self.disc_optimizer_args) == len(self.trainable_disc_params)
-        else:
-            self.disc_optimizer_args = [{}]  # makes type consitent
+        self.optimizer = optimizer
+        self.scheduler = scheduler
 
         self.additional_decode_keys = set(additional_decode_keys or [])
 
-    def get_input(self, batch: Dict) -> Tensor:
+    def get_input(self, batch: dict) -> Tensor:
         # assuming unified data format, dataloader returns a dict.
         # image tensors should be scaled to -1 ... 1 and in channels-first format (e.g., bchw instead if bhwc)
         return batch[self.input_key]
 
-    def get_autoencoder_params(self) -> list:
+    def get_autoencoder_params(self, decoder_only: bool = False) -> list:
         params = []
         if hasattr(self.loss, "get_trainable_autoencoder_parameters"):
             params += list(self.loss.get_trainable_autoencoder_parameters())
         if hasattr(self.regularization, "get_trainable_parameters"):
             params += list(self.regularization.get_trainable_parameters())
-        params = params + list(self.encoder.parameters())
-        params = params + list(self.decoder.parameters())
+
+        params += list(self.decoder.parameters())
+        if decoder_only:
+            return params
+
+        params += list(self.encoder.parameters())
         return params
 
     def get_discriminator_params(self) -> list:
         if hasattr(self.loss, "get_trainable_parameters"):
-            params = list(self.loss.get_trainable_parameters())  # e.g., discriminator
+            return list(self.loss.get_trainable_parameters())  # e.g., discriminator
         else:
-            params = []
-        return params
+            return []
 
     def get_last_layer(self):
         return self.decoder.get_last_layer()
@@ -302,7 +289,7 @@ class AutoencodingEngine(AbstractAutoencoder):
             self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True)
             return discloss
         else:
-            raise ValueError(f"Unknown optimizer {optimizer_idx}")
+            raise ValueError(f"Unknown optimizer ID {optimizer_idx}")
 
     def training_step(self, batch: dict, batch_idx: int):
         opts = self.optimizers()
@@ -315,12 +302,11 @@ class AutoencodingEngine(AbstractAutoencoder):
         opt = opts[optimizer_idx]
         opt.zero_grad()
         with opt.toggle_model():
-            loss = self.inner_training_step(batch, batch_idx, optimizer_idx=optimizer_idx)
+            loss = self.inner_training_step(batch, batch_idx, optimizer_idx)
             self.manual_backward(loss)
-
         opt.step()
 
-    def validation_step(self, batch, batch_idx) -> Dict:
+    def validation_step(self, batch, batch_idx) -> dict:
         log_dict = self._validation_step(batch, batch_idx)
         with self.ema_scope():
             log_dict_ema = self._validation_step(batch, batch_idx, postfix="_ema")
@@ -367,7 +353,7 @@ class AutoencodingEngine(AbstractAutoencoder):
 
     def get_param_groups(
         self, parameter_names: list[list[str]], optimizer_args: list[dict]
-    ) -> tuple[list[Dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], int]:
         groups = []
         num_params = 0
         for names, args in zip(parameter_names, optimizer_args):
@@ -386,34 +372,19 @@ class AutoencodingEngine(AbstractAutoencoder):
         return groups, num_params
 
     def configure_optimizers(self) -> list[torch.optim.Optimizer]:
-        if self.trainable_ae_params is None:
-            ae_params = self.get_autoencoder_params()
-        else:
-            ae_params, num_ae_params = self.get_param_groups(self.trainable_ae_params, self.ae_optimizer_args)
-            logger.info(f"Number of trainable autoencoder parameters: {num_ae_params:,}")
-        if self.trainable_disc_params is None:
-            disc_params = self.get_discriminator_params()
-        else:
-            disc_params, num_disc_params = self.get_param_groups(
-                self.trainable_disc_params, self.disc_optimizer_args
-            )
-            logger.info(f"Number of trainable discriminator parameters: {num_disc_params:,}")
-        opt_ae = self.instantiate_optimizer_from_config(
-            ae_params,
-            (self.lr_g_factor or 1.0) * self.learning_rate,
-            self.optimizer_config,
-        )
+        ae_params = self.get_autoencoder_params()
+        opt_ae = self.optimizer(ae_params)
         opts = [opt_ae]
+
+        disc_params = self.get_discriminator_params()
         if len(disc_params) > 0:
-            opt_disc = self.instantiate_optimizer_from_config(
-                disc_params, self.learning_rate, self.optimizer_config
-            )
+            opt_disc = self.optimizer(disc_params)
             opts.append(opt_disc)
 
         return opts
 
     @torch.no_grad()
-    def log_images(self, batch: dict, additional_log_kwargs: Optional[Dict] = None, **kwargs) -> dict:
+    def log_images(self, batch: dict, additional_log_kwargs: Optional[dict] = None, **kwargs) -> dict:
         additional_decode_kwargs = {}
         x = self.get_input(batch)
         additional_decode_kwargs.update(
@@ -535,10 +506,17 @@ class AutoencoderKL(AutoencodingEngineLegacy):
     """just an always-diagonal-gaussian-regulized autoencoder aka VAE"""
 
     @wraps(AutoencodingEngineLegacy.__init__)
-    def __init__(self, **kwargs):
-        _ = kwargs.pop("regularizer", None)
+    def __init__(
+        self,
+        regularizer: Optional[nn.Module] = None,
+        train_decoder_only: bool = False,
+        **kwargs,
+    ):
         regularizer = DiagonalGaussianRegularizer(sample=False)
         super().__init__(regularizer=regularizer, **kwargs)
+        if train_decoder_only:
+            self.freeze()
+            self.unfreeze_decoder()
 
 
 class AutoencoderKLInferenceWrapper(AutoencoderKL):
@@ -553,10 +531,10 @@ class IdentityFirstStage(AbstractAutoencoder):
     def get_input(self, x: Any) -> Any:
         return x
 
-    def encode(self, x: Any, *args, **kwargs) -> Any:
+    def encode(self, x: Any, *_, **__) -> Any:
         return x
 
-    def decode(self, x: Any, *args, **kwargs) -> Any:
+    def decode(self, x: Any, *_, **__) -> Any:
         return x
 
 
@@ -566,7 +544,7 @@ class AEIntegerWrapper(nn.Module):
         model: nn.Module,
         shape: Optional[tuple[int, int] | list[int]] = (16, 16),
         regularization_key: str = "regularization",
-        encoder_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_kwargs: Optional[dict[str, Any]] = None,
     ):
         super().__init__()
         self.model = model
