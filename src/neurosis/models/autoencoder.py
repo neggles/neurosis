@@ -41,6 +41,8 @@ class AbstractAutoencoder(L.LightningModule):
         ignore_keys: Union[tuple, list] = tuple(),
     ):
         super().__init__()
+        self.encoder: nn.Module
+        self.decoder: nn.Module
 
         self.input_key = input_key
         self.use_ema = ema_decay is not None
@@ -490,10 +492,6 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
 
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys)
-
-    def get_autoencoder_params(self) -> list:
-        params = super().get_autoencoder_params()
-        return params
 
     def encode(self, x: Tensor, return_reg_log: bool = False) -> Union[Tensor, tuple[Tensor, dict]]:
         if self.max_batch_size is None:
