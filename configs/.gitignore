@@ -1,6 +1,7 @@
 *
 !.gitignore
 !*.example.yml
+!*.example.yaml
 !/sdxl/
 !/sd15/
 !/hook/
