@@ -61,7 +61,7 @@ class DiffusionEngine(L.LightningModule):
         self.log_keys = log_keys
         self.input_key = input_key
 
-        self.model = OpenAIWrapper(model, compile_model=compile_model)
+        self.model: UNetModel = OpenAIWrapper(model, compile_model=compile_model)
         self.denoiser = denoiser
         self.sampler = sampler
         self.conditioner = conditioner
@@ -166,14 +166,14 @@ class DiffusionEngine(L.LightningModule):
         loss = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
         return loss
 
-    def shared_step(self, batch: dict) -> tuple[Tensor, dict[str, Tensor]]:
+    def shared_step(self, batch: dict[str, Tensor]) -> tuple[Tensor, dict[str, Tensor]]:
         x = self.get_input(batch)
         x = self.encode_first_stage(x)
         batch["global_step"] = self.global_step
         loss = self(x, batch)
         return loss
 
-    def training_step(self, batch: dict, batch_idx: int):
+    def training_step(self, batch: dict[str, Tensor], batch_idx: int):
         # run any pre-step hooks
         for hook in self.forward_hooks:
             hook.pre_hook(self.trainer, self, batch, batch_idx)
@@ -360,4 +360,5 @@ class DiffusionEngine(L.LightningModule):
                 samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=num_img, **kwargs)
             samples = self.decode_first_stage(samples)
             log_dict["samples"] = samples
+
         return log_dict
