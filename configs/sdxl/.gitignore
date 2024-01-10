@@ -1,3 +1,4 @@
 *
 !.gitignore
 !*.example.yml
+!*.example.yaml
