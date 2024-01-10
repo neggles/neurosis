@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Tuple
+from typing import Any, Iterator, Tuple
 
 import torch
 from torch import Tensor, nn
@@ -25,7 +25,7 @@ class DiagonalGaussianRegularizer(AbstractRegularizer):
         super().__init__()
         self.sample = sample
 
-    def get_trainable_parameters(self):
+    def get_trainable_parameters(self) -> Iterator[Tensor]:
         yield from ()
 
     def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
