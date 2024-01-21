@@ -42,7 +42,6 @@ class MongoSquareDataset(NoBucketDataset):
         tag_sep: str = ", ",
         word_sep: str = " ",
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
-        clamp_orig: bool = True,
         process_tags: bool = True,
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
@@ -60,7 +59,6 @@ class MongoSquareDataset(NoBucketDataset):
         self.tag_sep = tag_sep
         self.word_sep = word_sep
         self.resampling = resampling
-        self.clamp_orig = clamp_orig
         self.process_tags = process_tags
         self.shuffle_tags = shuffle_tags
         self.shuffle_keep = shuffle_keep
@@ -198,7 +196,6 @@ class MongoSquareModule(LightningDataModule):
         tag_sep: str = ", ",
         word_sep: str = " ",
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
-        clamp_orig: bool = True,
         process_tags: bool = True,
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
@@ -223,7 +220,6 @@ class MongoSquareModule(LightningDataModule):
             tag_sep=tag_sep,
             word_sep=word_sep,
             resampling=resampling,
-            clamp_orig=clamp_orig,
             process_tags=process_tags,
             shuffle_tags=shuffle_tags,
             shuffle_keep=shuffle_keep,
