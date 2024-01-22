@@ -23,6 +23,11 @@ def set_s3fs_opts():
     s3fs.S3FileSystem.connect_timeout = 30
 
 
+def mongo_worker_init(worker_id: int = -1):
+    clear_fsspec()
+    set_s3fs_opts()
+
+
 def pil_crop_square(
     image: Image.Image,
     size: int | tuple[int, int],
