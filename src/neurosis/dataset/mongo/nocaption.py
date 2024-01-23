@@ -97,7 +97,7 @@ class MongoVAEDataset(NoBucketDataset):
         # detect forks and reset fsspec
         pid = getpid()
         if self.fs is None or self.fs._pid != pid:
-            logger.warning(f"loader PID {pid} detected fork, resetting fsspec clients")
+            logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
             import fsspec
 
             fsspec.asyn.reset_lock()

@@ -14,6 +14,7 @@ def clear_fsspec():
 
     fsspec.asyn.iothread[0] = None
     fsspec.asyn.loop[0] = None
+    fsspec.asyn.reset_lock()
 
 
 def set_s3fs_opts():
