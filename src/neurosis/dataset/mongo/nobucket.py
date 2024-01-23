@@ -112,7 +112,7 @@ class MongoSquareDataset(NoBucketDataset):
         fs_pid = self.fs._pid if self.fs is not None else None
 
         if (self.pid != pid) or (fs_pid != pid) or self.fs is None:
-            logger.warning(f"loader PID {pid} detected fork, resetting fsspec clients")
+            logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
             import fsspec
 
             fsspec.asyn.reset_lock()

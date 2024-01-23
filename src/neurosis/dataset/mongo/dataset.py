@@ -118,8 +118,13 @@ class MongoAspectDataset(AspectBucketDataset):
 
         # detect forks and reset fsspec
         pid = getpid()
-        if self.pid != pid or self.fs is None:
+        fs_pid = self.fs._pid if self.fs is not None else None
+
+        if (self.pid != pid) or (fs_pid != pid) or self.fs is None:
             logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
+            import fsspec
+
+            fsspec.asyn.reset_lock()
             self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
             self.pid = pid
 
@@ -316,9 +321,9 @@ class MongoDbModule(LightningDataModule):
             logger.info("Generating sampler")
             self.sampler = AspectBucketSampler(self.dataset)
 
-        if stage == "fit":
-            logger.info("Refreshing dataset clients")
-            self.dataset.refresh_clients()
+        logger.info(f"Refreshing dataset clients for {stage}")
+        self.dataset.fs = None
+        self.dataset.refresh_clients()
 
     def train_dataloader(self):
         batch_sampler = BatchSampler(self.sampler, self.dataset.batch_size, self.drop_last)
