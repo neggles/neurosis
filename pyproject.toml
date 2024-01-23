@@ -1,6 +1,6 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = ["setuptools>=46.4.0", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=64", "wheel", "setuptools_scm>=8"]
 
 [tool.setuptools_scm]
 write_to = "src/neurosis/_version.py"
@@ -9,16 +9,16 @@ write_to = "src/neurosis/_version.py"
 line-length = 110
 target-version = ['py310']
 ignore = [
-  'F841', # unused variable
-  'E501', # line too long
+  'F841', # local variable assigned but never used
+  'E501', # line too long (black fixes this so why does it complain?)
 ]
 
 [tool.ruff]
 line-length = 110
 target-version = 'py310'
 ignore = [
-  'F841', # unused variable
-  'E501', # line too long
+  'F841', # local variable assigned but never used
+  'E501', # line too long (black handles this)
 ]
 extend-exclude = ["/usr/lib/*"]
 
@@ -26,8 +26,11 @@ extend-exclude = ["/usr/lib/*"]
 combine-as-imports = true
 force-wrap-aliases = true
 known-local-folder = ["src"]
-known-first-party = ["neurosis"]
+known-first-party = [
+  "neurosis",
+]
 
 [tool.pyright]
 include = ['src/**']
 exclude = ['/usr/lib/**']
+stubPath = './typings'
