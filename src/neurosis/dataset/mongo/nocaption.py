@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 
 from neurosis.dataset.base import NoBucketDataset
 from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
-from neurosis.dataset.utils import mongo_worker_init, pil_crop_square
+from neurosis.dataset.utils import clear_fsspec, pil_crop_square, set_s3fs_opts
 from neurosis.utils import maybe_collect
 from neurosis.utils.image import pil_ensure_rgb
 
@@ -186,9 +186,8 @@ class MongoVAEModule(LightningDataModule):
         pass
 
     def setup(self, stage: str):
-        if stage == "fit":
-            logger.info("Refreshing dataset clients")
-            self.dataset.refresh_clients()
+        logger.info(f"Refreshing dataset clients for {stage}")
+        self.dataset.refresh_clients()
 
     def train_dataloader(self):
         return DataLoader(
@@ -200,3 +199,9 @@ class MongoVAEModule(LightningDataModule):
             persistent_workers=True,
             worker_init_fn=mongo_worker_init,
         )
+
+
+def mongo_worker_init(worker_id: int = -1):
+    logger.info(f"Worker {worker_id} initializing")
+    clear_fsspec()
+    set_s3fs_opts()
