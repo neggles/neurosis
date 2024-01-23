@@ -20,8 +20,8 @@ from rich.logging import RichHandler
 from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
-from neurosis import __version__, console, is_debug  # noqa: F401
-from neurosis.models.diffusion import DiffusionEngine
+from neurosis import __version__, console, is_debug
+from neurosis.models.diffusion import DiffusionEngine  # noqa: F401
 from neurosis.trainer.callbacks.exception import ExceptionHandlerCallback  # noqa: F401
 from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
@@ -90,7 +90,6 @@ def main(
 
     cli = DiffusionTrainerCli(  # type: ignore
         datamodule_class=None,
-        model_class=DiffusionEngine,
         subclass_mode_data=True,
         subclass_mode_model=True,
         auto_configure_optimizers=False,
