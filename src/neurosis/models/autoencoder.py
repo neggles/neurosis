@@ -35,11 +35,11 @@ class AbstractAutoencoder(L.LightningModule):
 
     def __init__(
         self,
-        ema_decay: Union[None, float] = None,
-        monitor: Union[None, str] = None,
+        ema_decay: Optional[float] = None,
+        monitor: Optional[str] = None,
         input_key: str = "jpg",
-        ckpt_path: Union[None, str] = None,
-        ignore_keys: Union[tuple, list] = tuple(),
+        ckpt_path: Optional[str] = None,
+        ignore_keys: tuple | list = tuple(),
         base_lr: Optional[float] = None,
     ):
         super().__init__()
