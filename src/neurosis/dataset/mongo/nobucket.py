@@ -80,6 +80,7 @@ class MongoSquareDataset(NoBucketDataset):
             f"Preloading dataset from mongodb://<host>/{self.settings.database}.{self.settings.collection}"
         )
         self._count: int = None
+        self._first_getitem = True
         self._preload()
 
     def __len__(self):
@@ -88,6 +89,10 @@ class MongoSquareDataset(NoBucketDataset):
         return self._count
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
+        if self._first_getitem:
+            self.refresh_clients()
+            self._first_getitem = False
+
         sample: pd.Series = self.samples.iloc[index]
         image = self._get_image(sample[self.path_key])
         image, crop_coords = pil_crop_square(image, self.resolution, self.resampling)
@@ -104,8 +109,13 @@ class MongoSquareDataset(NoBucketDataset):
 
         # detect forks and reset fsspec
         pid = getpid()
-        if self.pid != pid or self.fs is None:
-            logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
+        fs_pid = self.fs._pid if self.fs is not None else None
+
+        if (self.pid != pid) or (fs_pid != pid) or self.fs is None:
+            logger.warning(f"loader PID {pid} detected fork, resetting fsspec clients")
+            import fsspec
+
+            fsspec.asyn.reset_lock()
             self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
             self.pid = pid
 
@@ -232,12 +242,13 @@ class MongoSquareModule(LightningDataModule):
         self.drop_last = drop_last
 
     def prepare_data(self) -> None:
-        pass
+        self.dataset.fs = None
+        self.dataset.refresh_clients()
 
     def setup(self, stage: str):
-        if stage == "fit":
-            logger.info("Refreshing dataset clients")
-            self.dataset.refresh_clients()
+        logger.info(f"Refreshing dataset clients for {stage}")
+        self.dataset.fs = None
+        self.dataset.refresh_clients()
 
     def train_dataloader(self):
         return DataLoader(

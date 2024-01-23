@@ -68,6 +68,7 @@ class MongoVAEDataset(NoBucketDataset):
             f"Preloading dataset from mongodb://<host>/{self.settings.database}.{self.settings.collection}"
         )
         self._count: int = None
+        self._first_getitem = True
         self._preload()
 
     def __len__(self):
@@ -76,6 +77,10 @@ class MongoVAEDataset(NoBucketDataset):
         return self._count
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
+        if self._first_getitem:
+            self.refresh_clients()
+            self._first_getitem = False
+
         sample: pd.Series = self.samples.iloc[index]
         image = self._get_image(sample[self.path_key])
         image, crop_coords = pil_crop_square(image, self.resolution, self.resampling)
@@ -91,8 +96,11 @@ class MongoVAEDataset(NoBucketDataset):
 
         # detect forks and reset fsspec
         pid = getpid()
-        if self.pid != pid or self.fs is None:
-            logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
+        if self.fs is None or self.fs._pid != pid:
+            logger.warning(f"loader PID {pid} detected fork, resetting fsspec clients")
+            import fsspec
+
+            fsspec.asyn.reset_lock()
             self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
             self.pid = pid
 

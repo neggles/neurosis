@@ -86,6 +86,7 @@ class MongoAspectDataset(AspectBucketDataset):
             f"Preloading dataset from mongodb://<host>/{self.settings.database}.{self.settings.collection}"
         )
         self._count: int = None
+        self._first_getitem = True
         self._preload()
 
     def __len__(self):
@@ -94,6 +95,10 @@ class MongoAspectDataset(AspectBucketDataset):
         return self._count
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
+        if self._first_getitem:
+            self.refresh_clients()
+            self._first_getitem = False
+
         sample: pd.Series = self.samples.iloc[index]
         bucket: AspectBucket = self.buckets[sample.bucket_idx]
         image = self._get_image(sample[self.path_key])
