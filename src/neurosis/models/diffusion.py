@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from math import ceil
 from os import PathLike
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional
 
 import lightning.pytorch as L
 import numpy as np
@@ -49,7 +49,7 @@ class DiffusionEngine(L.LightningModule):
         scale_factor: float = 1.0,
         disable_first_stage_autocast: bool = False,
         input_key: str = "jpg",
-        log_keys: Union[list, None] = None,
+        log_keys: Optional[list] = None,
         no_cond_log: bool = False,
         compile_model: bool = False,
         vae_batch_size: Optional[int] = None,
@@ -261,9 +261,9 @@ class DiffusionEngine(L.LightningModule):
     def sample(
         self,
         cond: dict,
-        uc: Union[dict, None] = None,
+        uc: Optional[dict] = None,
         batch_size: int = 16,
-        shape: Union[None, Tuple, list] = None,
+        shape: Optional[tuple | list] = None,
         **kwargs,
     ):
         randn = torch.randn(batch_size, *shape).to(self.device)

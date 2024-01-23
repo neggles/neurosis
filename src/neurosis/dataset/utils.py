@@ -57,6 +57,21 @@ def pil_crop_square(
     return (image, (top, left))
 
 
+def load_crop_image_file(
+    path: PathLike | bytes,
+    resolution: int | tuple[int, int],
+    resampling: Image.Resampling = Image.Resampling.BICUBIC,
+) -> tuple[Tensor, tuple[int, int]]:
+    if isinstance(path, bytes):
+        path = path.decode("utf-8")
+    path = Path(path).resolve()
+    # load image
+    image = Image.open(path)
+    image = pil_ensure_rgb(image)
+    image, (top, left) = pil_crop_square(image, resolution, resampling)
+    return image, (top, left)
+
+
 def pil_crop_bucket(
     image: Image.Image,
     bucket: AspectBucket,
