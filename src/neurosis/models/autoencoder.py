@@ -96,9 +96,8 @@ class AbstractAutoencoder(L.LightningModule):
         if len(unexpected) > 0:
             logger.info(f"Unexpected Keys: {unexpected}")
 
-    @abstractmethod
     def get_input(self, batch) -> Any:
-        raise NotImplementedError("Abstract base class was called ;_;")
+        return batch[self.input_key]
 
     def on_train_batch_end(self, *args, **kwargs):
         # for EMA computation
@@ -137,12 +136,6 @@ class AbstractAutoencoder(L.LightningModule):
     @abstractmethod
     def configure_optimizers(self) -> Any:
         raise NotImplementedError("Abstract base class was called ;_;")
-
-    def unfreeze_decoder(self):
-        if not hasattr(self, "decoder"):
-            raise ValueError("No decoder found!")
-        self.decoder.train()
-        self.decoder.requires_grad_(True)
 
 
 class AutoencodingEngine(AbstractAutoencoder):
@@ -427,6 +420,12 @@ class AutoencodingEngine(AbstractAutoencoder):
             log_dict[log_str] = xrec_add
 
         return log_dict
+
+    def unfreeze_decoder(self):
+        if not hasattr(self, "decoder"):
+            raise ValueError("No decoder found!")
+        self.decoder.train()
+        self.decoder.requires_grad_(True)
 
 
 class AutoencodingEngineLegacy(AutoencodingEngine):
