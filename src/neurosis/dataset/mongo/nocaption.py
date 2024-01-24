@@ -13,8 +13,8 @@ from pymongo.collection import Collection as MongoCollection
 from pymongoarrow.api import find_pandas_all
 from pymongoarrow.schema import Schema
 from s3fs import S3FileSystem
-from torch import Generator, Tensor
-from torch.utils.data import DataLoader, random_split
+from torch import Tensor
+from torch.utils.data import DataLoader
 
 from neurosis.dataset.base import NoBucketDataset
 from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
@@ -166,8 +166,6 @@ class MongoVAEModule(LightningDataModule):
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
-        train_split: float = 1.0,
-        seed: int = 42,
         num_workers: int = 0,
         prefetch_factor: int = 2,
         pin_memory: bool = True,
@@ -187,31 +185,13 @@ class MongoVAEModule(LightningDataModule):
             s3fs_kwargs=s3fs_kwargs,
             pma_schema=pma_schema,
         )
-        self.train_split = train_split
-        self.seed = seed
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.drop_last = drop_last
 
-        # set in prepare_data
-        self.train_dataset = None
-        self.val_dataset = None
-
     def prepare_data(self) -> None:
-        if self.train_split >= 1.0:
-            logger.info("Train split is >=100%, not splitting dataset (validation set will be empty)")
-            self.train_dataset = self.dataset
-            return
-
-        logger.info(f"Splitting dataset into train and val sets at {self.train_split} ratio")
-        nsamples = len(self.dataset)
-        train_samples = int(nsamples * self.train_split // self.dataset.batch_size * self.dataset.batch_size)
-
-        self.train_dataset, self.val_dataset = random_split(
-            self.dataset, [train_samples, nsamples - train_samples], Generator().manual_seed(self.seed)
-        )
-        logger.info(f"Train set: {len(self.train_dataset)} samples, Val set: {len(self.val_dataset)} samples")
+        pass
 
     def setup(self, stage: str):
         logger.info(f"Refreshing dataset clients for {stage}")
@@ -219,22 +199,9 @@ class MongoVAEModule(LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.train_dataset if self.train_dataset is not None else self.dataset,
+            self.dataset,
             batch_size=self.dataset.batch_size,
             num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            prefetch_factor=self.prefetch_factor,
-            persistent_workers=True,
-            worker_init_fn=mongo_worker_init,
-        )
-
-    def val_dataloader(self):
-        if self.val_dataset is None:
-            raise ValueError("No validation dataset available!")
-        return DataLoader(
-            self.val_dataset,
-            batch_size=self.dataset.batch_size,
-            num_workers=max(2, self.num_workers // 2),
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
             persistent_workers=True,
