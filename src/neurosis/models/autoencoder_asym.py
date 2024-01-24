@@ -9,6 +9,7 @@ from typing import Iterator, Optional
 
 import torch
 import torch.nn.functional as F
+import wandb
 from diffusers import AutoencoderKL
 from diffusers.models.autoencoders.vae import DecoderOutput
 from diffusers.models.modeling_outputs import AutoencoderKLOutput
@@ -157,20 +158,23 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self.partial_freeze = False
 
     def log_grad_for_frozen(self):
-        stats = {}
+        grads = []
         layers = list(self.freeze_slices.keys())
         for layer in layers:
             grad = self.vae.get_parameter(layer).grad
             if grad is not None:
                 grad = grad.view(-1).detach().cpu()
-                stats[f"grad/{layer}/mean"] = grad.mean().item()
-                stats[f"grad/{layer}/std"] = grad.std().item()
+                grads.append(grad)
 
+        stats = {
+            "partial_freeze/grad_mean": torch.cat(grads).mean().item(),
+            "partial_freeze/grad_std": torch.cat(grads).std().item(),
+        }
         self.log_dict(stats, on_step=True, on_epoch=False, prog_bar=False, logger=True)
 
     def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
         if self.partial_freeze:
-            if (self.trainer.global_step % 25 == 0) and self.trainer.global_step > 0:
+            if (self.trainer.global_step % 20 == 0) and self.trainer.global_step > 0:
                 logger.debug(f"Updating gradient stats at step {self.trainer.global_step}")
                 self.log_grad_for_frozen()
 
