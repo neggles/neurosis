@@ -1,3 +1,4 @@
+import json
 import logging
 from contextlib import contextmanager
 from functools import wraps
@@ -15,6 +16,7 @@ from lightning import pytorch as L
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from torch import Generator, Tensor, nn
+from torch.optim.optimizer import Optimizer
 
 from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
@@ -38,6 +40,8 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         base_lr: Optional[float] = None,
         ema_decay: Optional[float] = None,
         loss_ema_alpha: float = 0.02,
+        freeze_base_steps: int = 0,
+        key_info_path: Optional[PathLike] = None,
         **model_kwargs,
     ):
         super().__init__()
@@ -46,33 +50,45 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self.input_key = input_key
         self.base_lr = base_lr
         self.use_ema = ema_decay is not None
-
+        self.freeze_base_steps = freeze_base_steps
         self.log_keys = log_keys
 
         self.only_train_decoder = only_train_decoder
         self.asymmetric = asymmetric
         self.loss_ema = EMATracker(alpha=loss_ema_alpha)
-
         self.loss_type = loss_type
 
         self.optimizer = optimizer
         self.scheduler = scheduler
-
-        if self.use_ema:
-            self.model_ema = LitEma(self, decay=ema_decay)
-            logger.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))} weights.")
 
         if isinstance(model, (str, PathLike)):
             self.vae = load_vae_ckpt(Path(model), asymmetric=asymmetric, **model_kwargs)
         else:
             self.vae = model
 
-        self.vae.disable_tiling()
-        self.vae.disable_slicing()
+        if self.use_ema:
+            self.model_ema = LitEma(self, decay=ema_decay)
+            logger.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))} weights.")
 
-        self.save_hyperparameters(ignore=["model", "optimizer", "scheduler"])
-        if self.only_train_decoder:
-            self.freeze(encoder=True, decoder=False)
+        self.freeze(encoder=only_train_decoder, decoder=False)
+        if self.freeze_base_steps > 0:
+            if key_info_path is None and isinstance(model, (str, PathLike)):
+                key_info_path = Path(model).joinpath("key_info.json")
+            elif key_info_path is None:
+                raise ValueError("key_info_path must be specified if model is not a path")
+            key_info_path = Path(key_info_path)
+            logger.info(f"Loading partial freeze key info from {key_info_path}")
+            key_info = json.loads(key_info_path.read_text())
+
+            self.freeze_layers = [x for x in key_info["existing"].keys() if not is_encoder_key(x)]
+            self.freeze_slices = {
+                k: tuple(slice(0, x) for x in v["old"]) for k, v in key_info["expanded"].items()
+            }
+            for layer in self.freeze_layers:
+                logger.info(f"Freezing layer {layer}")
+                self.vae.get_parameter(layer).requires_grad_(False)
+
+        self.save_hyperparameters(ignore=["model", "optimizer", "scheduler", "key_info_path"])
 
     def get_input(self, batch):
         # assuming unified data format, dataloader returns a dict.
@@ -112,6 +128,21 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
             self.vae.post_quant_conv.requires_grad_(not decoder)
         else:
             raise ValueError(f"decoder must be bool, got {decoder}")
+
+    def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
+        if self.freeze_base_steps > 0:
+            stepnum = self.global_step * getattr(self.trainer, "accumulate_grad_batches", 1)
+            if stepnum < self.freeze_base_steps:
+                for layer, slices in self.freeze_slices.items():
+                    self.vae.get_parameter(layer)[slices].grad = None
+
+            elif stepnum == self.freeze_base_steps:
+                logger.info(f"Unfreezing base parameters after {stepnum} steps")
+                for layer in self.freeze_layers:
+                    self.vae.get_parameter(layer).requires_grad_(True)
+                self.freeze_base_steps = 0
+
+        return super().on_before_optimizer_step(optimizer)
 
     @wraps(AutoencoderKL.encode)
     def encode(self, x: Tensor, return_dict: bool = True) -> AutoencoderKLOutput | Tensor:
@@ -218,7 +249,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
             recon = self.forward(x).sample
 
         log_dict["inputs"] = x
-        log_dict["reconstructions"] = recon
+        log_dict["recons"] = recon
 
         return log_dict
 
@@ -242,3 +273,9 @@ def load_vae_ckpt(
         raise ValueError(f"model path {model_path} is not a file or directory")
 
     return load_fn(model_path, **model_kwargs)
+
+
+def is_encoder_key(str):
+    if str.startswith("encoder") or str.startswith("quant_conv"):
+        return True
+    return False
