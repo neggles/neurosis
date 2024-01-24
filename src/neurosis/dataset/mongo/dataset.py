@@ -113,20 +113,18 @@ class MongoAspectDataset(AspectBucketDataset):
         }
 
     def refresh_clients(self):
-        """Helper func to replace the current clients with new ones"""
-        self.client = self.settings.new_client()
-
-        # detect forks and reset fsspec
+        """Helper func to replace the current clients with new ones post-fork etc."""
         pid = getpid()
-        fs_pid = self.fs._pid if self.fs is not None else None
+        if self.client is None or self.pid != pid:
+            self.client = self.settings.new_client()
+            self.pid = pid
 
-        if (self.pid != pid) or (fs_pid != pid) or self.fs is None:
-            logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
+        if self.fs is None or self.fs._pid != pid:
+            logger.debug(f"Loader detected fork, new PID {pid} - resetting fsspec clients")
             import fsspec
 
             fsspec.asyn.reset_lock()
             self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
-            self.pid = pid
 
     @property
     def collection(self) -> MongoCollection:
@@ -322,7 +320,6 @@ class MongoDbModule(LightningDataModule):
             self.sampler = AspectBucketSampler(self.dataset)
 
         logger.info(f"Refreshing dataset clients for {stage}")
-        self.dataset.fs = None
         self.dataset.refresh_clients()
 
     def train_dataloader(self):
@@ -339,6 +336,6 @@ class MongoDbModule(LightningDataModule):
 
 
 def mongo_worker_init(worker_id: int = -1):
-    logger.info(f"Worker {worker_id} initializing")
+    logger.debug(f"Worker {worker_id} initializing")
     clear_fsspec()
     set_s3fs_opts()

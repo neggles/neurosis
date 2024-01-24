@@ -14,8 +14,8 @@ from pymongo.collection import Collection as MongoCollection
 from pymongoarrow.api import find_pandas_all
 from pymongoarrow.schema import Schema
 from s3fs import S3FileSystem
-from torch import Tensor
-from torch.utils.data import DataLoader
+from torch import Generator, Tensor
+from torch.utils.data import BatchSampler, DataLoader, RandomSampler, SequentialSampler
 
 from neurosis.dataset.base import NoBucketDataset
 from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
@@ -104,20 +104,18 @@ class MongoSquareDataset(NoBucketDataset):
         }
 
     def refresh_clients(self):
-        """Helper func to replace the current clients with new ones"""
-        self.client = self.settings.new_client()
-
-        # detect forks and reset fsspec
+        """Helper func to replace the current clients with new ones post-fork etc."""
         pid = getpid()
-        fs_pid = self.fs._pid if self.fs is not None else None
+        if self.client is None or self.pid != pid:
+            self.client = self.settings.new_client()
+            self.pid = pid
 
-        if (self.pid != pid) or (fs_pid != pid) or self.fs is None:
-            logger.info(f"loader PID {pid} detected fork, resetting fsspec clients")
+        if self.fs is None or self.fs._pid != pid:
+            logger.debug(f"Loader detected fork, new PID {pid} - resetting fsspec clients")
             import fsspec
 
             fsspec.asyn.reset_lock()
             self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
-            self.pid = pid
 
     @property
     def collection(self) -> MongoCollection:
@@ -211,6 +209,7 @@ class MongoSquareModule(LightningDataModule):
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
+        seed: Optional[int] = None,
         num_workers: int = 0,
         prefetch_factor: int = 2,
         pin_memory: bool = True,
@@ -236,24 +235,34 @@ class MongoSquareModule(LightningDataModule):
             s3fs_kwargs=s3fs_kwargs,
             pma_schema=pma_schema,
         )
+        self.seed = seed
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.drop_last = drop_last
 
+    @property
+    def batch_size(self):
+        return self.dataset.batch_size
+
     def prepare_data(self) -> None:
-        self.dataset.fs = None
-        self.dataset.refresh_clients()
+        pass
 
     def setup(self, stage: str):
         logger.info(f"Refreshing dataset clients for {stage}")
-        self.dataset.fs = None
         self.dataset.refresh_clients()
 
     def train_dataloader(self):
+        if self.seed is not None:
+            logger.info(f"Setting seed {self.seed} for train dataloader")
+            generator = Generator().manual_seed(self.seed)
+            sampler = RandomSampler(self.dataset, generator=generator)
+        else:
+            sampler = SequentialSampler(self.dataset)
+
         return DataLoader(
             self.dataset,
-            batch_size=self.dataset.batch_size,
+            batch_sampler=BatchSampler(sampler, self.batch_size, self.drop_last),
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
@@ -263,6 +272,6 @@ class MongoSquareModule(LightningDataModule):
 
 
 def mongo_worker_init(worker_id: int = -1):
-    logger.info(f"Worker {worker_id} initializing")
+    logger.debug(f"Worker {worker_id} initializing")
     clear_fsspec()
     set_s3fs_opts()

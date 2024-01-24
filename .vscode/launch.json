@@ -9,8 +9,18 @@
             "type": "python",
             "request": "launch",
             "cwd": "${workspaceFolder}",
-            "module": "neurosis.trainer.sdxl",
+            "module": "neurosis.trainer.cli",
             "args": ["fit", "--config", "./configs/sdxl/wdxl-test.yml"],
+            "justMyCode": true,
+            "subProcess": true
+        },
+        {
+            "name": "neurosis VAE test",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "module": "neurosis.trainer.cli",
+            "args": ["fit", "--config", "configs/wdxl-vae-test.yaml"],
             "justMyCode": true,
             "subProcess": true
         }
