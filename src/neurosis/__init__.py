@@ -32,7 +32,7 @@ _ = _install_traceback(show_locals=is_debug, width=120, word_wrap=True)
 allow_ops_in_compiled_graph()
 del allow_ops_in_compiled_graph
 
-console = Console(highlight=True)
+console = Console(highlight=not is_debug)
 
 if is_debug:
     console.log("[bold red]NEUROSIS_DEBUG[/bold red] is set")

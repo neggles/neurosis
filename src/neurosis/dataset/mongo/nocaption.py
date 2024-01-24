@@ -1,6 +1,5 @@
 import logging
 from io import BytesIO
-from math import ceil
 from os import PathLike, getenv, getpid
 from time import sleep
 from typing import Optional
@@ -220,7 +219,7 @@ class MongoVAEModule(LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.train_dataset,
+            self.train_dataset if self.train_dataset is not None else self.dataset,
             batch_size=self.dataset.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
