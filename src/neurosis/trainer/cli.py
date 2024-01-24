@@ -16,8 +16,6 @@ from lightning.pytorch.callbacks import (  # noqa: F401
 from lightning.pytorch.cli import ArgsType, LightningArgumentParser, LightningCLI
 from lightning.pytorch.loggers.tensorboard import TensorBoardLogger  # noqa: F401
 from lightning.pytorch.loggers.wandb import WandbLogger  # noqa: F401
-from rich.logging import RichHandler
-from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
 from neurosis import __version__, console, is_debug
@@ -28,7 +26,6 @@ from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
 
 # set up rich if we're in a tty/interactive and NOT in kube
 if isatty(1) and getenv("KUBERNETES_PORT", None) is not None:
-    _ = install_pretty(console=console)
     _ = install_traceback(
         console=console,
         suppress=[jsonargparse, torch, lightning],
@@ -36,18 +33,14 @@ if isatty(1) and getenv("KUBERNETES_PORT", None) is not None:
         locals_max_length=3,
         locals_max_string=64,
     )
-del install_pretty, install_traceback
+del install_traceback
 
 train_app: typer.Typer = typer.Typer(
     context_settings=dict(help_option_names=["-h", "--help"]),
     rich_markup_mode="rich" if isatty(1) else None,
 )
 
-logging.basicConfig(
-    format="%(message)s",
-    handlers=[RichHandler(console=console)],
-    level=logging.INFO,
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 

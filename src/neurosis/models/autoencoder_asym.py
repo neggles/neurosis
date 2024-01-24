@@ -21,6 +21,7 @@ from torch.optim.optimizer import Optimizer
 from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
 from neurosis.modules.ema import LitEma
+from neurosis.torch.hooks import FreezeSliceHook
 from neurosis.trainer.util import EMATracker
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,8 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         base_lr: Optional[float] = None,
         ema_decay: Optional[float] = None,
         loss_ema_alpha: float = 0.02,
-        freeze_base_steps: int = 0,
+        partial_freeze: bool = False,
+        freeze_steps: int = 0,
         key_info_path: Optional[PathLike] = None,
         **model_kwargs,
     ):
@@ -50,7 +52,8 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self.input_key = input_key
         self.base_lr = base_lr
         self.use_ema = ema_decay is not None
-        self.freeze_base_steps = freeze_base_steps
+        self.partial_freeze = partial_freeze
+        self.freeze_steps = freeze_steps
         self.log_keys = log_keys
 
         self.only_train_decoder = only_train_decoder
@@ -71,29 +74,30 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
             logger.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))} weights.")
 
         self.freeze(encoder=only_train_decoder, decoder=False)
-        if self.freeze_base_steps > 0:
-            if key_info_path is None and isinstance(model, (str, PathLike)):
-                key_info_path = Path(model).joinpath("key_info.json")
-            elif key_info_path is None:
-                raise ValueError("key_info_path must be specified if model is not a path")
-            key_info_path = Path(key_info_path)
-            logger.info(f"Loading partial freeze key info from {key_info_path}")
-            key_info = json.loads(key_info_path.read_text())
 
-            self.freeze_layers = [x for x in key_info["existing"].keys() if not is_encoder_key(x)]
-            self.freeze_slices = {
-                k: tuple(slice(0, x) for x in v["old"]) for k, v in key_info["expanded"].items()
-            }
-            for layer in self.freeze_layers:
-                logger.info(f"Freezing layer {layer}")
-                self.vae.get_parameter(layer).requires_grad_(False)
+        ## Partial freeze shenanigans
+        self.freeze_layers = []
+        self.freeze_slices = {}
+        self.freeze_hooks = []
+        if key_info_path is None and isinstance(model, (str, PathLike)):
+            key_info_path = Path(model).joinpath("key_info.json")
+        elif key_info_path is None:
+            raise ValueError("key_info_path must be specified if model is not a path")
+
+        if self.partial_freeze is True:
+            if self.freeze_steps == 0:
+                raise ValueError("partial_freeze is True but freeze_steps is 0")
+            self.setup_partial_freeze(Path(key_info_path))
 
         self.save_hyperparameters(ignore=["model", "optimizer", "scheduler", "key_info_path"])
 
     def get_input(self, batch):
         # assuming unified data format, dataloader returns a dict.
         # image tensors should be scaled to -1 ... 1 and in bchw format
-        return batch[self.input_key]
+        sample: Tensor = batch[self.input_key]
+        if sample.ndim == 3:
+            sample = sample.unsqueeze(0)
+        return sample
 
     @contextmanager
     def ema_scope(self, context: str = None):
@@ -129,20 +133,52 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         else:
             raise ValueError(f"decoder must be bool, got {decoder}")
 
+    def setup_partial_freeze(self, key_info_path: Path):
+        logger.info(f"Setting up partial freeze until step {self.freeze_steps}")
+        key_info = json.loads(key_info_path.read_text())
+        expanded = key_info["expanded"]
+
+        self.freeze_layers = [x for x in key_info["existing"].keys() if not is_encoder_key(x)]
+        self.freeze_slices = {k: tuple(slice(0, x) for x in v["old"]) for k, v in expanded.items()}
+
+        for layer in self.freeze_layers:
+            self.vae.get_parameter(layer).requires_grad_(False)
+        for layer, _ in self.freeze_slices.items():
+            self.vae.get_parameter(layer).requires_grad_(True)
+        logger.info(f"Froze {len(self.freeze_layers)} layers and {len(self.freeze_slices)} layer slices")
+
+    def release_partial_freeze(self):
+        logger.info(f"Releasing partial freeze at step {self.trainer.global_step}")
+        for layer in self.freeze_layers:
+            self.vae.get_parameter(layer).requires_grad_(True)
+        for handle in self.freeze_hooks:
+            handle.remove()
+        self.freeze_hooks = []
+        self.partial_freeze = False
+
+    def log_grad_for_frozen(self):
+        stats = {}
+        layers = list(self.freeze_slices.keys())
+        for layer in layers:
+            grad = self.vae.get_parameter(layer).grad
+            if grad is not None:
+                grad = grad.view(-1).detach().cpu()
+                stats[f"grad/{layer}/mean"] = grad.mean().item()
+                stats[f"grad/{layer}/std"] = grad.std().item()
+
+        self.log_dict(stats, on_step=True, on_epoch=False, prog_bar=False, logger=True)
+
     def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
-        if self.freeze_base_steps > 0:
-            stepnum = self.global_step * getattr(self.trainer, "accumulate_grad_batches", 1)
-            if stepnum < self.freeze_base_steps:
-                for layer, slices in self.freeze_slices.items():
-                    self.vae.get_parameter(layer)[slices].grad = None
+        if self.partial_freeze:
+            if (self.trainer.global_step % 25 == 0) and self.trainer.global_step > 0:
+                logger.debug(f"Updating gradient stats at step {self.trainer.global_step}")
+                self.log_grad_for_frozen()
 
-            elif stepnum == self.freeze_base_steps:
-                logger.info(f"Unfreezing base parameters after {stepnum} steps")
-                for layer in self.freeze_layers:
-                    self.vae.get_parameter(layer).requires_grad_(True)
-                self.freeze_base_steps = 0
+            for layer, slice in self.freeze_slices.items():
+                self.vae.get_parameter(layer)[slice].grad = None
 
-        return super().on_before_optimizer_step(optimizer)
+            if self.trainer.global_step == self.freeze_steps:
+                self.release_partial_freeze()
 
     @wraps(AutoencoderKL.encode)
     def encode(self, x: Tensor, return_dict: bool = True) -> AutoencoderKLOutput | Tensor:
