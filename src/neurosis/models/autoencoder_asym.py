@@ -114,7 +114,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
             raise ValueError(f"decoder must be bool, got {decoder}")
 
     @wraps(AutoencoderKL.encode)
-    def encode(self, x: Tensor, return_dict: bool = True) -> AutoencoderKLOutput:
+    def encode(self, x: Tensor, return_dict: bool = True) -> AutoencoderKLOutput | Tensor:
         return self.vae.encode(x, return_dict)
 
     @wraps(AutoencoderKL.decode)
@@ -133,14 +133,12 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
 
     def get_loss(self, model_output: Tensor, target: Tensor) -> Tensor:
         match self.loss_type:
-            case "l2":
-                return torch.mean(((model_output - target) ** 2).reshape(target.shape[0], -1), 1)
-            case "mse":
-                return F.mse_loss(model_output, target) * target.shape[1] * target.shape[2]
             case "l1":
-                return torch.mean(((model_output - target).abs()).reshape(target.shape[0], -1), 1)
+                return F.l1_loss(model_output, target, reduction="none").reshape(target.shape[0], -1).mean(1)
+            case "l2" | "mse":
+                return F.mse_loss(model_output, target, reduction="none").reshape(target.shape[0], -1).mean(1)
             case "cosine":
-                return F.cosine_similarity(model_output.flatten(), target.flatten(), dim=0)
+                return F.cosine_similarity(model_output.flatten(1), target.flatten(1), dim=1)
             case _:
                 raise ValueError(f"loss type {self.loss_type} not supported")
 
