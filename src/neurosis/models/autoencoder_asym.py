@@ -9,7 +9,6 @@ from typing import Iterator, Optional
 
 import torch
 import torch.nn.functional as F
-import wandb
 from diffusers import AutoencoderKL
 from diffusers.models.autoencoders.vae import DecoderOutput
 from diffusers.models.modeling_outputs import AutoencoderKLOutput
@@ -22,7 +21,6 @@ from torch.optim.optimizer import Optimizer
 from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
 from neurosis.modules.ema import LitEma
-from neurosis.torch.hooks import FreezeSliceHook
 from neurosis.trainer.util import EMATracker
 
 logger = logging.getLogger(__name__)
@@ -44,6 +42,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         loss_ema_alpha: float = 0.02,
         partial_freeze: bool = False,
         freeze_steps: int = 0,
+        grad_log_steps: int = 20,
         key_info_path: Optional[PathLike] = None,
         **model_kwargs,
     ):
@@ -54,6 +53,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self.base_lr = base_lr
         self.use_ema = ema_decay is not None
         self.partial_freeze = partial_freeze
+        self.grad_log_steps = grad_log_steps
         self.freeze_steps = freeze_steps
         self.log_keys = log_keys
 
@@ -155,7 +155,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         for handle in self.freeze_hooks:
             handle.remove()
         self.freeze_hooks = []
-        self.partial_freeze = False
 
     def log_grad_for_frozen(self):
         grads = []
@@ -174,7 +173,11 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
 
     def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
         if self.partial_freeze:
-            if (self.trainer.global_step % 20 == 0) and self.trainer.global_step > 0:
+            if (
+                self.grad_log_steps > 0
+                and (self.trainer.global_step % self.grad_log_steps == 0)
+                and self.trainer.global_step > 0
+            ):
                 logger.debug(f"Updating gradient stats at step {self.trainer.global_step}")
                 self.log_grad_for_frozen()
 
@@ -231,7 +234,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
             {
                 "train/loss": log_loss,
                 "train/loss_ema": self.loss_ema.value,
-                "train/loss_kl": kl_loss.mean().detach(),
             },
             on_step=True,
             on_epoch=False,

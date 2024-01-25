@@ -18,6 +18,7 @@ line-length = 110
 target-version = 'py310'
 ignore = [
   'F841', # local variable assigned but never used
+  'F842', # local variable annotated but never used
   'E501', # line too long (black handles this)
 ]
 extend-exclude = ["/usr/lib/*"]
