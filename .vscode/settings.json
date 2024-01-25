@@ -15,7 +15,8 @@
         "**/.DS_Store": true,
         "**/Thumbs.db": true,
         "**/.ruff_cache": true,
-        "**/__pycache__": true
+        "**/__pycache__": true,
+        "**/*.egg-info": true
     },
 
     "[shellscript]": {
