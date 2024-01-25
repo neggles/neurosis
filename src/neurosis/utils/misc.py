@@ -21,26 +21,28 @@ def batched(iterable: Iterable[T], n: int) -> Generator[List[T], None, None]:
         yield batch
 
 
-def ndimage_to_f32(x: np.ndarray, zero_min: bool = False) -> np.ndarray:
+def ndimage_to_f32(x: np.ndarray, zero_min: Optional[bool] = None) -> np.ndarray:
+    zero_min = x.min() >= 0 if zero_min is None else zero_min
+
     if zero_min:
         x = x / 255.0  # 0-255 -> 0.0-1.0
     else:
         x = (x / 127.5) - 1.0  # 0-255 -> -1.0-1.0
 
+    x = x.clip(min=-1.0, max=1.0)
+
     return x.astype(np.float32)
 
 
 def ndimage_to_u8(x: np.ndarray, zero_min: Optional[bool] = None) -> np.ndarray:
-    if zero_min is not None:
-        if zero_min is True:
-            x = x * 255.0  # 0 to 1 -> 0 to 255
-        else:
-            x = (x * 127.5) + 127.5  # -1 to +1 -> 0 to 255
-    else:
-        if x.min() >= 0.0:
-            x = x * 255.0  # 0 to 1 -> 0 to 255
-        else:
-            x = (x * 127.5) + 127.5  # -1 to +1 -> 0 to 255
+    zero_min = x.min() >= 0 if zero_min is None else zero_min
+
+    if zero_min is True:
+        x = x * 255.0  # 0 to 1 -> 0 to 255
+    elif zero_min is False:
+        x = (x * 127.5) + 127.5  # -1 to +1 -> 0 to 255
+
+    x = x.clip(min=0.0, max=255.0)
 
     return x.round().astype(np.uint8)
 

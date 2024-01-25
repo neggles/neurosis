@@ -1,5 +1,6 @@
 import logging
 from enum import Enum
+from math import ceil, sqrt
 from os import PathLike
 from pathlib import Path
 from typing import Optional, Union
@@ -142,6 +143,8 @@ class ImageLogger(Callback):
         root = Path(save_dir).joinpath("images", split)
         root.mkdir(exist_ok=True, parents=True)
 
+        wandb_dict = {"trainer/global_step": global_step}
+
         if "samples" in log_dict and "caption" in log_strings:
             samples = log_dict.pop("samples")
             captions = log_strings["caption"]
@@ -150,17 +153,17 @@ class ImageLogger(Callback):
             if isinstance(samples, Tensor):
                 samples = pt_to_pil(samples)
 
-            grid = CaptionGrid()
-            img = grid(
+            img = CaptionGrid()(
                 samples,
                 captions,
                 title=f"E{current_epoch:06} S{global_step:06} B{batch_idx:06} samples",
             )
             log_dict["samples"] = img
 
-        wandb_dict = {"trainer/global_step": global_step}
         for k in log_dict:
-            if isheatmap(log_dict[k]):
+            val = log_dict[k]
+
+            if isheatmap(val):
                 fig, ax = plt.subplots()
                 ax = ax.matshow(log_dict[k].cpu().numpy(), cmap="hot", interpolation="lanczos")
                 plt.colorbar(ax)
@@ -173,18 +176,21 @@ class ImageLogger(Callback):
                 plt.close()
                 img = Image.open(path)
             else:
-                if isinstance(log_dict[k], Image.Image):
-                    img = log_dict[k]
-                else:
-                    grid: Tensor = make_grid(log_dict[k], nrow=4)
-                    grid = grid.permute((1, 2, 0)).squeeze(-1).cpu().numpy()
+                if isinstance(val, Image.Image):
+                    img = val
+                elif isinstance(val, Tensor):
+                    if val.ndim == 3:
+                        val = val.unsqueeze(0)  # add batch dim
+
+                    grid = make_grid(val, nrow=ceil(sqrt(val.shape[0])), normalize=self.rescale)
+
+                    grid: np.ndarray = grid.permute((1, 2, 0)).squeeze(-1).cpu().numpy()
                     if grid.dtype != np.uint8:
-                        grid = ndimage_to_u8(grid) if self.rescale else ndimage_to_u8(grid, zero_min=True)
+                        grid = ndimage_to_u8(grid)
                     img = Image.fromarray(grid)
 
                 filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
                 path = root / filename
-
                 img.save(path)
 
             log_key = f"{split}/{k}"
