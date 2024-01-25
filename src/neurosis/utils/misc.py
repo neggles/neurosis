@@ -29,7 +29,7 @@ def ndimage_to_f32(x: np.ndarray, zero_min: Optional[bool] = None) -> np.ndarray
     else:
         x = (x / 127.5) - 1.0  # 0-255 -> -1.0-1.0
 
-    x = x.clip(min=-1.0, max=1.0)
+    x = np.nan_to_num(x, nan=0.0, posinf=1.0, neginf=-1.0).clip(min=-1.0, max=1.0)
 
     return x.astype(np.float32)
 
@@ -42,7 +42,7 @@ def ndimage_to_u8(x: np.ndarray, zero_min: Optional[bool] = None) -> np.ndarray:
     elif zero_min is False:
         x = (x * 127.5) + 127.5  # -1 to +1 -> 0 to 255
 
-    x = x.clip(min=0.0, max=255.0)
+    x = np.nan_to_num(x, nan=0.0, posinf=255, neginf=0.0).clip(min=0.0, max=255.0)
 
     return x.round().astype(np.uint8)
 
