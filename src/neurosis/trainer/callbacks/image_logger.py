@@ -9,10 +9,12 @@ from warnings import warn
 import numpy as np
 import torch
 import wandb
+from diffusers.image_processor import VaeImageProcessor
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from matplotlib import pyplot as plt
+from matplotlib.image import AxesImage
 from PIL import Image
 from torch import Tensor
 from torch.amp.autocast_mode import autocast
@@ -45,6 +47,7 @@ class ImageLogger(Callback):
         log_before_start: bool = False,
         log_first_step: bool = False,
         log_func_kwargs: dict = {},
+        extra_log_keys: list[str] = [],
         disabled: bool = False,
         enable_autocast: bool = True,
         batch_size: int = 1,
@@ -65,10 +68,12 @@ class ImageLogger(Callback):
         self.log_before_start = log_before_start
         self.log_first_step = log_first_step
         self.log_func_kwargs = log_func_kwargs
+        self.extra_log_keys = extra_log_keys
         self.batch_size = batch_size
 
         self.__last_logged_step: int = -1
         self.__trainer: Trainer = None
+        self.processor = VaeImageProcessor(do_resize=False, vae_scale_factor=8, do_convert_rgb=True)
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.__trainer = trainer
@@ -132,75 +137,70 @@ class ImageLogger(Callback):
         save_dir: PathLike,
         split: str,
         log_dict: dict[str, Tensor],
-        log_strings: dict[str, list[str]],
-        global_step: int,
-        current_epoch: int,
+        step: int,
+        epoch: int,
         batch_idx: int,
         pl_module: Optional[LightningModule] = None,
     ):
         if save_dir is None:
             return
-        root = Path(save_dir).joinpath("images", split)
-        root.mkdir(exist_ok=True, parents=True)
+        save_dir = Path(save_dir).joinpath("images", split)
+        save_dir.mkdir(exist_ok=True, parents=True)
 
-        wandb_dict = {"trainer/global_step": global_step}
+        wandb_dict = {"trainer/global_step": step}
+        if log_strings := log_dict.get("strings", None):
+            if "caption" in log_strings and "samples" in log_dict:
+                samples = log_dict.pop("samples")
+                if isinstance(samples, Tensor):
+                    samples = pt_to_pil(samples)
 
-        if "samples" in log_dict and "caption" in log_strings:
-            samples = log_dict.pop("samples")
-            captions = log_strings["caption"]
-            if not isinstance(captions, list):
-                captions = [captions]
-            if isinstance(samples, Tensor):
-                samples = pt_to_pil(samples)
+                log_strings["samples"] = [wandb.Image(x, mode="RGB") for x in samples]
 
-            img = CaptionGrid()(
-                samples,
-                captions,
-                title=f"E{current_epoch:06} S{global_step:06} B{batch_idx:06} samples",
-            )
-            log_dict["samples"] = img
+                captions = log_strings["caption"]
+                if isinstance(captions, list):
+                    captions = [captions]
 
-        for k in log_dict:
-            val = log_dict[k]
+                grid = CaptionGrid()(
+                    samples, captions, title=f"E{epoch:06} S{step:06} B{batch_idx:06} samples"
+                )
+                log_dict["samples"] = grid
 
-            if isheatmap(val):
+            table = wandb.Table()
+            for k in log_strings:
+                table.add_column(k, log_strings[k])
+            wandb_dict[f"{split}/sample_table"] = table
+
+        for k, val in log_dict.items():
+            imgpath = save_dir / f"{k}_gs-{step:06}_e-{epoch:06}_b-{batch_idx:06}.png"
+            img = None
+            if isinstance(val, Image.Image):
+                img = val
+            elif isheatmap(val):
                 fig, ax = plt.subplots()
-                ax = ax.matshow(log_dict[k].cpu().numpy(), cmap="hot", interpolation="lanczos")
-                plt.colorbar(ax)
-                plt.axis("off")
+                ax.set_axis_off()
+                img: AxesImage = ax.matshow(val.cpu().numpy(), cmap="hot", interpolation="lanczos")
+                fig.colorbar(img, ax=ax)
+                fig.savefig(imgpath)
+                plt.close(fig)
+                img = Image.open(imgpath)
 
-                filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
-                path = root / filename
+            elif isinstance(val, Tensor):
+                if val.ndim == 3:
+                    val = val.unsqueeze(0)
+                try:
+                    img = ndimage_to_u8(make_grid(val, nrow=ceil(sqrt(val.shape[0]))).cpu().numpy())
+                    img = Image.fromarray(img)
+                    img.save(imgpath)
+                except Exception as e:
+                    logger.exception(e)
+                    continue
 
-                plt.savefig(path)
-                plt.close()
-                img = Image.open(path)
-            else:
-                if isinstance(val, Image.Image):
-                    img = val
-                elif isinstance(val, Tensor):
-                    if val.ndim == 3:
-                        val = val.unsqueeze(0)  # add batch dim
+            if img is not None:
+                wandb_dict.update({f"{split}/{k}": wandb.Image(img)})
 
-                    grid = make_grid(val, nrow=ceil(sqrt(val.shape[0])), normalize=self.rescale)
-
-                    grid: np.ndarray = grid.permute((1, 2, 0)).squeeze(-1).cpu().numpy()
-                    if grid.dtype != np.uint8:
-                        grid = ndimage_to_u8(grid)
-                    img = Image.fromarray(grid)
-
-                filename = f"{k}_gs-{global_step:06}_e-{current_epoch:06}_b-{batch_idx:06}.png"
-                path = root / filename
-                img.save(path)
-
-            log_key = f"{split}/{k}"
-            if k in log_strings:
-                wandb_dict.update({log_key: wandb.Image(img, caption=log_strings[k])})
-            else:
-                wandb_dict.update({log_key: wandb.Image(img)})
-
-        for logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
-            logger.log_metrics(metrics=wandb_dict)
+        if pl_module is not None:
+            for pl_logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
+                pl_logger.log_metrics(metrics=wandb_dict)
 
     @rank_zero_only
     def maybe_log_images(
@@ -230,11 +230,6 @@ class ImageLogger(Callback):
         # confirmed we're logging, save the step number
         self.__last_logged_step = self.get_step_idx(trainer.global_step, batch_idx)
 
-        # if the model is in training mode, flip to eval mode
-        training = pl_module.training
-        if training:
-            pl_module.eval()
-
         # set up autocast kwargs
         autocast_kwargs = dict(
             device_type="cuda",
@@ -248,45 +243,42 @@ class ImageLogger(Callback):
                 batch, num_img=self.max_images, split=split, **self.log_func_kwargs
             )
 
-        # flip back to training mode if we flipped to eval mode earlier
-        if training:
-            pl_module.train()
-
         # if the model returned None, warn and return early
         if log_dict is None:
             warn(f"{pl_module.__class__.__name__} returned None from log_images")
             return
 
         for k in log_dict:
-            # take the first max_images log_dict from the sample batch, unless it's a heatmap
-            if not isheatmap(log_dict[k]):
-                num_imgs = min(log_dict[k].shape[0], self.max_images)
-                log_dict[k] = log_dict[k][:num_imgs]
-
-            # detach, move to cpu, and clamp range if necessary
             if isinstance(log_dict[k], Tensor):
                 log_dict[k] = log_dict[k].detach().float().cpu()
-                if self.clamp and not isheatmap(log_dict[k]):
-                    log_dict[k] = torch.clamp(log_dict[k], 0.0, 1.0)
+            if not isheatmap(log_dict[k]):
+                log_dict[k] = log_dict[k][: min(log_dict[k].shape[0], self.max_images)]
+                if self.clamp:
+                    log_dict[k] = log_dict[k].clamp(min=-1.0, max=1.0)
+                if self.rescale:
+                    log_dict[k] = (log_dict[k] + 1.0) / 2.0
 
         log_strings = {}
-        if "caption" in batch:
-            log_strings["caption"] = np_text_decode(batch["caption"][: self.max_images])
+        for k in self.extra_log_keys:
+            try:
+                if k in batch:
+                    log_strings[k] = batch[k][: self.max_images]
+                    if isinstance(log_strings[k][0], np.bytes_):
+                        log_strings[k] = np_text_decode(log_strings[k], aslist=True)
 
-        if "post_id" in batch and "source" in batch:
-            log_strings["inputs"] = [
-                f"source={x}, post_id={y}"
-                for x, y in zip(batch["source"][: self.max_images], batch["post_id"][: self.max_images])
-            ]
-        elif "post_id" in batch:
-            log_strings["inputs"] = [f"post_id: {x}" for x in batch["post_id"][: self.max_images]]
+                    log_strings[k] = [np_text_decode(x) for x in log_strings[k]]
+            except Exception as e:
+                logger.exception(e)
+                continue
+
+        if len(log_strings) > 0:
+            log_dict["strings"] = log_strings
 
         # log the images
         self.log_local(
             self.local_dir,
             split,
             log_dict,
-            log_strings,
             trainer.global_step,
             pl_module.current_epoch,
             batch_idx,

@@ -1,7 +1,7 @@
 """Concept stolen and reworked from https://github.com/Birch-san/grid-printer"""
 
 from dataclasses import dataclass
-from math import ceil
+from math import ceil, sqrt
 from textwrap import TextWrapper
 from typing import NamedTuple, Optional
 
@@ -138,7 +138,10 @@ class CaptionGrid:
             raise ValueError("Number of images and captions must match!")
 
         if ncols is None:
-            ncols = int(ceil(np.sqrt(len(images))))
+            ncols = ceil(sqrt(len(images)))
+
+        if not isinstance(captions, list):
+            captions = [captions]
 
         nrows = ceil(len(images) / ncols)
         img_w, img_h = images[0].size

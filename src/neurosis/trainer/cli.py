@@ -12,6 +12,7 @@ from lightning.pytorch.callbacks import (  # noqa: F401
     LearningRateMonitor,
     ModelCheckpoint,
     ModelSummary,
+    OnExceptionCheckpoint,
 )
 from lightning.pytorch.cli import ArgsType, LightningArgumentParser, LightningCLI
 from lightning.pytorch.loggers.tensorboard import TensorBoardLogger  # noqa: F401
