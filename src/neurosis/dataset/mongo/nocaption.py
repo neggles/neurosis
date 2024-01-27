@@ -2,7 +2,7 @@ import logging
 from io import BytesIO
 from os import PathLike, getenv, getpid
 from time import sleep
-from typing import Optional
+from typing import Literal, Optional
 
 import pandas as pd
 from botocore.exceptions import ConnectionError
@@ -34,6 +34,7 @@ class MongoVAEDataset(NoBucketDataset):
         image_key: str = "image",
         *,
         path_key: str = "s3_path",
+        extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
@@ -50,6 +51,16 @@ class MongoVAEDataset(NoBucketDataset):
         self.image_key = image_key
         self.path_key = path_key
         self.resampling = resampling
+
+        # get all keys that are not the path or image
+        if isinstance(extra_keys, str) and extra_keys == "all":
+            self.extra_keys = [
+                k
+                for k, v in self.settings.query.projection.items()
+                if v not in [-1, 0] and k not in (self.path_key, self.image_key, "_id")
+            ]
+        else:
+            self.extra_keys = extra_keys
 
         # load S3_ENDPOINT_URL from env if not already present
         if s3_endpoint_env := getenv("S3_ENDPOINT_URL", None):
@@ -91,6 +102,7 @@ class MongoVAEDataset(NoBucketDataset):
         return {
             self.image_key: self.transforms(image),
             "crop_coords_top_left": crop_coords,
+            **{k: sample.get(k, None) for k in self.extra_keys},
         }
 
     def refresh_clients(self):
@@ -165,6 +177,7 @@ class MongoVAEModule(LightningDataModule):
         image_key: str = "image",
         *,
         path_key: str = "s3_path",
+        extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
@@ -184,6 +197,7 @@ class MongoVAEModule(LightningDataModule):
             batch_size=batch_size,
             image_key=image_key,
             path_key=path_key,
+            extra_keys=extra_keys,
             resampling=resampling,
             s3_bucket=s3_bucket,
             s3fs_kwargs=s3fs_kwargs,
