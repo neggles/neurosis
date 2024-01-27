@@ -7,6 +7,7 @@ from typing import Optional, Union
 from warnings import warn
 
 import numpy as np
+import pandas as pd
 import torch
 import wandb
 from lightning.pytorch import Callback, LightningModule, Trainer
@@ -140,6 +141,7 @@ class ImageLogger(Callback):
         save_dir.mkdir(exist_ok=True, parents=True)
 
         wandb_dict = {"trainer/global_step": step}
+        table_dict = {}
 
         for k in images:
             imgpath = save_dir / f"{k}_gs-{step:06}_e-{epoch:06}_b-{batch_idx:06}.png"
@@ -147,8 +149,9 @@ class ImageLogger(Callback):
                 img = images[k]
                 img.save(imgpath)
                 wandb_dict.update({f"{split}/{k}": wandb.Image(img)})
+                continue
 
-            elif isinstance(images[k], (Tensor, list)):
+            elif isinstance(images[k], Tensor):
                 images[k] = [pt_to_pil(x) for x in images[k]]
 
             if k == "samples" and "caption" in batch:
@@ -159,43 +162,57 @@ class ImageLogger(Callback):
                 )
                 img.save(imgpath)
                 wandb_dict.update({f"{split}/{k}": wandb.Image(img, caption="Sample Grid")})
+            else:
+                wandb_dict.update({f"{split}/{k}": [wandb.Image(x) for x in images[k]]})
 
-        table_dict = {}
-        if "samples" in images:
-            table_dict["samples"] = [wandb.Image(x, mode="RGB") for x in images.pop("samples", [])]
+            table_dict.update({k: [wandb.Image(x) for x in images[k]]})
 
-        for k in batch:
+        for k in [x for x in batch if x in self.extra_log_keys]:
             if isinstance(batch[k], list):
                 if isinstance(batch[k][0], (str, np.bytes_)):
                     table_dict[k] = np_text_decode(batch[k], aslist=True)
-                elif isinstance(batch[k][0], Tensor):
+                if isinstance(batch[k][0], Tensor):
+                    # mildly hacky, turn tensor list back into tensor so the thing below can process it
                     if batch[k][0].ndim == 3 and batch[k][0].shape[0] == 3:
-                        val = pt_to_pil(batch[k])
-                    batch[k] = torch.stack(batch[k], dim=0)
-
-            if isinstance(batch[k], list) and isinstance(batch[k][0], Tensor):
-                if batch[k][0].ndim == 3 and batch[k][0].shape[0] == 3:
-                    batch[k] = torch.stack(batch[k], dim=0)
-
-                # yeah this is hacky since i explicitly made it Not Be A Tensor Before but whatever
-                batch[k] = torch.stack(batch[k], dim=0)
+                        batch[k] = torch.stack(batch[k], dim=0)
+                    # and if you passed in a list of batch-1 images, turn it into a batch
+                    # you should not be doing this and i should not be allowing it but here we are
+                    elif batch[k][0].ndim == 4 and batch[k][0].shape[1] == 3:
+                        batch[k] = torch.cat(batch[k], dim=0)
+                    elif batch[k][0].ndim == 2:
+                        batch[k] = [tuple(x.cpu().tolist()) for x in batch[k]]
+                    elif batch[k][0].ndim == 1:
+                        batch[k] = [tuple(x.cpu().tolist()) for x in batch[k]]
+                elif isinstance(batch[k][0], Image.Image):
+                    for image in images[k]:
+                        imgpath = save_dir / f"{k}_gs-{step:06}_e-{epoch:06}_b-{batch_idx:06}.png"
+                        image.save(imgpath)
+                    batch[k] = [wandb.Image(x) for x in images[k]]
 
             if isinstance(batch[k], Tensor):
-                val = batch[k].detach().cpu()
-                if val.ndim == 4 and val.shape[1] == 3:
-                    val = pt_to_pil(val)
-                elif val.ndim == 3:
-                    val = [pt_to_pil(val)]
-                elif val.ndim == 2:
-                    val = [x.cpu().item() for x in val]
-                table_dict[k] = val
+                batch[k] = batch[k].detach().cpu()
+                if (batch[k].ndim == 4 and batch[k].shape[1] == 3) or (
+                    batch[k].ndim == 3 and batch[k].shape[0] == 3
+                ):
+                    batch[k] = pt_to_pil(batch[k], aslist=True)
+                    batch[k] = [wandb.Image(x) for x in batch[k]]
+                else:
+                    del batch[k]
+
+            if isinstance(batch[k], list):
+                table_dict[k] = batch[k]
+            else:
+                warn(f"batch[{k}] is not a list, not logging this key to table_dict")
 
         if len(table_dict) > 0:
-            wandb_dict[f"{split}/batch"] = wandb.Table(data=table_dict)
+            table = wandb.Table(columns=list(table_dict.keys()))
+            for val in zip(*table_dict.values()):
+                table.add_data(*val)
+            wandb_dict.update({f"{split}/table": table})
 
         if pl_module is not None:
             for pl_logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
-                pl_logger.log_metrics(metrics=wandb_dict)
+                pl_logger.log_metrics(wandb_dict)
 
     @rank_zero_only
     def maybe_log_images(
@@ -237,6 +254,10 @@ class ImageLogger(Callback):
             images: list[Tensor] = pl_module.log_images(
                 batch, num_img=self.max_images, split=split, **self.log_func_kwargs
             )
+
+        if self._first_run:
+            dump_dir = self.local_dir.joinpath("logger_debug")
+            pickle.dump(images, dump_dir.joinpath("images_raw.pkl").open("wb"))
 
         # if the model returned None, warn and return early
         if images is None:
