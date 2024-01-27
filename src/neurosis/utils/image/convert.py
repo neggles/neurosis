@@ -19,7 +19,7 @@ def numpy_to_pil(images: np.ndarray | list[np.ndarray]) -> list[Image.Image]:
         # and allow a list of NHWC arrays too (as long as N=1)
         images = np.stack([x.squeeze(0) for x in images], axis=0)
 
-    images = images.multiply(255).clip(0, 255).rint().astype("uint8")
+    images = (images * 255.0).clip(0, 255).astype("uint8")
 
     if images.shape[-1] == 1:
         # special case for grayscale (single channel) images
