@@ -1,4 +1,3 @@
-import json
 import logging
 from contextlib import contextmanager
 from functools import wraps
@@ -16,7 +15,6 @@ from lightning import pytorch as L
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from torch import Generator, Tensor, nn
-from torch.optim.optimizer import Optimizer
 
 from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
@@ -43,7 +41,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         partial_freeze: bool = False,
         freeze_steps: int = 0,
         grad_log_steps: int = 20,
-        key_info_path: Optional[PathLike] = None,
         **model_kwargs,
     ):
         super().__init__()
@@ -75,20 +72,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
             logger.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))} weights.")
 
         self.freeze(encoder=only_train_decoder, decoder=False)
-
-        ## Partial freeze shenanigans
-        self.freeze_layers = []
-        self.freeze_slices = {}
-        self.freeze_hooks = []
-        if key_info_path is None and isinstance(model, (str, PathLike)):
-            key_info_path = Path(model).joinpath("key_info.json")
-        elif key_info_path is None:
-            raise ValueError("key_info_path must be specified if model is not a path")
-
-        if self.partial_freeze is True:
-            if self.freeze_steps == 0:
-                raise ValueError("partial_freeze is True but freeze_steps is 0")
-            self.setup_partial_freeze(Path(key_info_path))
 
         self.save_hyperparameters(ignore=["model", "optimizer", "scheduler", "key_info_path"])
 
@@ -134,59 +117,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         else:
             raise ValueError(f"decoder must be bool, got {decoder}")
 
-    def setup_partial_freeze(self, key_info_path: Path):
-        logger.info(f"Setting up partial freeze until step {self.freeze_steps}")
-        key_info = json.loads(key_info_path.read_text())
-        expanded = key_info["expanded"]
-
-        self.freeze_layers = [x for x in key_info["existing"].keys() if not is_encoder_key(x)]
-        self.freeze_slices = {k: tuple(slice(0, x) for x in v["old"]) for k, v in expanded.items()}
-
-        for layer in self.freeze_layers:
-            self.vae.get_parameter(layer).requires_grad_(False)
-        for layer, _ in self.freeze_slices.items():
-            self.vae.get_parameter(layer).requires_grad_(True)
-        logger.info(f"Froze {len(self.freeze_layers)} layers and {len(self.freeze_slices)} layer slices")
-
-    def release_partial_freeze(self):
-        logger.info(f"Releasing partial freeze at step {self.trainer.global_step}")
-        for layer in self.freeze_layers:
-            self.vae.get_parameter(layer).requires_grad_(True)
-        for handle in self.freeze_hooks:
-            handle.remove()
-        self.freeze_hooks = []
-
-    def log_grad_for_frozen(self):
-        grads = []
-        layers = list(self.freeze_slices.keys())
-        for layer in layers:
-            grad = self.vae.get_parameter(layer).grad
-            if grad is not None:
-                grad = grad.view(-1).detach().cpu()
-                grads.append(grad)
-
-        stats = {
-            "partial_freeze/grad_mean": torch.cat(grads).mean().item(),
-            "partial_freeze/grad_std": torch.cat(grads).std().item(),
-        }
-        self.log_dict(stats, on_step=True, on_epoch=False, prog_bar=False, logger=True)
-
-    def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
-        if self.partial_freeze:
-            if (
-                self.grad_log_steps > 0
-                and (self.trainer.global_step % self.grad_log_steps == 0)
-                and self.trainer.global_step > 0
-            ):
-                logger.debug(f"Updating gradient stats at step {self.trainer.global_step}")
-                self.log_grad_for_frozen()
-
-            for layer, slice in self.freeze_slices.items():
-                self.vae.get_parameter(layer)[slice].grad = None
-
-            if self.trainer.global_step == self.freeze_steps:
-                self.release_partial_freeze()
-
     @wraps(AutoencoderKL.encode)
     def encode(self, x: Tensor, return_dict: bool = True) -> AutoencoderKLOutput | Tensor:
         return self.vae.encode(x, return_dict)
@@ -221,7 +151,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
 
         posterior = self.vae.encode(x).latent_dist
         z: Tensor = posterior.mode()
-        kl_loss: Tensor = posterior.kl()
 
         recon: Tensor = self.vae.decode(z).sample
         ae_loss = self.get_loss(x, recon)
@@ -283,16 +212,15 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         ucg_keys: list[str] = None,
         **kwargs,
     ) -> dict:
-        log_dict = {}
-
-        x: Tensor = self.get_input(batch)[:num_img]
+        inputs: Tensor = self.get_input(batch)[:num_img]
 
         with torch.inference_mode():
-            recon = self.forward(x).sample
+            recons = self.forward(inputs).sample
 
-        log_dict["inputs"] = x
-        log_dict["recons"] = recon
-
+        log_dict = {
+            "inputs": inputs,
+            "recons": recons,
+        }
         return log_dict
 
 
