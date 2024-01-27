@@ -40,7 +40,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         loss_ema_alpha: float = 0.02,
         partial_freeze: bool = False,
         freeze_steps: int = 0,
-        grad_log_steps: int = 20,
         **model_kwargs,
     ):
         super().__init__()
@@ -50,7 +49,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self.base_lr = base_lr
         self.use_ema = ema_decay is not None
         self.partial_freeze = partial_freeze
-        self.grad_log_steps = grad_log_steps
         self.freeze_steps = freeze_steps
         self.log_keys = log_keys
 
