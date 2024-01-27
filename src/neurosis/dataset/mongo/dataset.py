@@ -2,7 +2,7 @@ import logging
 from io import BytesIO
 from os import PathLike, getenv, getpid
 from time import sleep
-from typing import Optional
+from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -44,6 +44,7 @@ class MongoAspectDataset(AspectBucketDataset):
         path_key: str = "s3_path",
         tag_sep: str = ", ",
         word_sep: str = " ",
+        extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
         process_tags: bool = True,
@@ -67,6 +68,16 @@ class MongoAspectDataset(AspectBucketDataset):
         self.process_tags = process_tags
         self.shuffle_tags = shuffle_tags
         self.shuffle_keep = shuffle_keep
+
+        # get all keys that are not the path or image
+        if isinstance(extra_keys, str) and extra_keys == "all":
+            self.extra_keys = [
+                k
+                for k, v in self.settings.query.projection.items()
+                if v not in [-1, 0] and k not in (self.path_key, self.image_key, self.caption_key, "_id")
+            ]
+        else:
+            self.extra_keys = extra_keys
 
         # load S3_ENDPOINT_URL from env if not already present
         if s3_endpoint_env := getenv("S3_ENDPOINT_URL", None):
@@ -110,6 +121,7 @@ class MongoAspectDataset(AspectBucketDataset):
             "original_size_as_tuple": self._get_osize((image.width, image.height), bucket),
             "crop_coords_top_left": crop_coords,
             "target_size_as_tuple": bucket.size,
+            **{k: sample.get(k, None) for k in self.extra_keys},
         }
 
     def refresh_clients(self):
@@ -271,6 +283,7 @@ class MongoDbModule(LightningDataModule):
         path_key: str = "s3_path",
         tag_sep: str = ", ",
         word_sep: str = " ",
+        extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
         process_tags: bool = True,
@@ -296,6 +309,7 @@ class MongoDbModule(LightningDataModule):
             path_key=path_key,
             tag_sep=tag_sep,
             word_sep=word_sep,
+            extra_keys=extra_keys,
             resampling=resampling,
             clamp_orig=clamp_orig,
             process_tags=process_tags,
