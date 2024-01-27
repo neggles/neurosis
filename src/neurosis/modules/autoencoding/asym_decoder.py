@@ -3,8 +3,9 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
+from diffusers.models.activations import get_activation
 from diffusers.models.attention import Attention
-from diffusers.models.resnet import ResnetBlock2D
+from diffusers.models.unet_2d_blocks import UNetMidBlock2D
 from diffusers.utils import USE_PEFT_BACKEND
 from torch import nn
 
@@ -99,136 +100,6 @@ class ScaledAttnProcessor2_0:
         return hidden_states
 
 
-class UNetMidBlock2D(nn.Module):
-    """
-    A 2D UNet mid-block [`UNetMidBlock2D`] with multiple residual blocks and optional attention blocks.
-
-    Args:
-        in_channels (`int`): The number of input channels.
-        temb_channels (`int`): The number of temporal embedding channels.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout rate.
-        num_layers (`int`, *optional*, defaults to 1): The number of residual blocks.
-        resnet_eps (`float`, *optional*, 1e-6 ): The epsilon value for the resnet blocks.
-        resnet_time_scale_shift (`str`, *optional*, defaults to `default`):
-            The type of normalization to apply to the time embeddings. This can help to improve the performance of the
-            model on tasks with long-range temporal dependencies.
-        resnet_act_fn (`str`, *optional*, defaults to `swish`): The activation function for the resnet blocks.
-        resnet_groups (`int`, *optional*, defaults to 32):
-            The number of groups to use in the group normalization layers of the resnet blocks.
-        attn_groups (`Optional[int]`, *optional*, defaults to None): The number of groups for the attention blocks.
-        resnet_pre_norm (`bool`, *optional*, defaults to `True`):
-            Whether to use pre-normalization for the resnet blocks.
-        add_attention (`bool`, *optional*, defaults to `True`): Whether to add attention blocks.
-        attention_head_dim (`int`, *optional*, defaults to 1):
-            Dimension of a single attention head. The number of attention heads is determined based on this value and
-            the number of input channels.
-        output_scale_factor (`float`, *optional*, defaults to 1.0): The output scale factor.
-
-    Returns:
-        `torch.FloatTensor`: The output of the last residual block, which is a tensor of shape `(batch_size,
-        in_channels, height, width)`.
-
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        temb_channels: int,
-        dropout: float = 0.0,
-        num_layers: int = 1,
-        resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",  # default, spatial
-        resnet_act_fn: str = "swish",
-        resnet_groups: int = 32,
-        attn_groups: Optional[int] = None,
-        resnet_pre_norm: bool = True,
-        add_attention: bool = True,
-        attention_head_dim: int = 1,
-        attn_scale: Optional[float] = None,
-        output_scale_factor: float = 1.0,
-    ):
-        super().__init__()
-        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
-        self.add_attention = add_attention
-        self.attn_scale = attn_scale
-
-        if attn_groups is None:
-            attn_groups = resnet_groups if resnet_time_scale_shift == "default" else None
-
-        # there is always at least one resnet
-        resnets = [
-            ResnetBlock2D(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                temb_channels=temb_channels,
-                eps=resnet_eps,
-                groups=resnet_groups,
-                dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
-                non_linearity=resnet_act_fn,
-                output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
-            )
-        ]
-        attentions = []
-
-        if attention_head_dim is None:
-            logger.warn(
-                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
-            )
-            attention_head_dim = in_channels
-
-        for _ in range(num_layers):
-            if self.add_attention:
-                attentions.append(
-                    Attention(
-                        in_channels,
-                        heads=in_channels // attention_head_dim,
-                        dim_head=attention_head_dim,
-                        rescale_output_factor=output_scale_factor,
-                        eps=resnet_eps,
-                        norm_num_groups=attn_groups,
-                        spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
-                        residual_connection=True,
-                        bias=True,
-                        upcast_softmax=True,
-                        _from_deprecated_attn_block=True,
-                        processor=ScaledAttnProcessor2_0(),
-                    )
-                )
-            else:
-                attentions.append(None)
-
-            resnets.append(
-                ResnetBlock2D(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
-                )
-            )
-
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
-
-    def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None
-    ) -> torch.FloatTensor:
-        hidden_states = self.resnets[0](hidden_states, temb)
-        for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            if attn is not None:
-                hidden_states = attn(hidden_states, temb=temb, scale=self.attn_scale)
-            hidden_states = resnet(hidden_states, temb)
-
-        return hidden_states
-
-
 class Decoder(nn.Module):
     r"""
     The `Decoder` layer of a variational autoencoder that decodes its latent representation into an output sample.
@@ -261,6 +132,7 @@ class Decoder(nn.Module):
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
+        act_scale: Optional[float] = None,
         norm_type: str = "group",  # group, spatial
         mid_block_add_attention=True,
         attn_scale: Optional[float] = None,
@@ -293,6 +165,7 @@ class Decoder(nn.Module):
             resnet_time_scale_shift="default" if norm_type == "group" else norm_type,
             attention_head_dim=block_out_channels[-1],
             resnet_groups=norm_num_groups,
+            resnet_act_scale=act_scale,
             temb_channels=temb_channels,
             add_attention=mid_block_add_attention,
             attn_scale=attn_scale,
@@ -316,6 +189,7 @@ class Decoder(nn.Module):
                 add_upsample=not is_final_block,
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
+                resnet_act_scale=act_scale,
                 resnet_groups=norm_num_groups,
                 attention_head_dim=output_channel,
                 temb_channels=temb_channels,
@@ -331,7 +205,7 @@ class Decoder(nn.Module):
             self.conv_norm_out = nn.GroupNorm(
                 num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6
             )
-        self.conv_act = nn.SiLU()
+        self.conv_act = get_activation("silu", scale=act_scale)
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
         self.gradient_checkpointing = False
