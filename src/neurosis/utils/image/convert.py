@@ -4,7 +4,7 @@ from PIL import Image
 from torch import Tensor
 
 
-def numpy_to_pil(images: np.ndarray | list[np.ndarray]) -> list[Image.Image]:
+def numpy_to_pil(images: np.ndarray | list[np.ndarray], aslist: bool = False) -> list[Image.Image]:
     """
     Convert a numpy image or a batch of images to a list of PIL images.
 
@@ -27,7 +27,10 @@ def numpy_to_pil(images: np.ndarray | list[np.ndarray]) -> list[Image.Image]:
     else:
         pil_images = [Image.fromarray(image) for image in images]
 
-    return pil_images[0] if len(pil_images) == 1 else pil_images
+    if aslist is False:
+        pil_images = pil_images[0] if len(pil_images) == 1 else pil_images
+
+    return pil_images
 
 
 def pil_to_numpy(images: Image.Image | list[Image.Image]) -> np.ndarray:
@@ -95,7 +98,7 @@ def pt_to_numpy(images: Tensor | list[Tensor]) -> np.ndarray:
     return images
 
 
-def pt_to_pil(images: Tensor | list[Tensor]) -> list[Image.Image]:
+def pt_to_pil(images: Tensor | list[Tensor], aslist: bool = False) -> list[Image.Image]:
     """
     Convert a PyTorch tensor to a PIL image or list of PIL images.
 
@@ -104,10 +107,11 @@ def pt_to_pil(images: Tensor | list[Tensor]) -> list[Image.Image]:
 
     If a single image, returns a single PIL image.
     If a list or batch of images, returns a list of PIL images.
+    set aslist=True to force a list even if only one image is passed in.
     """
 
     images = pt_to_numpy(images)
-    images = numpy_to_pil(images)
+    images = numpy_to_pil(images, aslist=aslist)
     return images
 
 
