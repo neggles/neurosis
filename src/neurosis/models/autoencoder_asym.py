@@ -15,9 +15,11 @@ from lightning import pytorch as L
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from torch import Generator, Tensor, nn
+from torch.optim.optimizer import Optimizer
 
 from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
+from neurosis.modules.distributions import DiagonalGaussianDistribution
 from neurosis.modules.ema import LitEma
 from neurosis.trainer.util import EMATracker
 
@@ -38,19 +40,18 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         base_lr: Optional[float] = None,
         ema_decay: Optional[float] = None,
         loss_ema_alpha: float = 0.02,
-        partial_freeze: bool = False,
-        freeze_steps: int = 0,
         **model_kwargs,
     ):
         super().__init__()
         logger.info(f"Initializing {self.__class__.__name__}")
 
         self.input_key = input_key
+        self.log_keys = log_keys
+
         self.base_lr = base_lr
         self.use_ema = ema_decay is not None
-        self.partial_freeze = partial_freeze
-        self.freeze_steps = freeze_steps
-        self.log_keys = log_keys
+        self.ema_decay = ema_decay
+        self.model_ema: LitEma = None
 
         self.only_train_decoder = only_train_decoder
         self.asymmetric = asymmetric
@@ -60,18 +61,26 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self.optimizer = optimizer
         self.scheduler = scheduler
 
-        if isinstance(model, (str, PathLike)):
-            self.vae = load_vae_ckpt(Path(model), asymmetric=asymmetric, **model_kwargs)
+        if isinstance(model, nn.Module):
+            self.vae: AutoencoderKL | AsymmetricAutoencoderKL = model
+            self.freeze(encoder=self.only_train_decoder, decoder=False)
+        elif isinstance(model, (str, PathLike)):
+            self._model_path = Path(model)
+            self._model_kwargs = model_kwargs
+            self.vae: AutoencoderKL | AsymmetricAutoencoderKL = None
         else:
-            self.vae = model
-
-        if self.use_ema:
-            self.model_ema = LitEma(self, decay=ema_decay)
-            logger.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))} weights.")
-
-        self.freeze(encoder=only_train_decoder, decoder=False)
+            raise ValueError(f"model must be nn.Module or str, got {model}")
 
         self.save_hyperparameters(ignore=["model", "optimizer", "scheduler", "key_info_path"])
+
+    def configure_model(self) -> None:
+        if self.vae is None:
+            self.vae = load_vae_ckpt(self._model_path, asymmetric=self.asymmetric, **self._model_kwargs)
+            self.freeze(encoder=self.only_train_decoder, decoder=False)
+
+        if self.model_ema is None and self.use_ema:
+            self.model_ema = LitEma(self.vae, decay=self.ema_decay)
+            logger.info(f"Keeping EMAs of {len(list(self.model_ema.buffers()))} weights.")
 
     def get_input(self, batch):
         # assuming unified data format, dataloader returns a dict.
@@ -133,29 +142,29 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
     ) -> DecoderOutput | Tensor:
         return self.vae.forward(sample, sample_posterior, return_dict, generator)
 
-    def get_loss(self, model_output: Tensor, target: Tensor) -> Tensor:
+    def get_loss(self, recons: Tensor, target: Tensor) -> Tensor:
         match self.loss_type:
             case "l1":
-                return F.l1_loss(model_output, target, reduction="none").reshape(target.shape[0], -1).mean(1)
+                return F.l1_loss(recons, target, reduction="mean")
             case "l2" | "mse":
-                return F.mse_loss(model_output, target, reduction="none").reshape(target.shape[0], -1).mean(1)
-            case "cosine":
-                return F.cosine_similarity(model_output.flatten(1), target.flatten(1), dim=1)
+                return F.mse_loss(recons, target, reduction="mean")
+            case "nll":
+                return F.nll_loss(recons, target, reduction="mean")
             case _:
                 raise ValueError(f"loss type {self.loss_type} not supported")
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
         x: Tensor = self.get_input(batch)
 
-        posterior = self.vae.encode(x).latent_dist
+        posterior: DiagonalGaussianDistribution = self.vae.encode(x).latent_dist
         z: Tensor = posterior.mode()
 
         recon: Tensor = self.vae.decode(z).sample
-        ae_loss = self.get_loss(x, recon)
+        ae_loss = self.get_loss(recon, x)
 
         # update EMA loss tracker
-        log_loss = ae_loss.mean().detach()
-        self.loss_ema.update(log_loss.item())
+        log_loss = ae_loss.detach().cpu().item()
+        self.loss_ema.update(log_loss)
 
         self.log_dict(
             {
@@ -168,7 +177,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
             logger=True,
             batch_size=x.shape[0],
         )
-        return ae_loss.mean()
+        return ae_loss
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         param_groups = []
@@ -197,9 +206,16 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         optimizer = self.optimizer(param_groups)
         if self.scheduler is not None:
             scheduler = self.scheduler(optimizer)
-            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "step"}}
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {"scheduler": scheduler, "interval": "step"},
+            }
 
         return optimizer
+
+    def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
+        # torch.cuda.empty_cache()
+        return super().on_before_optimizer_step(optimizer)
 
     @torch.no_grad()
     def log_images(
@@ -214,10 +230,12 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
 
         with torch.inference_mode():
             recons = self.forward(inputs).sample
+            loss = [self.get_loss(rec, inp) for inp, rec in zip(inputs, recons)]
 
         log_dict = {
             "inputs": inputs,
             "recons": recons,
+            f"loss_{self.loss_type}": loss,
         }
         return log_dict
 
