@@ -44,7 +44,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         super().__init__()
         attn_scale = None
         if attn_scale_sqrt_inv is not None:
-            attn_scale = 1.0 / attn_scale_sqrt_inv**0.5
+            attn_scale = attn_scale_sqrt_inv**-0.5
             attn_scale *= attn_scale_extra
 
         # pass init params to Encoder
