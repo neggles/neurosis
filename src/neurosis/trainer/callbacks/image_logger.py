@@ -1,13 +1,10 @@
 import logging
-import pickle
 from enum import Enum
-from math import ceil, sqrt
 from pathlib import Path
 from typing import Optional, Union
 from warnings import warn
 
 import numpy as np
-import pandas as pd
 import torch
 import wandb
 from lightning.pytorch import Callback, LightningModule, Trainer
@@ -68,7 +65,6 @@ class ImageLogger(Callback):
 
         self.__last_logged_step: int = -1
         self.__trainer: Trainer = None
-        self._first_run = True
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.__trainer = trainer
@@ -145,13 +141,7 @@ class ImageLogger(Callback):
 
         for k in images:
             imgpath = save_dir / f"{k}_gs-{step:06}_e-{epoch:06}_b-{batch_idx:06}.png"
-            if isinstance(images[k], Image.Image):
-                img = images[k]
-                img.save(imgpath)
-                wandb_dict.update({f"{split}/{k}": wandb.Image(img)})
-                continue
-
-            elif isinstance(images[k], Tensor):
+            if isinstance(images[k], Tensor) and images[k].ndim == 4 and images[k].shape[1] == 3:
                 images[k] = [pt_to_pil(x) for x in images[k]]
 
             if k == "samples" and "caption" in batch:
@@ -162,10 +152,12 @@ class ImageLogger(Callback):
                 )
                 img.save(imgpath)
                 wandb_dict.update({f"{split}/{k}": wandb.Image(img, caption="Sample Grid")})
-            else:
+
+            elif isinstance(images[k][0], Image.Image):
                 wandb_dict.update({f"{split}/{k}": [wandb.Image(x) for x in images[k]]})
 
-            table_dict.update({k: [wandb.Image(x) for x in images[k]]})
+            else:
+                batch[k] = images[k]
 
         for k in [x for x in batch if x in self.extra_log_keys]:
             if isinstance(batch[k], list):
@@ -254,10 +246,6 @@ class ImageLogger(Callback):
             images: list[Tensor] = pl_module.log_images(
                 batch, num_img=self.max_images, split=split, **self.log_func_kwargs
             )
-
-        if self._first_run:
-            dump_dir = self.local_dir.joinpath("logger_debug")
-            pickle.dump(images, dump_dir.joinpath("images_raw.pkl").open("wb"))
 
         # if the model returned None, warn and return early
         if images is None:

@@ -40,7 +40,7 @@ class FolderVAEDataset(NoBucketDataset):
 
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
-        self._preload()
+        self.preload()
 
     def __len__(self):
         return len(self.samples)
@@ -51,12 +51,10 @@ class FolderVAEDataset(NoBucketDataset):
 
         return {
             self.image_key: self.transforms(image),
-            "original_size_as_tuple": self._get_osize(sample.resolution),
             "crop_coords_top_left": crop_coords,
-            "target_size_as_tuple": self.resolution,
         }
 
-    def _preload(self):
+    def preload(self):
         # get paths
         file_iter = self.folder.rglob("**/*.*") if self.recursive else self.folder.glob("*.*")
         # filter to images
@@ -64,12 +62,6 @@ class FolderVAEDataset(NoBucketDataset):
         # build dataframe
         self.samples = pd.DataFrame([self.__load_meta(x) for x in image_files]).astype(
             {"image_path": np.string_, "aspect": np.float32, "resolution": np.int32}
-        )
-
-    def _get_osize(self, resolution: tuple[int, int]) -> tuple[int, int]:
-        return (
-            min(resolution[0], self.resolution[0]) if self.clamp_orig else resolution[0],
-            min(resolution[1], self.resolution[1]) if self.clamp_orig else resolution[1],
         )
 
     def __load_meta(self, image_path: Path) -> pd.Series:

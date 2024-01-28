@@ -58,7 +58,7 @@ class ImageFolderDataset(AspectBucketDataset):
 
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
-        self._preload()
+        self.preload()
 
     def __len__(self):
         return len(self.samples)
@@ -76,7 +76,7 @@ class ImageFolderDataset(AspectBucketDataset):
             "target_size_as_tuple": bucket.size,
         }
 
-    def _preload(self):
+    def preload(self):
         # get paths
         file_iter = self.folder.rglob("**/*.*") if self.recursive else self.folder.glob("*.*")
         # filter to images

@@ -3,7 +3,6 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageOps
-from torch import Tensor
 
 from neurosis.dataset.aspect.bucket import AspectBucket
 from neurosis.utils.image import pil_ensure_rgb
@@ -28,8 +27,7 @@ def pil_crop_square(
     image: Image.Image,
     size: int | tuple[int, int],
     resampling: Image.Resampling = Image.Resampling.BICUBIC,
-    return_dict: bool = False,
-) -> Image.Image:
+) -> tuple[Image.Image, tuple[int, int]]:
     if isinstance(size, int):
         size = (size, size)
 
@@ -48,8 +46,6 @@ def pil_crop_square(
     left = np.random.randint(delta_w + 1)
     image = image.crop((left, top, left + size[0], top + size[1]))
 
-    if return_dict:
-        return {"image": image, "crop_coords_top_left": (top, left)}
     return (image, (top, left))
 
 
@@ -57,15 +53,14 @@ def load_crop_image_file(
     path: PathLike | bytes,
     resolution: int | tuple[int, int],
     resampling: Image.Resampling = Image.Resampling.BICUBIC,
-) -> tuple[Tensor, tuple[int, int]]:
+) -> tuple[Image.Image, tuple[int, int]]:
     if isinstance(path, bytes):
         path = path.decode("utf-8")
     path = Path(path).resolve()
     # load image
     image = Image.open(path)
     image = pil_ensure_rgb(image)
-    image, (top, left) = pil_crop_square(image, resolution, resampling)
-    return image, (top, left)
+    return pil_crop_square(image, resolution, resampling)
 
 
 def pil_crop_bucket(
@@ -98,15 +93,14 @@ def load_bucket_image_file(
     path: PathLike | bytes,
     bucket: AspectBucket,
     resampling: Image.Resampling = Image.Resampling.BICUBIC,
-) -> tuple[Tensor, tuple[int, int]]:
+) -> tuple[Image.Image, tuple[int, int]]:
     if isinstance(path, bytes):
         path = path.decode("utf-8")
     path = Path(path).resolve()
     # load image
     image = Image.open(path)
     image = pil_ensure_rgb(image)
-    image, (top, left) = pil_crop_bucket(image, bucket, resampling)
-    return image, (top, left)
+    return pil_crop_bucket(image, bucket, resampling)
 
 
 def clean_word(word_sep: str, word: str | bytes) -> str:

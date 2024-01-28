@@ -35,13 +35,16 @@ class FolderSquareDataset(NoBucketDataset):
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
     ):
-        super().__init__(resolution, batch_size)
+        super().__init__(resolution)
         self.folder = Path(folder).resolve()
         if not (self.folder.exists() and self.folder.is_dir()):
             raise FileNotFoundError(f"Folder {self.folder} does not exist or is not a directory.")
 
+        self.batch_size = batch_size
+
         self.image_key = image_key
         self.caption_key = caption_key
+
         self.caption_ext = caption_ext
         self.tag_sep = tag_sep
         self.word_sep = word_sep
@@ -54,7 +57,7 @@ class FolderSquareDataset(NoBucketDataset):
 
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
-        self._preload()
+        self.preload()
 
     def __len__(self):
         return len(self.samples)
@@ -71,7 +74,7 @@ class FolderSquareDataset(NoBucketDataset):
             "target_size_as_tuple": self.resolution,
         }
 
-    def _preload(self):
+    def preload(self):
         # get paths
         file_iter = self.folder.rglob("**/*.*") if self.recursive else self.folder.glob("*.*")
         # filter to images
