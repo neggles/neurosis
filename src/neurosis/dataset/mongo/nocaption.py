@@ -1,38 +1,34 @@
 import logging
-from io import BytesIO
-from os import PathLike, getenv, getpid
-from time import sleep
+from os import PathLike
 from typing import Literal, Optional
 
 import pandas as pd
-from botocore.exceptions import ConnectionError
+import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
-from pymongo import MongoClient
-from pymongo.collection import Collection as MongoCollection
-from pymongoarrow.api import find_pandas_all
 from pymongoarrow.schema import Schema
-from s3fs import S3FileSystem
-from torch import Generator, Tensor
-from torch.utils.data import BatchSampler, DataLoader, RandomSampler, SequentialSampler
+from torch import Tensor
+from torch.utils.data import DataLoader
 
 from neurosis.dataset.base import NoBucketDataset
-from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
-from neurosis.dataset.utils import clear_fsspec, pil_crop_square, set_s3fs_opts
-from neurosis.utils import maybe_collect
-from neurosis.utils.image import pil_ensure_rgb
+from neurosis.dataset.utils import pil_crop_square
+
+from .base import BaseMongoDataset, mongo_worker_init
+from .settings import MongoSettings, get_mongo_settings
 
 logger = logging.getLogger(__name__)
 
 
-class MongoVAEDataset(NoBucketDataset):
+class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
     def __init__(
         self,
         settings: MongoSettings,
-        resolution: int | tuple[int, int] = 256,
-        batch_size: int = 1,
-        image_key: str = "image",
         *,
+        image_key: str = "image",
+        # passed to NoBucketDataset
+        resolution: int | tuple[int, int] = 256,
+        # passed to BaseMongoDataset along with settings
+        batch_size: int = 1,
         path_key: str = "s3_path",
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
@@ -41,53 +37,32 @@ class MongoVAEDataset(NoBucketDataset):
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
-        seed: Optional[int] = None,
         **kwargs,
     ):
-        super().__init__(resolution, batch_size, **kwargs)
-        self.pid = getpid()
-        self.settings = settings
-
         self.image_key = image_key
-        self.path_key = path_key
-        self.resampling = resampling
+        self.batch_keys: list[str] = [image_key]
 
-        # get all keys that are not the path or image
-        if isinstance(extra_keys, str) and extra_keys == "all":
-            self.extra_keys = [
-                k
-                for k, v in self.settings.query.projection.items()
-                if v not in [-1, 0] and k not in (self.path_key, self.image_key, "_id")
-            ]
-        else:
-            self.extra_keys = extra_keys
-
-        # load S3_ENDPOINT_URL from env if not already present
-        if s3_endpoint_env := getenv("S3_ENDPOINT_URL", None):
-            s3fs_kwargs.setdefault("endpoint_url", s3_endpoint_env)
-
-        self.s3fs_kwargs = s3fs_kwargs
-        self.s3_bucket = s3_bucket
-        self.fs: S3FileSystem = None
-        self.client: MongoClient = None
-        self.pma_schema: Schema = pma_schema
-
-        self.retries = retries
-        self.retry_delay = retry_delay
-        self.seed = seed
-
-        # load meta
-        logger.debug(
-            f"Preloading dataset from mongodb://<host>/{self.settings.database}.{self.settings.collection}"
+        BaseMongoDataset.__init__(
+            self,
+            settings=settings,
+            batch_size=batch_size,
+            path_key=path_key,
+            extra_keys=extra_keys,
+            resampling=resampling,
+            s3_bucket=s3_bucket,
+            s3fs_kwargs=s3fs_kwargs,
+            pma_schema=pma_schema,
+            retries=retries,
+            retry_delay=retry_delay,
+            **kwargs,
         )
-        self._count: int = None
-        self._first_getitem = True
-        self._preload()
+        NoBucketDataset.__init__(
+            self,
+            resolution=resolution,
+            **kwargs,
+        )
 
-    def __len__(self):
-        if self.samples is not None:
-            return len(self.samples)
-        return self._count
+        self.preload()
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         if self._first_getitem:
@@ -101,71 +76,9 @@ class MongoVAEDataset(NoBucketDataset):
 
         return {
             self.image_key: self.transforms(image),
-            "crop_coords_top_left": crop_coords,
-            **{k: sample.get(k, None) for k in self.extra_keys},
+            "crop_coords_top_left": torch.tensor(crop_coords, dtype=torch.int32),
+            **{k: torch.tensor(sample.get(k)) for k in self.extra_keys if k in sample},
         }
-
-    def refresh_clients(self):
-        """Helper func to replace the current clients with new ones post-fork etc."""
-        pid = getpid()
-        if self.client is None or self.pid != pid:
-            self.client = self.settings.new_client()
-            self.pid = pid
-
-        if self.fs is None or self.fs._pid != pid:
-            logger.debug(f"Loader detected fork, new PID {pid} - resetting fsspec clients")
-            import fsspec
-
-            fsspec.asyn.reset_lock()
-            self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
-
-    @property
-    def collection(self) -> MongoCollection:
-        return self.client.get_database(self.settings.db_name).get_collection(self.settings.coll_name)
-
-    def _preload(self):
-        self.refresh_clients()
-
-        if self._count is None:
-            logger.info(f"Counting documents in {self.settings.coll_name}")
-            self._count = self.settings.count
-
-        if not isinstance(self.samples, pd.DataFrame):
-            logger.info(f"Loading metadata for {self._count} documents, this may take a while...")
-            self.samples: pd.DataFrame = find_pandas_all(
-                self.collection,
-                query=dict(self.settings.query.filter),
-                schema=self.pma_schema,
-                **self.settings.query.kwargs,
-            )
-
-        logger.debug("Preload complete!")
-        maybe_collect()
-
-    def _get_image(self, path: str) -> Image.Image:
-        if self.fs is None:
-            self.refresh_clients()
-
-        # prepend bucket if not already present
-        image = None
-        path = f"{self.s3_bucket}/{path}" if self.s3_bucket is not None else path
-
-        # get image
-        attempts = 0
-        while attempts < self.retries and image is None:
-            try:
-                image = self.fs.cat(path)
-            except ConnectionError:
-                logger.exception(f"Caught connection error on {path}, retry in {self.retry_delay}s")
-                sleep(self.retry_delay)
-            attempts += 1
-
-        if not isinstance(image, bytes):
-            raise FileNotFoundError(f"Failed to load image from {path}")
-        # load image and ensure RGB colorspace
-        image = Image.open(BytesIO(image))
-        image = pil_ensure_rgb(image)
-        return image
 
 
 class MongoVAEModule(LightningDataModule):
@@ -217,20 +130,13 @@ class MongoVAEModule(LightningDataModule):
         pass
 
     def setup(self, stage: str):
-        logger.info(f"Refreshing dataset clients for {stage}")
+        logger.debug(f"Refreshing dataset clients for {stage}")
         self.dataset.refresh_clients()
 
     def train_dataloader(self):
-        if self.seed is not None:
-            logger.info(f"Setting seed {self.seed} for train dataloader")
-            generator = Generator().manual_seed(self.seed)
-            sampler = RandomSampler(self.dataset, generator=generator)
-        else:
-            sampler = SequentialSampler(self.dataset)
-
         return DataLoader(
             self.dataset,
-            batch_sampler=BatchSampler(sampler, self.batch_size, self.drop_last),
+            batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
@@ -238,9 +144,3 @@ class MongoVAEModule(LightningDataModule):
             worker_init_fn=mongo_worker_init,
             timeout=60.0,
         )
-
-
-def mongo_worker_init(worker_id: int = -1):
-    logger.debug(f"Worker {worker_id} initializing")
-    clear_fsspec()
-    set_s3fs_opts()

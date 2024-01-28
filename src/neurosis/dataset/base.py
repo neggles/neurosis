@@ -14,13 +14,11 @@ class NoBucketDataset(Dataset):
     def __init__(
         self,
         resolution: int | tuple[int, int],
-        batch_size: int = 1,
-        *,
         pil_max_image_pixels: Optional[int] = None,
         pil_max_png_bytes: int = 100 * (1024**2),  # 100 MB
+        **kwargs,
     ):
         self.resolution = resolution if isinstance(resolution, tuple) else (resolution, resolution)
-        self.batch_size = batch_size
 
         # be quiet, PIL
         Image.MAX_IMAGE_PIXELS = pil_max_image_pixels

@@ -83,6 +83,7 @@ class MongoSettings(BaseSettings):
     @computed_field
     @cached_property
     def count(self) -> int:
+        logger.info(f"Counting documents in {self.db_name}/{self.coll_name} for query...")
         aggr = [
             {"$match": self.query.filter},
             {"$project": {"_id": 1}},

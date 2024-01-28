@@ -1,17 +1,12 @@
 import logging
-from io import BytesIO
-from os import PathLike, getenv, getpid
-from time import sleep
+from os import PathLike, getpid
 from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
-from botocore.exceptions import ConnectionError
+import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
-from pymongo import MongoClient
-from pymongo.collection import Collection as MongoCollection
-from pymongoarrow.api import find_pandas_all
 from pymongoarrow.schema import Schema
 from s3fs import S3FileSystem
 from torch import Tensor
@@ -24,86 +19,74 @@ from neurosis.dataset.aspect import (
     AspectBucketSampler,
     SDXLBucketList,
 )
-from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
 from neurosis.dataset.utils import clean_word, clear_fsspec, pil_crop_bucket, set_s3fs_opts
 from neurosis.utils import maybe_collect
-from neurosis.utils.image import pil_ensure_rgb
+
+from .base import BaseMongoDataset
+from .settings import MongoSettings, get_mongo_settings
 
 logger = logging.getLogger(__name__)
 
 
-class MongoAspectDataset(AspectBucketDataset):
+class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
     def __init__(
         self,
         settings: MongoSettings,
-        buckets: AspectBucketList = SDXLBucketList(),
-        batch_size: int = 1,
+        *,
         image_key: str = "image",
         caption_key: str = "caption",
-        *,
-        path_key: str = "s3_path",
         tag_sep: str = ", ",
         word_sep: str = " ",
-        extra_keys: list[str] | Literal["all"] = [],
-        resampling: Image.Resampling = Image.Resampling.BICUBIC,
-        clamp_orig: bool = True,
         process_tags: bool = True,
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
+        clamp_orig: bool = True,
+        # passed to AspectBucketDataset
+        buckets: AspectBucketList = SDXLBucketList(),
+        # passed to BaseMongoDataset along with settings
+        batch_size: int = 1,
+        path_key: str = "s3_path",
+        extra_keys: list[str] | Literal["all"] = [],
+        resampling: Image.Resampling = Image.Resampling.BICUBIC,
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
+        **kwargs,
     ):
-        super().__init__(buckets, batch_size, image_key, caption_key)
-        self.pid = getpid()
-        self.settings = settings
+        self.image_key = image_key
+        self.caption_key = caption_key
+        self.batch_keys: list[str] = [image_key, caption_key]
 
-        self.path_key = path_key
         self.tag_sep = tag_sep
         self.word_sep = word_sep
-        self.resampling = resampling
         self.clamp_orig = clamp_orig
         self.process_tags = process_tags
         self.shuffle_tags = shuffle_tags
         self.shuffle_keep = shuffle_keep
 
-        # get all keys that are not the path or image
-        if isinstance(extra_keys, str) and extra_keys == "all":
-            self.extra_keys = [
-                k
-                for k, v in self.settings.query.projection.items()
-                if v not in [-1, 0] and k not in (self.path_key, self.image_key, self.caption_key, "_id")
-            ]
-        else:
-            self.extra_keys = extra_keys
-
-        # load S3_ENDPOINT_URL from env if not already present
-        if s3_endpoint_env := getenv("S3_ENDPOINT_URL", None):
-            s3fs_kwargs.setdefault("endpoint_url", s3_endpoint_env)
-
-        self.s3fs_kwargs = s3fs_kwargs
-        self.s3_bucket = s3_bucket
-        self.fs: S3FileSystem = None
-        self.client: MongoClient = None
-        self.pma_schema: Schema = pma_schema
-
-        self.retries = retries
-        self.retry_delay = retry_delay
-
-        # load meta
-        logger.debug(
-            f"Preloading dataset from mongodb://<host>/{self.settings.database}.{self.settings.collection}"
+        BaseMongoDataset.__init__(
+            self,
+            settings=settings,
+            batch_size=batch_size,
+            path_key=path_key,
+            extra_keys=extra_keys,
+            resampling=resampling,
+            s3_bucket=s3_bucket,
+            s3fs_kwargs=s3fs_kwargs,
+            pma_schema=pma_schema,
+            retries=retries,
+            retry_delay=retry_delay,
+            **kwargs,
         )
-        self._count: int = None
-        self._first_getitem = True
-        self._preload()
+        AspectBucketDataset.__init__(
+            self,
+            buckets=buckets,
+            **kwargs,
+        )
 
-    def __len__(self):
-        if self.samples is not None:
-            return len(self.samples)
-        return self._count
+        self.preload()
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         if self._first_getitem:
@@ -117,11 +100,11 @@ class MongoAspectDataset(AspectBucketDataset):
 
         return {
             self.image_key: self.transforms(image),
-            self.caption_key: self.__clean_caption(sample.caption),
+            self.caption_key: self._clean_caption(sample.caption),
             "original_size_as_tuple": self._get_osize((image.width, image.height), bucket),
-            "crop_coords_top_left": crop_coords,
-            "target_size_as_tuple": bucket.size,
-            **{k: sample.get(k, None) for k in self.extra_keys},
+            "crop_coords_top_left": torch.tensor(crop_coords, dtype=torch.int32),
+            "target_size_as_tuple": torch.tensor(bucket.size, dtype=torch.int32),
+            **{k: torch.tensor(sample.get(k)) for k in self.extra_keys if k in sample},
         }
 
     def refresh_clients(self):
@@ -138,29 +121,11 @@ class MongoAspectDataset(AspectBucketDataset):
             fsspec.asyn.reset_lock()
             self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
 
-    @property
-    def collection(self) -> MongoCollection:
-        return self.client.get_database(self.settings.db_name).get_collection(self.settings.coll_name)
-
-    def _preload(self):
-        self.refresh_clients()
-
-        if self._count is None:
-            logger.info(f"Counting documents in {self.settings.coll_name}")
-            self._count = self.settings.count
-
-        if not isinstance(self.samples, pd.DataFrame):
-            logger.info(f"Loading metadata for {self._count} documents, this may take a while...")
-            self.samples: pd.DataFrame = find_pandas_all(
-                self.collection,
-                query=dict(self.settings.query.filter),
-                schema=self.pma_schema,
-                **self.settings.query.kwargs,
-            )
-
-        if "bucket_idx" not in self.samples.columns:
-            logger.info("Mapping aspect ratios to buckets...")
-            self.samples = self._assign_aspect(self.samples)
+    def preload(self):
+        # call the superclasses' preload method
+        super().preload()
+        # assign aspect ratios to buckets
+        self.assign_aspect()
 
         modified = False
         for bucket_id, sample_ids in self.bucket2idx.items():
@@ -178,20 +143,21 @@ class MongoAspectDataset(AspectBucketDataset):
         logger.debug("Preload complete!")
         maybe_collect()
 
-    def _assign_aspect(self, df: pd.DataFrame) -> pd.DataFrame:
+    def assign_aspect(self) -> pd.DataFrame:
         def get_bucket_indices(df: pd.DataFrame):
             aspects: pd.Series = df["aspect"]
             return aspects.apply(self.buckets.bucket_idx)
 
-        return df.assign(bucket_idx=get_bucket_indices)
+        if "bucket_idx" not in self.samples.columns:
+            logger.info("Mapping aspect ratios to buckets...")
+            self.samples = self.samples.assign(bucket_idx=get_bucket_indices)
 
     def _get_osize(self, resolution: tuple[int, int], bucket: AspectBucket) -> tuple[int, int]:
         if self.clamp_orig:
-            return (min(resolution[0], bucket.width), min(resolution[1], bucket.height))
-        else:
-            return resolution
+            resolution = tuple(min(x, y) for x, y in zip(resolution, bucket.size))
+        return torch.tensor(resolution, dtype=torch.int32)
 
-    def __clean_caption(self, caption: str | list[str]) -> str:
+    def _clean_caption(self, caption: str | list[str]) -> str:
         if self.process_tags:
             if isinstance(caption, str):
                 caption = [clean_word(self.word_sep, x) for x in caption.split(", ")]
@@ -214,31 +180,6 @@ class MongoAspectDataset(AspectBucketDataset):
             if isinstance(caption, list):
                 return self.tag_sep.join(caption).strip()
             return caption.strip()
-
-    def _get_image(self, path: str) -> Image.Image:
-        if self.fs is None:
-            self.refresh_clients()
-
-        # prepend bucket if not already present
-        image = None
-        path = f"{self.s3_bucket}/{path}" if self.s3_bucket is not None else path
-
-        # get image
-        attempts = 0
-        while attempts < self.retries and image is None:
-            try:
-                image = self.fs.cat(path)
-            except ConnectionError:
-                logger.exception(f"Caught connection error on {path}, retry in {self.retry_delay}s")
-                sleep(self.retry_delay)
-            attempts += 1
-
-        if not isinstance(image, bytes):
-            raise FileNotFoundError(f"Failed to load image from {path}")
-        # load image and ensure RGB colorspace
-        image = Image.open(BytesIO(image))
-        image = pil_ensure_rgb(image)
-        return image
 
     def get_batch_iterator(self, return_bucket: bool = False):
         logger.info("Creating batch iterator")
@@ -271,7 +212,7 @@ class MongoAspectDataset(AspectBucketDataset):
             yield (batch, self.buckets[idx]) if return_bucket else batch
 
 
-class MongoDbModule(LightningDataModule):
+class MongoAspectModule(LightningDataModule):
     def __init__(
         self,
         config_path: PathLike,

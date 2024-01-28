@@ -18,28 +18,18 @@ class AspectBucketDataset(Dataset):
     def __init__(
         self,
         buckets: AspectBucketList,
-        batch_size: int = 1,
-        image_key: str = "image",
-        caption_key: str = "caption",
-        *,
         pil_max_image_pixels: Optional[int] = None,
         pil_max_png_bytes: int = 100 * (1024**2),  # 100 MB
+        **kwargs,
     ):
         self.buckets = buckets
-        self.batch_size = batch_size
+        self.samples: pd.DataFrame
 
         # be quiet, PIL
         Image.MAX_IMAGE_PIXELS = pil_max_image_pixels
         PngImagePlugin.MAX_TEXT_CHUNK = pil_max_png_bytes
 
-        # Assign output keys if not already set
-        if not hasattr(self, "image_key"):
-            self.image_key = image_key
-        if not hasattr(self, "caption_key"):
-            self.caption_key = caption_key
-
         # Set up the DataFrame
-        self.samples: pd.DataFrame = None
         self._bucket2idx: dict[int, np.ndarray] = None
         self._idx2bucket: dict[int, int] = None
 
