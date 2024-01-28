@@ -233,6 +233,8 @@ class MongoAspectModule(LightningDataModule):
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
+        retries: int = 3,
+        retry_delay: int = 5,
         num_workers: int = 0,
         prefetch_factor: int = 2,
         pin_memory: bool = True,
@@ -259,7 +261,10 @@ class MongoAspectModule(LightningDataModule):
             s3_bucket=s3_bucket,
             s3fs_kwargs=s3fs_kwargs,
             pma_schema=pma_schema,
+            retries=retries,
+            retry_delay=retry_delay,
         )
+
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
