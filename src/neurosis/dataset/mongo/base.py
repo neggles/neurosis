@@ -146,10 +146,12 @@ class BaseMongoDataset(Dataset):
         while attempts < self.retries and image is None:
             try:
                 image = self.fs.cat(path)
-            except ConnectionError:
+            except Exception as e:
                 logger.exception(f"Caught connection error on {path}, retry in {self.retry_delay}s")
-                sleep(self.retry_delay)
-            attempts += 1
+                sleep(self.retry_delay + attempts)
+                attempts += 1
+                if attempts >= self.retries:
+                    raise FileNotFoundError(f"Failed to load image from {path}") from e
 
         if not isinstance(image, bytes):
             raise FileNotFoundError(f"Failed to load image from {path}")
