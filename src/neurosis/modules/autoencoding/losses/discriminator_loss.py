@@ -213,9 +213,9 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
 
     def forward(
         self,
-        regularization_log: dict,
         inputs: Tensor,
         reconstructions: Tensor,
+        regularization_log: dict,
         optimizer_idx: int,
         global_step: int,
         last_layer: Optional[ParameterDict] = None,
