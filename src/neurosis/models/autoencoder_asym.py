@@ -5,6 +5,7 @@ from itertools import chain
 from os import PathLike
 from pathlib import Path
 from typing import Iterator, Optional
+from warnings import warn
 
 import torch
 import torch.nn.functional as F
@@ -19,6 +20,7 @@ from torch.optim.optimizer import Optimizer
 
 from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
+from neurosis.modules.autoencoding.losses.discriminator_loss import GeneralLPIPSWithDiscriminator
 from neurosis.modules.distributions import DiagonalGaussianDistribution
 from neurosis.modules.ema import LitEma
 from neurosis.trainer.util import EMATracker
@@ -32,7 +34,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         model: str | PathLike | AutoencoderKL | AsymmetricAutoencoderKL,
         optimizer: OptimizerCallable = ...,
         scheduler: LRSchedulerCallable = ...,
-        loss_type: str = "mse",
+        loss: str | nn.Module = "mse",
         input_key: str = "image",
         log_keys: Optional[list] = None,
         asymmetric: bool = False,
@@ -56,7 +58,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self.only_train_decoder = only_train_decoder
         self.asymmetric = asymmetric
         self.loss_ema = EMATracker(alpha=loss_ema_alpha)
-        self.loss_type = loss_type
+        self.loss = loss
 
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -142,8 +144,12 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
     ) -> DecoderOutput | Tensor:
         return self.vae.forward(sample, sample_posterior, return_dict, generator)
 
-    def get_loss(self, recons: Tensor, target: Tensor) -> Tensor:
-        match self.loss_type:
+    def get_loss(self, recons: Tensor, target: Tensor, *args, **kwargs) -> Tensor:
+        if not isinstance(self.loss, str):
+            warn(f"loss type {self.loss} is not a string, assuming it's a loss function")
+            return self.loss(recons, target, *args, **kwargs)
+
+        match self.loss:
             case "l1":
                 return F.l1_loss(recons, target, reduction="mean")
             case "l2" | "mse":
@@ -151,7 +157,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
             case "nll":
                 return F.nll_loss(recons, target, reduction="mean")
             case _:
-                raise ValueError(f"loss type {self.loss_type} not supported")
+                raise ValueError(f"loss type {self.loss} not supported")
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
         x: Tensor = self.get_input(batch)
@@ -235,7 +241,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         log_dict = {
             "inputs": inputs,
             "recons": recons,
-            f"loss_{self.loss_type}": loss,
+            f"loss_{self.loss}": loss,
         }
         return log_dict
 
@@ -265,3 +271,219 @@ def is_encoder_key(str):
     if str.startswith("encoder") or str.startswith("quant_conv"):
         return True
     return False
+
+
+class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
+    def __init__(
+        self,
+        *args,
+        loss: GeneralLPIPSWithDiscriminator,
+        disc_start_iter: int = 0,
+        diff_boost_factor: float = 3.0,
+        accumulate_grad_batches: int = 1,
+        **kwargs,
+    ):
+        super().__init__(loss="mse", *args, **kwargs)
+        self.automatic_optimization = False
+
+        self.loss: GeneralLPIPSWithDiscriminator = loss
+
+        self.disc_start_iter = disc_start_iter
+        self.diff_boost_factor = diff_boost_factor
+        self.acc_grad_batches = accumulate_grad_batches
+
+    def get_discriminator_params(self) -> list[nn.Parameter]:
+        if hasattr(self.loss, "get_trainable_parameters"):
+            return list(self.loss.get_trainable_parameters())  # e.g., discriminator
+        else:
+            return []
+
+    def inner_training_step(
+        self,
+        batch: dict[str, Tensor],
+        batch_idx: int = 0,
+        optimizer_idx: int = 0,
+    ) -> Tensor:
+        x = self.get_input(batch)
+
+        posterior: DiagonalGaussianDistribution = self.vae.encode(x).latent_dist
+        z = posterior.mode()
+        kl_loss = posterior.kl()
+        reg_log = {"kl_loss": torch.sum(kl_loss) / kl_loss.shape[0]}
+        recons = self.vae.decode(z).sample
+
+        if hasattr(self.loss, "forward_keys"):
+            extra_info = {
+                "z": z,
+                "optimizer_idx": optimizer_idx,
+                "global_step": self.global_step,
+                "last_layer": self.get_last_layer(),
+                "split": "train",
+                "regularization_log": reg_log,
+                "autoencoder": self.vae,
+            }
+            extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
+        else:
+            extra_info = dict()
+
+        if optimizer_idx == 0:
+            # autoencoder loss
+            out_loss = self.loss(x, recons, **extra_info)
+            if isinstance(out_loss, tuple):
+                aeloss, log_dict_ae = out_loss
+            else:
+                aeloss = out_loss
+
+            log_dict_ae = {"train/loss/rec": aeloss.detach()}
+
+            self.log_dict(
+                log_dict_ae,
+                prog_bar=False,
+                logger=True,
+                on_step=True,
+                sync_dist=False,
+            )
+            self.log(
+                "loss",
+                aeloss.mean().detach(),
+                prog_bar=True,
+                logger=False,
+                on_step=True,
+            )
+            return aeloss
+        elif optimizer_idx == 1:
+            # discriminator
+            discloss, log_dict_disc = self.loss(x, recons, **extra_info)
+            # -> discriminator always needs to return a tuple
+            self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True)
+            return discloss
+        else:
+            raise ValueError(f"Unknown optimizer ID {optimizer_idx}")
+
+    def training_step(self, batch: dict[str, Tensor], batch_idx: int):
+        opts = self.optimizers()
+        scheds = self.lr_schedulers()
+        optimizer_idx = batch_idx % len(opts)
+
+        if self.global_step < self.disc_start_iter:
+            optimizer_idx = 0
+
+        opt = opts[optimizer_idx]
+        sched = scheds[optimizer_idx]
+        with opt.toggle_model():
+            loss = self.inner_training_step(batch, batch_idx, optimizer_idx) / self.acc_grad_batches
+            self.manual_backward(loss)
+
+        if (batch_idx + 1) % self.acc_grad_batches == 0:
+            opt.step()
+            sched.step()
+            opt.zero_grad()
+
+    def validation_step(self, batch, batch_idx) -> dict:
+        log_dict = self._validation_step(batch, batch_idx)
+        with self.ema_scope():
+            log_dict_ema = self._validation_step(batch, batch_idx, postfix="_ema")
+            log_dict.update(log_dict_ema)
+        return log_dict
+
+    def _validation_step(self, batch: dict, batch_idx: int, postfix: str = "") -> dict:
+        x = self.get_input(batch)
+
+        posterior: DiagonalGaussianDistribution = self.vae.encode(x).latent_dist
+        z = posterior.mode()
+        kl_loss = posterior.kl()
+        reg_log = {"kl_loss": torch.sum(kl_loss) / kl_loss.shape[0]}
+        recons = self.vae.decode(z).sample
+
+        if hasattr(self.loss, "forward_keys"):
+            extra_info = {
+                "z": z,
+                "optimizer_idx": 0,
+                "global_step": self.global_step,
+                "last_layer": self.get_last_layer(),
+                "split": "val" + postfix,
+                "regularization_log": reg_log,
+                "autoencoder": self,
+            }
+            extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
+        else:
+            extra_info = dict()
+        out_loss = self.loss(x, recons, **extra_info)
+        if isinstance(out_loss, tuple):
+            aeloss, log_dict_ae = out_loss
+        else:
+            # simple loss function
+            aeloss = out_loss
+            log_dict_ae = {f"val{postfix}/loss/rec": aeloss.detach()}
+        full_log_dict = log_dict_ae
+
+        if "optimizer_idx" in extra_info:
+            extra_info["optimizer_idx"] = 1
+            discloss, log_dict_disc = self.loss(x, recons, **extra_info)
+            full_log_dict.update(log_dict_disc)
+        self.log(
+            f"val{postfix}/loss/rec",
+            log_dict_ae[f"val{postfix}/loss/rec"],
+            sync_dist=True,
+        )
+        self.log_dict(full_log_dict, sync_dist=True)
+        return full_log_dict
+
+    def configure_optimizers(self) -> OptimizerLRScheduler:
+        param_groups = []
+        encoder_params = {
+            "name": "Encoder",
+            "params": list(self.get_encoder_params()),
+        }
+
+        if self.only_train_decoder:
+            logger.info("Freezing encoder!")
+            for param in encoder_params["params"]:
+                param.requires_grad_(False)
+        else:
+            param_groups.append(encoder_params)
+
+        decoder_params = {
+            "name": "Decoder",
+            "params": list(self.get_decoder_params()),
+        }
+        param_groups.append(decoder_params)
+
+        optimizer = self.optimizer(param_groups)
+        opts = [optimizer]
+
+        disc_params = {
+            "name": "Decoder",
+            "params": list(self.get_discriminator_params()),
+        }
+        if len(disc_params["params"]) > 0:
+            opt_disc = self.optimizer([disc_params])
+            opts.append(opt_disc)
+
+        if self.base_lr is not None:
+            for param_group in param_groups:
+                param_group["initial_lr"] = self.base_lr
+
+        if self.scheduler is not None:
+            scheduler = self.scheduler(optimizer)
+            scheds = [scheduler]
+            names = ["vae"]
+
+            if len(disc_params["params"]) > 0:
+                sched_disc = self.scheduler(opt_disc)
+                scheds.append(sched_disc)
+                names.append("disc")
+
+        if len(opts) > 1:
+            return (
+                {
+                    "optimizer": opt,
+                    "lr_scheduler": {"scheduler": sched, "interval": "step", "name": name},
+                }
+                for opt, sched, name in zip(opts, scheds, names)
+            )
+        else:
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {"scheduler": scheduler, "interval": "step", "name": "vae"},
+            }
