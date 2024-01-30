@@ -7,7 +7,6 @@ from torch import Tensor, nn
 from torchvision.models import vgg
 
 from neurosis.data import lpips_checkpoint
-from neurosis.utils import disabled_train
 
 VggOutputs = namedtuple("VggOutputs", ["relu1_2", "relu2_2", "relu3_3", "relu4_3", "relu5_3"])
 
@@ -20,36 +19,36 @@ class LPIPS(nn.Module):
         super().__init__()
         self.scaling_layer = ScalingLayer()
         self.chns = [64, 128, 256, 512, 512]  # vgg16 features
+        self.depth = len(self.chns)
         self.net = vgg16(requires_grad=False)
         self.lin0 = NetLinLayer(self.chns[0], use_dropout=use_dropout)
         self.lin1 = NetLinLayer(self.chns[1], use_dropout=use_dropout)
         self.lin2 = NetLinLayer(self.chns[2], use_dropout=use_dropout)
         self.lin3 = NetLinLayer(self.chns[3], use_dropout=use_dropout)
         self.lin4 = NetLinLayer(self.chns[4], use_dropout=use_dropout)
+        self.lins = [self.lin0, self.lin1, self.lin2, self.lin3, self.lin4]
+
         self._load_pretrained()
-        self.eval()
         self.requires_grad_(False)
-        self.train = disabled_train
 
     def _load_pretrained(self, name="vgg_lpips"):
         with lpips_checkpoint(name) as ckpt:
             self.load_state_dict(torch.load(ckpt, map_location=torch.device("cpu")), strict=False)
         logger.info("loaded pretrained LPIPS loss from {}.pth".format(name))
 
-    def forward(self, input: Tensor, target):
-        in0_input, in1_input = (self.scaling_layer(input), self.scaling_layer(target))
-        outs0, outs1 = self.net(in0_input), self.net(in1_input)
-        feats0, feats1, diffs = {}, {}, {}
-        lins = [self.lin0, self.lin1, self.lin2, self.lin3, self.lin4]
-        for kk in range(len(self.chns)):
-            feats0[kk], feats1[kk] = normalize_tensor(outs0[kk]), normalize_tensor(outs1[kk])
-            diffs[kk] = (feats0[kk] - feats1[kk]) ** 2
+    def forward(self, inputs: Tensor, target: Tensor):
+        inputs, target = self.scaling_layer(inputs), self.scaling_layer(target)
+        inputs, target = self.net(inputs), self.net(target)
 
-        res = [spatial_average(lins[kk].model(diffs[kk]), keepdim=True) for kk in range(len(self.chns))]
-        val = res[0]
-        for layer in range(1, len(self.chns)):
-            val += res[layer]
-        return val
+        outputs = []
+        for i in range(self.depth):
+            x, y = normalize_tensor(inputs[i]), normalize_tensor(target[i])
+            diff = (x - y) ** 2
+            z = self.lins[i].model(diff)
+            z = spatial_average(z, keepdim=True)
+            outputs.append(z)
+
+        return outputs[: self.depth]
 
 
 class ScalingLayer(nn.Module):
