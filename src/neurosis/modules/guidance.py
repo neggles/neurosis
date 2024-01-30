@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Union
 
 import torch
 from einops import rearrange, repeat
@@ -22,7 +21,7 @@ class VanillaCFG(Guider):
     def __init__(self, scale: float):
         self.scale = scale
 
-    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+    def __call__(self, x: Tensor, sigma: Tensor) -> Tensor:
         x_u, x_c = x.chunk(2)
         x_pred = x_u + self.scale * (x_c - x_u)
         return x_pred
@@ -42,12 +41,10 @@ class VanillaCFG(Guider):
 
 
 class IdentityGuider(Guider):
-    def __call__(self, x: torch.Tensor, sigma: float) -> torch.Tensor:
+    def __call__(self, x: Tensor, sigma: float) -> Tensor:
         return x
 
-    def prepare_inputs(
-        self, x: torch.Tensor, s: float, c: dict, uc: dict
-    ) -> tuple[torch.Tensor, float, dict]:
+    def prepare_inputs(self, x: Tensor, s: float, c: dict, uc: dict) -> tuple[Tensor, float, dict]:
         c_out = {k: c[k] for k in c}
         return x, s, c_out
 
@@ -58,7 +55,7 @@ class LinearPredictionGuider(Guider):
         max_scale: float,
         num_frames: int,
         min_scale: float = 1.0,
-        additional_cond_keys: Union[list[str], str] = [],
+        additional_cond_keys: str | list[str] = [],
     ):
         self.min_scale = min_scale
         self.max_scale = max_scale
@@ -70,7 +67,7 @@ class LinearPredictionGuider(Guider):
 
         self.additional_cond_keys = additional_cond_keys
 
-    def __call__(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+    def __call__(self, x: Tensor, sigma: Tensor) -> Tensor:
         x_u, x_c = x.chunk(2)
 
         x_u = rearrange(x_u, "(b t) ... -> b t ...", t=self.num_frames)
@@ -80,9 +77,7 @@ class LinearPredictionGuider(Guider):
 
         return rearrange(x_u + scale * (x_c - x_u), "b t ... -> (b t) ...")
 
-    def prepare_inputs(
-        self, x: torch.Tensor, s: torch.Tensor, c: dict, uc: dict
-    ) -> tuple[torch.Tensor, torch.Tensor, dict]:
+    def prepare_inputs(self, x: Tensor, s: Tensor, c: dict, uc: dict) -> tuple[Tensor, Tensor, dict]:
         c_out = dict()
 
         for k in c:
