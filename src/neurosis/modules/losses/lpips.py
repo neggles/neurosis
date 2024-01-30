@@ -40,15 +40,15 @@ class LPIPS(nn.Module):
         inputs, target = self.scaling_layer(inputs), self.scaling_layer(target)
         inputs, target = self.net(inputs), self.net(target)
 
-        outputs = []
+        vals = []
         for i in range(self.depth):
             x, y = normalize_tensor(inputs[i]), normalize_tensor(target[i])
             diff = (x - y) ** 2
-            z = self.lins[i].model(diff)
+            z = self.lins[i](diff)
             z = spatial_average(z, keepdim=True)
-            outputs.append(z)
+            vals.append(z)
 
-        return outputs[: self.depth]
+        return torch.cat(vals).sum()
 
 
 class ScalingLayer(nn.Module):

@@ -33,6 +33,8 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         scale_input_to_tgt_size: bool = False,
         dims: int = 2,
         learn_logvar: bool = False,
+        rec_loss_type: str = "l2",
+        rec_weight: float = 1.0,
         regularization_weights: Union[None, dict[str, float]] = None,
         additional_log_keys: Optional[list[str]] = None,
         discriminator_config: Optional[dict] = None,
@@ -59,10 +61,13 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
             disc_kwargs.update(discriminator_config)
 
         self.discriminator = NLayerDiscriminator(**disc_kwargs).apply(weights_init)
-        self.discriminator_iter_start = disc_start
+        self.disc_start_iter = disc_start
         self.disc_loss = hinge_d_loss if disc_loss == "hinge" else vanilla_d_loss
         self.disc_factor = disc_factor
         self.discriminator_weight = disc_weight
+
+        self.rec_weight = rec_weight
+        self.rec_loss_type = rec_loss_type
         self.regularization_weights = regularization_weights or {}
 
         self.forward_keys = [
@@ -85,9 +90,15 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         yield from ()
 
     @torch.no_grad()
-    def log_images(self, inputs: Tensor, reconstructions: Tensor) -> dict[str, Tensor]:
+    def log_images(
+        self,
+        inputs: Tensor,
+        reconstructions: Tensor,
+        split: str = "train",
+        **kwargs,
+    ) -> dict[str, Tensor]:
         # calc logits of real/fake
-        logits_real = self.discriminator(inputs.contiguous().detach())
+        logits_real: Tensor = self.discriminator(inputs.contiguous().detach())
         if len(logits_real.shape) < 4:
             # Non patch-discriminator
             return dict()
@@ -200,24 +211,27 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
     def get_nll_loss(
         self,
         rec_loss: Tensor,
-        weights: Optional[Union[float, Tensor]] = None,
+        weights: Optional[float | Tensor] = None,
     ) -> tuple[Tensor, Tensor]:
         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
-        weighted_nll_loss = nll_loss
-        if weights is not None:
-            weighted_nll_loss = weights * nll_loss
-        weighted_nll_loss = torch.sum(weighted_nll_loss) / weighted_nll_loss.shape[0]
-        nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
 
-        return nll_loss, weighted_nll_loss
+        if weights is not None:
+            nll_weighted = nll_loss.mul(weights)
+        else:
+            nll_weighted = nll_loss
+
+        nll_weighted = nll_weighted.sum().div(nll_weighted.shape[0])
+        nll_loss = nll_loss.sum().div(nll_loss.shape[0])
+
+        return nll_loss, nll_weighted
 
     def forward(
         self,
         inputs: Tensor,
         reconstructions: Tensor,
+        global_step: int,
         regularization_log: dict = {},
         optimizer_idx: int = 0,
-        global_step: int = ...,
         last_layer: Optional[ParameterDict] = None,
         split: str = "train",
         weights: Optional[Tensor] = None,
@@ -231,17 +245,26 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
                 (inputs, reconstructions),
             )
 
-        rec_loss = torch.abs(inputs.contiguous() - reconstructions.contiguous())
+        if self.rec_loss_type == "l1":
+            rec_loss = F.l1_loss(inputs.contiguous(), reconstructions.contiguous(), reduction="none")
+        elif self.rec_loss_type == "l2":
+            rec_loss = F.mse_loss(inputs.contiguous(), reconstructions.contiguous(), reduction="none")
+        else:
+            raise ValueError(f"Unknown rec_loss_type {self.rec_loss_type}")
+
         if self.perceptual_weight > 0:
             p_loss = self.perceptual_loss(inputs.contiguous(), reconstructions.contiguous())
-            rec_loss = rec_loss + self.perceptual_weight * p_loss
+            p_rec_loss = (rec_loss * self.rec_weight) + (self.perceptual_weight * p_loss)
+        else:
+            p_loss = torch.tensor(0.0, requires_grad=True)
+            p_rec_loss = rec_loss * self.rec_weight
 
-        nll_loss, weighted_nll_loss = self.get_nll_loss(rec_loss, weights)
+        nll_loss, nll_weighted = self.get_nll_loss(p_rec_loss, weights)
 
         # now the GAN part
         if optimizer_idx == 0:
             # generator update
-            if global_step >= self.discriminator_iter_start or not self.training:
+            if (not self.training) or global_step >= self.disc_start_iter:
                 logits_fake = self.discriminator(reconstructions.contiguous())
                 g_loss = -torch.mean(logits_fake)
                 if self.training:
@@ -252,42 +275,48 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
                 d_weight = torch.tensor(0.0)
                 g_loss = torch.tensor(0.0, requires_grad=True)
 
-            loss = weighted_nll_loss + d_weight * self.disc_factor * g_loss
-            log = dict()
+            g_weighted = g_loss * self.disc_factor * d_weight
+
+            loss = p_rec_loss + g_weighted + nll_weighted
+            log_dict = dict()
             for k in regularization_log:
                 if k in self.regularization_weights:
                     loss = loss + self.regularization_weights[k] * regularization_log[k]
                 if k in self.additional_log_keys:
-                    log[f"{split}/{k}"] = regularization_log[k].detach().float().mean()
+                    log_dict[f"{split}/{k}"] = regularization_log[k].detach().float().mean()
 
-            log.update(
+            log_dict.update(
                 {
                     f"{split}/loss/total": loss.detach().clone().mean(),
-                    f"{split}/loss/nll": nll_loss.detach().mean(),
-                    f"{split}/loss/rec": rec_loss.detach().mean(),
+                    f"{split}/loss/rec": p_rec_loss.detach().mean(),
                     f"{split}/loss/g": g_loss.detach().mean(),
+                    f"{split}/loss/p": p_loss.detach().mean(),
+                    f"{split}/loss/{self.rec_loss_type}": rec_loss.detach().mean(),
                     f"{split}/scalars/logvar": self.logvar.detach(),
                     f"{split}/scalars/d_weight": d_weight.detach(),
                 }
             )
-            return loss, log
+            if weights > 0:
+                log_dict.update({f"{split}/loss/nll": nll_loss.detach().mean()})
+
+            return loss, log_dict
 
         elif optimizer_idx == 1:
             # second pass for discriminator update
             logits_real = self.discriminator(inputs.contiguous().detach())
             logits_fake = self.discriminator(reconstructions.contiguous().detach())
 
-            if global_step >= self.discriminator_iter_start or not self.training:
+            if (not self.training) or global_step >= self.disc_start_iter:
                 d_loss = self.disc_factor * self.disc_loss(logits_real, logits_fake)
             else:
                 d_loss = torch.tensor(0.0, requires_grad=True)
 
-            log = {
+            log_dict = {
                 f"{split}/loss/disc": d_loss.detach().clone().mean(),
                 f"{split}/logits/real": logits_real.detach().mean(),
                 f"{split}/logits/fake": logits_fake.detach().mean(),
             }
-            return d_loss, log
+            return d_loss, log_dict
 
         else:
             raise ValueError(f"Unknown optimizer_idx {optimizer_idx}")
