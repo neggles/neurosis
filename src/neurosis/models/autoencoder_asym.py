@@ -42,6 +42,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         base_lr: Optional[float] = None,
         ema_decay: Optional[float] = None,
         loss_ema_alpha: float = 0.02,
+        diff_boost_factor: float = 3.0,
         ignore_keys: list[str] = [],
         **model_kwargs,
     ):
@@ -59,6 +60,8 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self.only_train_decoder = only_train_decoder
         self.asymmetric = asymmetric
         self.loss_ema = EMATracker(alpha=loss_ema_alpha)
+        self.diff_boost_factor = diff_boost_factor
+
         self.loss = loss
 
         self.optimizer = optimizer
@@ -112,6 +115,12 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         return chain(self.vae.encoder.parameters(), self.vae.quant_conv.parameters())
 
     def get_decoder_params(self) -> Iterator[nn.Parameter]:
+        if hasattr(self.loss, "get_trainable_autoencoder_parameters"):
+            return chain(
+                self.vae.post_quant_conv.parameters(),
+                self.vae.decoder.parameters(),
+                self.loss.get_trainable_autoencoder_parameters(),
+            )
         return chain(self.vae.post_quant_conv.parameters(), self.vae.decoder.parameters())
 
     def freeze(self, encoder: bool = True, decoder: bool = True):
@@ -145,18 +154,21 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
     ) -> DecoderOutput | Tensor:
         return self.vae.forward(sample, sample_posterior, return_dict, generator)
 
-    def get_loss(self, recons: Tensor, target: Tensor, *args, **kwargs) -> Tensor:
-        if not isinstance(self.loss, str):
+    def get_loss(self, recons: Tensor, target: Tensor, kind: Optional[str] = None, *args, **kwargs) -> Tensor:
+        kind = self.loss if kind is None else kind
+        if not isinstance(kind, str):
             warn(f"loss type {self.loss} is not a string, assuming it's a loss function")
             return self.loss(recons, target, *args, **kwargs)
 
-        match self.loss:
+        match kind:
             case "l1":
-                return F.l1_loss(recons, target, reduction="mean")
+                return F.l1_loss(recons.contiguous(), target.contiguous(), reduction="mean")
             case "l2" | "mse":
-                return F.mse_loss(recons, target, reduction="mean")
+                return F.mse_loss(recons.contiguous(), target.contiguous(), reduction="mean")
             case "nll":
-                return F.nll_loss(recons, target, reduction="mean")
+                return F.nll_loss(recons.contiguous(), target.contiguous(), reduction="mean")
+            case nn.Module():
+                return self.loss(recons.contiguous(), target.contiguous(), *args, **kwargs)
             case _:
                 raise ValueError(f"loss type {self.loss} not supported")
 
@@ -237,13 +249,20 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
 
         with torch.inference_mode():
             recons = self.forward(inputs).sample
-            loss = [self.get_loss(rec, inp) for inp, rec in zip(inputs, recons)]
+            diff = torch.clamp(recons, -1.0, 1.0).sub(inputs).abs().mul(0.5).clamp(0.0, 1.0)
+            diff_boost = diff.mul(self.diff_boost_factor).clamp(0.0, 1.0)
 
         log_dict = {
             "inputs": inputs,
             "recons": recons,
-            f"loss_{self.loss}": loss,
+            "diff": 2.0 * diff - 1.0,
+            "diff_boost": 2.0 * diff_boost - 1.0,
         }
+
+        if hasattr(self.loss, "log_images"):
+            loss_log = self.loss.log_images(inputs, recons, **kwargs)
+            log_dict.update(loss_log)
+
         return log_dict
 
 
@@ -279,8 +298,7 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         self,
         *args,
         loss: GeneralLPIPSWithDiscriminator,
-        disc_start_iter: int = 0,
-        diff_boost_factor: float = 3.0,
+        nll_weight: float = 0.0,
         accumulate_grad_batches: int = 1,
         **kwargs,
     ):
@@ -289,8 +307,8 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
 
         self.loss: GeneralLPIPSWithDiscriminator = loss
 
-        self.disc_start_iter = disc_start_iter
-        self.diff_boost_factor = diff_boost_factor
+        self.nll_weight = nll_weight
+        self.disc_start_iter = self.loss.disc_start_iter
         self.acc_grad_batches = accumulate_grad_batches
 
     def get_discriminator_params(self) -> Iterator[nn.Parameter]:
@@ -317,58 +335,53 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         if optimizer_idx == 0:
             # autoencoder loss
             ae_loss, log_dict_ae = self.loss(
-                inputs=x,
-                reconstructions=recons,
-                optimizer_idx=optimizer_idx,
+                inputs=x.contiguous(),
+                reconstructions=recons.contiguous(),
                 global_step=self.global_step,
+                optimizer_idx=optimizer_idx,
                 last_layer=self.get_last_layer(),
                 split="train",
+                weights=self.nll_weight,
             )
 
-            self.loss_ema.update(log_dict_ae["loss/rec"].cpu().item())
+            self.loss_ema.update(log_dict_ae["train/loss/rec"].cpu().item())
             log_dict_ae.update({"train/loss/rec_ema": self.loss_ema.value})
-
-            self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, sync_dist=False)
-            loss = ae_loss
+            self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True)
+            return ae_loss.mean()
         elif optimizer_idx == 1:
             # discriminator
             disc_loss, log_dict_disc = self.loss(
-                inputs=x,
-                reconstructions=recons,
-                optimizer_idx=optimizer_idx,
+                inputs=x.contiguous(),
+                reconstructions=recons.contiguous(),
                 global_step=self.global_step,
+                optimizer_idx=optimizer_idx,
                 last_layer=self.get_last_layer(),
                 split="train",
+                weights=self.nll_weight,
             )
-            # -> discriminator always needs to return a tuple
             self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True)
-            loss = disc_loss
+            return disc_loss.mean()
         else:
             raise ValueError(f"Unknown optimizer ID {optimizer_idx}")
 
-        return loss
-
     def training_step(self, batch: dict[str, Tensor], batch_idx: int):
-        opt_ae, opt_disc = self.optimizers()
-        sched_ae, sched_disc = self.lr_schedulers()
+        opts, scheds = self.optimizers(), self.lr_schedulers()
 
-        with opt_ae.toggle_model():
-            loss = self.inner_training_step(batch, batch_idx, 0) / self.acc_grad_batches
+        if self.global_step < self.disc_start_iter:
+            optimizer_idx = 0
+        else:
+            # switch between AE and disc optimizers every acc_grad_batches
+            optimizer_idx = self.global_step % (self.acc_grad_batches * len(opts)) // self.acc_grad_batches
+        opt, sched = opts[optimizer_idx], scheds[optimizer_idx]
+
+        with opt.toggle_model():
+            loss = self.inner_training_step(batch, self.global_step, optimizer_idx) / self.acc_grad_batches
             self.manual_backward(loss)
 
-        if self.global_step > self.disc_start_iter:
-            with opt_disc.toggle_model():
-                loss = self.inner_training_step(batch, batch_idx, 1) / self.acc_grad_batches
-                self.manual_backward(loss)
-
-        if (batch_idx + 1) % self.acc_grad_batches == 0:
-            opt_ae.step()
-            sched_ae.step()
-            opt_ae.zero_grad()
-            if self.global_step > self.disc_start_iter:
-                opt_disc.step()
-                sched_disc.step()
-                opt_disc.zero_grad()
+        if (self.global_step + 1) % self.acc_grad_batches == 0:
+            sched.step()
+            opt.step()
+            opt.zero_grad()
 
     def validation_step(self, batch, batch_idx) -> dict:
         log_dict = self._validation_step(batch, batch_idx)
@@ -386,47 +399,40 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         reg_log = {"kl_loss": torch.sum(kl_loss) / kl_loss.shape[0]}
         recons = self.vae.decode(z).sample
 
-        if hasattr(self.loss, "forward_keys"):
-            extra_info = {
-                "z": z,
-                "optimizer_idx": 0,
-                "global_step": self.global_step,
-                "last_layer": self.get_last_layer(),
-                "split": "val" + postfix,
-                "regularization_log": reg_log,
-                "autoencoder": self,
-            }
-            extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
-        else:
-            extra_info = dict()
-        out_loss = self.loss(x, recons, **extra_info)
-        if isinstance(out_loss, tuple):
-            aeloss, log_dict_ae = out_loss
-        else:
-            # simple loss function
-            aeloss = out_loss
-            log_dict_ae = {f"val{postfix}/loss/rec": aeloss.detach()}
-        full_log_dict = log_dict_ae
+        # autoencoder loss
+        ae_loss, log_dict_ae = self.loss(
+            inputs=x,
+            reconstructions=recons,
+            global_step=self.global_step,
+            optimizer_idx=0,
+            last_layer=self.get_last_layer(),
+            split=f"val{postfix}",
+        )
+        log_dict = log_dict_ae
 
-        if "optimizer_idx" in extra_info:
-            extra_info["optimizer_idx"] = 1
-            discloss, log_dict_disc = self.loss(x, recons, **extra_info)
-            full_log_dict.update(log_dict_disc)
+        if len(self.optimizers()) > 1:
+            disc_loss, log_dict_disc = self.loss(
+                inputs=x,
+                reconstructions=recons,
+                global_step=self.global_step,
+                optimizer_idx=1,
+                last_layer=self.get_last_layer(),
+                split=f"val{postfix}",
+            )
+            log_dict.update(log_dict_disc)
+
         self.log(
             f"val{postfix}/loss/rec",
             log_dict_ae[f"val{postfix}/loss/rec"],
             sync_dist=True,
         )
-        self.log_dict(full_log_dict, sync_dist=True)
-        return full_log_dict
+        self.log_dict(log_dict, sync_dist=True)
+        return log_dict
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         param_groups = []
-        encoder_params = {
-            "name": "Encoder",
-            "params": list(self.get_encoder_params()),
-        }
 
+        encoder_params = {"name": "Encoder", "params": list(self.get_encoder_params())}
         if self.only_train_decoder:
             logger.info("Freezing encoder!")
             for param in encoder_params["params"]:
@@ -434,48 +440,30 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         else:
             param_groups.append(encoder_params)
 
-        decoder_params = {
-            "name": "Decoder",
-            "params": list(self.get_decoder_params()),
-        }
+        decoder_params = {"name": "Decoder", "params": list(self.get_decoder_params())}
         param_groups.append(decoder_params)
 
-        optimizer = self.optimizer(param_groups)
-        opts = [optimizer]
+        disc_params = {"name": "Discriminator", "params": list(self.get_discriminator_params())}
 
-        disc_params = {
-            "name": "Decoder",
-            "params": list(self.get_discriminator_params())
-            + list(self.loss.get_trainable_autoencoder_parameters()),
+        # set up for autoencoder
+        opt_ae = self.optimizer(param_groups)
+        sched_ae = self.scheduler(opt_ae)
+        opt_sched_ae = {
+            "optimizer": opt_ae,
+            "lr_scheduler": {"scheduler": sched_ae, "interval": "step"},
         }
+
+        # set up for discriminator, if applicable
         if len(disc_params["params"]) > 0:
             opt_disc = self.optimizer([disc_params])
-            opts.append(opt_disc)
-
-        if self.base_lr is not None:
-            for param_group in param_groups:
-                param_group["initial_lr"] = self.base_lr
-
-        if self.scheduler is not None:
-            scheduler = self.scheduler(optimizer)
-            scheds = [scheduler]
-            names = ["vae"]
-
-            if len(disc_params["params"]) > 0:
-                sched_disc = self.scheduler(opt_disc)
-                scheds.append(sched_disc)
-                names.append("disc")
-
-        if len(opts) > 1:
-            return [
-                {
-                    "optimizer": opt,
-                    "lr_scheduler": {"scheduler": sched, "interval": "step", "name": name},
-                }
-                for opt, sched, name in zip(opts, scheds, names)
-            ]
+            sched_disc = self.scheduler(opt_disc)
         else:
-            return {
-                "optimizer": optimizer,
-                "lr_scheduler": {"scheduler": scheduler, "interval": "step", "name": "vae"},
-            }
+            opt_disc, sched_disc = None, None
+        opt_sched_disc = {
+            "optimizer": opt_disc,
+            "lr_scheduler": {"scheduler": sched_disc, "interval": "step"},
+        }
+
+        if opt_disc is not None:
+            return [opt_sched_ae, opt_sched_disc]
+        return opt_sched_ae

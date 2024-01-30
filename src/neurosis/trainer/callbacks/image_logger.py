@@ -197,9 +197,10 @@ class ImageLogger(Callback):
                 warn(f"batch[{k}] is not a list, not logging this key to table_dict")
 
         if len(table_dict) > 0:
-            table = wandb.Table(columns=list(table_dict.keys()))
-            for val in zip(*table_dict.values()):
-                table.add_data(*val)
+            table = wandb.Table(allow_mixed_types=True)
+            nrows = min([len(x) for x in table_dict.values()])
+            for k in table_dict:
+                table.add_column(k, table_dict[k][:nrows])
             wandb_dict.update({f"{split}/table": table})
 
         if pl_module is not None:
