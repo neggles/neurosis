@@ -42,9 +42,7 @@ class StandardDiffusionLoss(nn.Module):
 
         self.batch2model_keys = set(batch2model_keys)
 
-    def get_noised_input(
-        self, sigmas_bc: torch.Tensor, noise: torch.Tensor, input: torch.Tensor
-    ) -> torch.Tensor:
+    def get_noised_input(self, sigmas_bc: Tensor, noise: Tensor, input: Tensor) -> Tensor:
         noised_input = input + noise * sigmas_bc
         return noised_input
 
@@ -53,9 +51,9 @@ class StandardDiffusionLoss(nn.Module):
         network: nn.Module,
         denoiser: Denoiser,
         conditioner: GeneralConditioner,
-        input: torch.Tensor,
+        input: Tensor,
         batch: dict,
-    ) -> torch.Tensor:
+    ) -> Tensor:
         cond = conditioner(batch)
         return self._forward(network, denoiser, cond, input, batch)
 
@@ -64,9 +62,9 @@ class StandardDiffusionLoss(nn.Module):
         network: nn.Module,
         denoiser: Denoiser,
         cond: dict,
-        input: torch.Tensor,
+        input: Tensor,
         batch: dict,
-    ) -> tuple[torch.Tensor, dict]:
+    ) -> tuple[Tensor, dict]:
         additional_model_inputs = {key: batch[key] for key in self.batch2model_keys.intersection(batch)}
         sigmas = self.sigma_sampler(input.shape[0]).to(input)
 
