@@ -48,7 +48,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         if disc_loss not in ["hinge", "vanilla"]:
             raise ValueError(f"disc_loss must be one of ['hinge', 'vanilla'], got {disc_loss}")
 
-        self.perceptual_loss = LPIPS().eval()
+        self.perceptual_loss = LPIPS()
         self.perceptual_weight = perceptual_weight
         # output log variance
         self.logvar = nn.Parameter(torch.ones(size=()) * logvar_init)
@@ -215,9 +215,9 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         self,
         inputs: Tensor,
         reconstructions: Tensor,
-        regularization_log: dict,
-        optimizer_idx: int,
-        global_step: int,
+        regularization_log: dict = {},
+        optimizer_idx: int = 0,
+        global_step: int = ...,
         last_layer: Optional[ParameterDict] = None,
         split: str = "train",
         weights: Optional[Tensor] = None,
@@ -262,7 +262,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
 
             log.update(
                 {
-                    f"{split}/loss/total": loss.clone().detach().mean(),
+                    f"{split}/loss/total": loss.detach().clone().mean(),
                     f"{split}/loss/nll": nll_loss.detach().mean(),
                     f"{split}/loss/rec": rec_loss.detach().mean(),
                     f"{split}/loss/g": g_loss.detach().mean(),
@@ -283,7 +283,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
                 d_loss = torch.tensor(0.0, requires_grad=True)
 
             log = {
-                f"{split}/loss/disc": d_loss.clone().detach().mean(),
+                f"{split}/loss/disc": d_loss.detach().clone().mean(),
                 f"{split}/logits/real": logits_real.detach().mean(),
                 f"{split}/logits/fake": logits_fake.detach().mean(),
             }
