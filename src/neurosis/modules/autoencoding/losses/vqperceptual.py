@@ -5,9 +5,10 @@ import torch
 from torch import Tensor, nn
 from torch.nn import Parameter
 
-from neurosis.modules.losses.functions import adopt_weight, hinge_d_loss, vanilla_d_loss
-from neurosis.modules.losses.lpips import LPIPS
+from neurosis.modules.losses.functions import apply_threshold_weight, get_discr_loss_fn
 from neurosis.modules.losses.patchgan import NLayerDiscriminator
+from neurosis.modules.losses.perceptual import LPIPS
+from neurosis.modules.losses.types import DiscriminatorLoss
 
 logger = logging.getLogger(__name__)
 
@@ -24,16 +25,11 @@ class VQLPIPSWithDiscriminator(nn.Module):
         codebook_weight: float = 1.0,
         pixelloss_weight: float = 1.0,
         perceptual_weight: float = 1.0,
-        disc_loss: str = "hinge",
+        disc_loss: DiscriminatorLoss = DiscriminatorLoss.Hinge,
         learn_logvar: bool = False,
     ):
         super().__init__()
-        if disc_loss == "hinge":
-            self.disc_loss = hinge_d_loss
-        elif disc_loss == "vanilla":
-            self.disc_loss = vanilla_d_loss
-        else:
-            raise ValueError(f"disc_loss must be one of ['hinge', 'vanilla'], got {disc_loss}")
+        self.disc_loss = get_discr_loss_fn(disc_loss)
 
         self.codebook_weight = codebook_weight
         self.pixel_weight = pixelloss_weight
@@ -113,7 +109,9 @@ class VQLPIPSWithDiscriminator(nn.Module):
             else:
                 d_weight = torch.tensor(0.0)
 
-            disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
+            disc_factor = apply_threshold_weight(
+                self.disc_factor, global_step, threshold=self.discriminator_iter_start
+            )
 
             loss = (
                 nll_loss + (d_weight * disc_factor * g_loss) + (self.codebook_weight * codebook_loss.mean())
@@ -136,7 +134,9 @@ class VQLPIPSWithDiscriminator(nn.Module):
             logits_real = self.discriminator(inputs.contiguous().detach())
             logits_fake = self.discriminator(reconstructions.contiguous().detach())
 
-            disc_factor = adopt_weight(self.disc_factor, global_step, threshold=self.discriminator_iter_start)
+            disc_factor = apply_threshold_weight(
+                self.disc_factor, global_step, start_step=self.discriminator_iter_start
+            )
             d_loss = disc_factor * self.disc_loss(logits_real, logits_fake)
 
             log = {

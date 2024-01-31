@@ -3,7 +3,7 @@ from typing import Optional, Union
 import torch
 from torch import Tensor, nn
 
-from neurosis.modules.losses.lpips import LPIPS
+from neurosis.modules.losses.perceptual import LPIPS
 from neurosis.utils import append_dims
 
 from ..encoders import GeneralConditioner
