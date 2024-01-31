@@ -65,7 +65,8 @@
         "editor.tabSize": 2,
         "editor.formatOnSave": true,
         "editor.formatOnSaveMode": "file",
-        "diffEditor.ignoreTrimWhitespace": false
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.defaultFormatter": "redhat.vscode-yaml"
     },
     "yaml.format.bracketSpacing": true,
     "yaml.format.proseWrap": "preserve",
