@@ -75,7 +75,7 @@ class LPIPS(nn.Module):
         self.pnet_keys = list(pnet_feats.values())
         self.pnet: fx.GraphModule = create_vgg_extractor(
             features=pnet_feats,
-            weights=tvm.VGG16_Weights.IMAGENET1K_FEATURES if not pnet_rand else None,
+            weights=tvm.VGG16_Weights.IMAGENET1K_V1 if not pnet_rand else None,
             requires_grad=pnet_tune,
         )
 
@@ -155,7 +155,7 @@ class NetLinLayer(nn.Module):
 
 def create_vgg_extractor(
     features: dict[str, str],
-    weights: tvm.VGG16_Weights = tvm.VGG16_Weights.IMAGENET1K_FEATURES,
+    weights: tvm.VGG16_Weights = tvm.VGG16_Weights.IMAGENET1K_V1,
     requires_grad: bool = False,
 ) -> fx.GraphModule:
     vgg = tvm.vgg16(weights=weights)

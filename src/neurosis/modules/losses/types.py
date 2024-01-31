@@ -8,7 +8,7 @@ class PerceptualLoss(str, Enum):
 
 class GenericLoss(str, Enum):
     L1 = "l1"
-    L2 = "mse"
+    L2 = "l2"
     MSE = "mse"
     NLL = "nll"
 

@@ -14,6 +14,7 @@ from diffusers.models.autoencoders.vae import DecoderOutput
 from diffusers.models.modeling_outputs import AutoencoderKLOutput
 from lightning import pytorch as L
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
+from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from torch import Generator, Tensor, nn
 from torch.optim.optimizer import Optimizer
@@ -299,6 +300,7 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         *args,
         loss: GeneralLPIPSWithDiscriminator | AutoencoderLPIPSWithDiscr,
         accumulate_grad_batches: int = 1,
+        wandb_watch: int = -1,
         **kwargs,
     ):
         super().__init__(loss="mse", ignore_keys=["loss"], *args, **kwargs)
@@ -309,6 +311,17 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         self.disc_start = self.loss.disc_start
 
         self.acc_grad_batches = accumulate_grad_batches
+        self.wandb_watch = wandb_watch
+
+    def on_train_start(self):
+        if self.wandb_watch > 0:
+            for wandb_logger in [x for x in self.trainer.loggers if isinstance(x, WandbLogger)]:
+                wandb_logger.watch(self.vae, log="all", log_freq=self.wandb_watch)
+
+    def on_train_end(self) -> None:
+        if self.wandb_watch > 0:
+            for wandb_logger in [x for x in self.trainer.loggers if isinstance(x, WandbLogger)]:
+                wandb_logger.experiment.unwatch(self.vae)
 
     @cached_property
     def disc_start(self) -> int:
@@ -339,6 +352,7 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
             inputs=x.contiguous(),
             reconstructions=recons.contiguous(),
             global_step=self.global_step,
+            optimizer_idx=optimizer_idx,
             split="train",
         )
         if "last_layer" in self.loss.forward_keys:
@@ -346,62 +360,77 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
 
         if optimizer_idx == 0:
             # autoencoder loss
-            ae_loss, log_dict_ae = self.loss(optimizer_idx=optimizer_idx, **loss_kwargs)
+            ae_loss, log_dict_ae = self.loss(**loss_kwargs)
             return ae_loss.mean(), log_dict_ae
         elif optimizer_idx == 1:
             # discriminator
-            disc_loss, log_dict_disc = self.loss(optimizer_idx=optimizer_idx, **loss_kwargs)
+            disc_loss, log_dict_disc = self.loss(**loss_kwargs)
             return disc_loss.mean(), log_dict_disc
         else:
             raise ValueError(f"Unknown optimizer ID {optimizer_idx}")
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int):
-        opt_ae, opt_disc = self.optimizers()
-        sched_ae, sched_disc = self.lr_schedulers()
+        opts = self.optimizers()
+        scheds = self.lr_schedulers()
 
-        # switch between AE and disc optimizers every acc_grad_batches
-        optimizer_idx = batch_idx % (self.acc_grad_batches * 2) // self.acc_grad_batches
-        # but force optimizer zero if we're not yet at the disc_start step
-        if batch_idx < self.disc_start:
+        if not isinstance(opts, list):
+            opts = [opts]
+        if not isinstance(scheds, list):
+            scheds = [scheds]
+
+        if self.global_step < self.disc_start:
+            # force optimizer zero if we're not yet at the disc_start step
             optimizer_idx = 0
+        else:
+            # otherwise switch between AE and disc optimizers every acc_grad_batches
+            optimizer_idx = self.global_step % (self.acc_grad_batches * len(opts)) // self.acc_grad_batches
 
         # have we finished accumulating gradients this batch?
-        accumulated_grads = batch_idx % self.acc_grad_batches == 0
+        accumulated_grads = (self.global_step + 1) % self.acc_grad_batches == 0
 
         if optimizer_idx == 0:
+            opt_ae, sched_ae = opts[0], scheds[0]
 
             def closure_ae():
                 loss, log_dict = self.inner_training_step(batch, batch_idx, optimizer_idx)
-                self.manual_backward(loss / self.acc_grad_batches)
-                if accumulated_grads:
-                    sched_ae.step(batch_idx // self.acc_grad_batches)
-                    opt_ae.zero_grad()
+                loss = loss / self.acc_grad_batches
+                self.manual_backward(loss)
                 return loss, log_dict
 
             with opt_ae.toggle_model(sync_grad=accumulated_grads):
-                loss, log_dict = opt_ae.step(closure=closure_ae)
+                if accumulated_grads:
+                    loss, log_dict = opt_ae.step(closure=closure_ae)
+                    sched_ae.step()
+                    opt_ae.zero_grad()
+                else:
+                    loss, log_dict = closure_ae()
 
-            self.loss_ema.update(loss.detach().cpu().item())
-            log_dict["train/loss_ema"] = self.loss_ema.value
+            self.loss_ema.update(log_dict["train/loss/total"].cpu().item())
+            log_dict["train/loss/total_ema"] = self.loss_ema.value
 
         elif optimizer_idx == 1:
+            opt_disc, sched_disc = opts[1], scheds[1]
 
             def closure_disc():
                 loss, log_dict = self.inner_training_step(batch, batch_idx, optimizer_idx)
-                self.manual_backward(loss / self.acc_grad_batches)
-                if accumulated_grads:
-                    sched_disc.step(batch_idx // self.acc_grad_batches)
-                    opt_disc.zero_grad()
+                loss = loss.div(self.acc_grad_batches)
+                self.manual_backward(loss)
                 return loss, log_dict
 
             with opt_disc.toggle_model(sync_grad=accumulated_grads):
-                loss, log_dict = opt_disc.step(closure=closure_disc)
+                if accumulated_grads:
+                    loss, log_dict = opt_disc.step(closure=closure_disc)
+                    sched_disc.step()
+                    opt_disc.zero_grad()
+                else:
+                    loss, log_dict = closure_disc()
 
-            self.loss_ema_disc.update(loss.detach().cpu().item())
-            log_dict["train/disc_loss_ema"] = self.loss_ema_disc.value
+            self.loss_ema_disc.update(log_dict["train/loss/disc"].cpu().item())
+            log_dict["train/loss/disc_ema"] = self.loss_ema_disc.value
 
         if accumulated_grads:
             self.log_dict(log_dict, sync_dist=optimizer_idx == 1, on_step=True, on_epoch=False)
+
         return loss
 
     def validation_step(self, batch, batch_idx) -> dict:
@@ -475,7 +504,7 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
             "params": list(self.get_discriminator_params()),
             "initial_lr": self.base_lr,
         }
-        if len(disc_params["params"]) > 0:
+        if len(disc_params["params"]) > 0 and self.loss.disc_factor > 0.0:
             opt_disc = self.optimizer([disc_params])
             sched_disc = self.scheduler(opt_disc)
         else:
