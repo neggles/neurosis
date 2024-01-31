@@ -1,3 +1,5 @@
+from warnings import warn
+
 from torch import Tensor, nn
 
 from neurosis.modules.layers import ActNorm
@@ -15,6 +17,10 @@ def weights_init(m: nn.Module):
         # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
         nn.init.normal_(m.weight.data, 1.0, init_gain)
         nn.init.constant_(m.bias.data, 0.0)
+
+    else:
+        warn(f"Skipping initialization of {m.__class__.__name__}")
+    return
 
 
 class NLayerDiscriminator(nn.Module):
@@ -34,7 +40,7 @@ class NLayerDiscriminator(nn.Module):
             input_nc (int)  -- the number of channels in input images
             ndf (int)       -- the number of filters in the last conv layer
             n_layers (int)  -- the number of conv layers in the discriminator
-            norm_layer      -- normalization layer
+            use_actnorm     -- whether to use ActNorm layers instead of BatchNorm
         """
         super().__init__()
         if use_actnorm:
@@ -44,11 +50,11 @@ class NLayerDiscriminator(nn.Module):
             norm_layer = nn.BatchNorm2d
             use_bias = False
 
-        k_size = 4
-        pad_size = 1
+        kernel_size = 4
+        padding = 1
         self.layers = nn.ModuleList(
             [
-                nn.Conv2d(input_nc, ndf, kernel_size=k_size, stride=2, padding=pad_size),
+                nn.Conv2d(input_nc, ndf, kernel_size=kernel_size, stride=2, padding=padding),
                 nn.LeakyReLU(0.2, True),
             ]
         )
@@ -69,9 +75,9 @@ class NLayerDiscriminator(nn.Module):
                     nn.Conv2d(
                         in_channels=in_channels,
                         out_channels=out_channels,
-                        kernel_size=k_size,
+                        kernel_size=kernel_size,
                         stride=2 if layer_num < n_layers else 1,  # last layer has stride 1
-                        padding=pad_size,
+                        padding=padding,
                         bias=use_bias,
                     ),
                     norm_layer(ndf * layer_mult),
@@ -80,7 +86,9 @@ class NLayerDiscriminator(nn.Module):
             )
 
         # output 1 channel prediction map
-        self.layers.append(nn.Conv2d(ndf * layer_mult, 1, kernel_size=k_size, stride=1, padding=pad_size))
+        self.layers.append(
+            nn.Conv2d(ndf * layer_mult, 1, kernel_size=kernel_size, stride=1, padding=padding),
+        )
 
     def initialize_weights(self):
         return self.apply(weights_init)

@@ -12,9 +12,9 @@ from torch import ParameterDict, Tensor, nn
 from torch.nn import functional as F
 from torchvision.utils import make_grid
 
-from neurosis.modules.losses.functions import hinge_d_loss, vanilla_d_loss
-from neurosis.modules.losses.lpips import LPIPS
+from neurosis.modules.losses.functions import get_discr_loss_fn
 from neurosis.modules.losses.patchgan import NLayerDiscriminator, weights_init
+from neurosis.modules.losses.perceptual import LPIPS
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         if disc_loss not in ["hinge", "vanilla"]:
             raise ValueError(f"disc_loss must be one of ['hinge', 'vanilla'], got {disc_loss}")
 
-        self.perceptual_loss = LPIPS()
+        self.perceptual_loss = LPIPS().eval()
         self.perceptual_weight = perceptual_weight
         # output log variance
         self.logvar = nn.Parameter(torch.ones(size=()) * logvar_init)
@@ -62,7 +62,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
 
         self.discriminator = NLayerDiscriminator(**disc_kwargs).apply(weights_init)
         self.disc_start_iter = disc_start
-        self.disc_loss = hinge_d_loss if disc_loss == "hinge" else vanilla_d_loss
+        self.disc_loss = get_discr_loss_fn(disc_loss)
         self.disc_factor = disc_factor
         self.discriminator_weight = disc_weight
 
