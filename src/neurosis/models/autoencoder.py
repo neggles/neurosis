@@ -156,7 +156,7 @@ class AutoencodingEngine(AbstractAutoencoder):
         lr_g_factor: float = 1.0,
         optimizer: OptimizerCallable,
         scheduler: LRSchedulerCallable,
-        disc_start_iter: int = 0,
+        disc_start: int = 0,
         diff_boost_factor: float = 3.0,
         additional_decode_keys: Optional[list[str]] = None,
         **kwargs,
@@ -171,7 +171,7 @@ class AutoencodingEngine(AbstractAutoencoder):
         self.optimizer_config = optimizer_config
 
         self.diff_boost_factor = diff_boost_factor
-        self.disc_start_iter = disc_start_iter
+        self.disc_start = disc_start
         self.lr_g_factor = lr_g_factor
 
         self.optimizer = optimizer
@@ -290,7 +290,7 @@ class AutoencodingEngine(AbstractAutoencoder):
             # Non-adversarial case
             opts = [opts]
         optimizer_idx = batch_idx % len(opts)
-        if self.global_step < self.disc_start_iter:
+        if self.global_step < self.disc_start:
             optimizer_idx = 0
         opt = opts[optimizer_idx]
         opt.zero_grad()

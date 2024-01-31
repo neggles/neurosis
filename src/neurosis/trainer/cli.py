@@ -88,6 +88,9 @@ def main(
         subclass_mode_model=True,
         auto_configure_optimizers=False,
         args=args,
+        trainer_defaults=dict(
+            enable_model_summary=False,
+        ),
         parser_kwargs=dict(
             default_env=True,
             default_config_files=default_config_files,

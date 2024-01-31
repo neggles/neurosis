@@ -61,7 +61,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
             disc_kwargs.update(discriminator_config)
 
         self.discriminator = NLayerDiscriminator(**disc_kwargs).apply(weights_init)
-        self.disc_start_iter = disc_start
+        self.disc_start = disc_start
         self.disc_loss = get_discr_loss_fn(disc_loss)
         self.disc_factor = disc_factor
         self.discriminator_weight = disc_weight
@@ -264,7 +264,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         # now the GAN part
         if optimizer_idx == 0:
             # generator update
-            if (not self.training) or global_step >= self.disc_start_iter:
+            if (not self.training) or global_step >= self.disc_start:
                 logits_fake = self.discriminator(reconstructions.contiguous())
                 g_loss = -torch.mean(logits_fake)
                 if self.training:
@@ -306,7 +306,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
             logits_real = self.discriminator(inputs.contiguous().detach())
             logits_fake = self.discriminator(reconstructions.contiguous().detach())
 
-            if (not self.training) or global_step >= self.disc_start_iter:
+            if (not self.training) or global_step >= self.disc_start:
                 d_loss = self.disc_factor * self.disc_loss(logits_real, logits_fake)
             else:
                 d_loss = torch.tensor(0.0, requires_grad=True)
