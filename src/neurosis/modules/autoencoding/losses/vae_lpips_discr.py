@@ -210,6 +210,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         rec_loss = self.recon_loss(inputs.contiguous(), reconstructions.contiguous())
         if self.percep_weight > 0:
             p_loss = self.percep_loss(inputs.contiguous(), reconstructions.contiguous())
+            p_loss = F.relu(p_loss)
             p_rec_loss = (rec_loss * self.recon_weight) + (p_loss * self.percep_weight)
         else:
             p_loss = torch.tensor(0.0, requires_grad=True)
@@ -227,22 +228,22 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
                 g_loss = torch.tensor(0.0, requires_grad=True)
 
             g_weighted = g_loss * self.disc_factor
-
             loss = p_rec_loss + g_weighted
-            log_dict = {}
 
-        # now the GAN part
-        if optimizer_idx == 0:
-            log_dict.update(
-                {
-                    f"{split}/loss/total": loss.detach().clone().mean(),
-                    f"{split}/loss/rec": p_rec_loss.detach().mean(),
-                    f"{split}/loss/g": g_loss.detach().mean(),
-                    f"{split}/loss/p": p_loss.detach().mean(),
-                    f"{split}/loss/{self.recon_type}": rec_loss.detach().mean(),
-                    f"{split}/scalars/r1_penalty": r1_penalty.detach(),
-                }
-            )
+            log_dict = {
+                f"{split}/loss/rec": rec_loss.detach().mean(),
+                f"{split}/loss/p": p_loss.detach().mean(),
+                f"{split}/loss/total": loss.detach().clone().mean(),
+            }
+            if self.disc_factor > 0:
+                log_dict.update(
+                    {
+                        f"{split}/loss/p_rec": p_rec_loss.detach().mean(),
+                        f"{split}/loss/g": g_loss.detach().mean(),
+                        f"{split}/loss/g_weighted": g_weighted.detach().mean(),
+                        f"{split}/scalars/r1_penalty": r1_penalty.detach(),
+                    }
+                )
 
             return loss, log_dict
 
