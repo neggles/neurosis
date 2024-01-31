@@ -98,7 +98,7 @@ class ImageLogger(Callback):
             case StepType.batch_idx:
                 return batch_idx
             case StepType.global_batch:
-                return global_step * self.__trainer.accumulate_grad_batches
+                return batch_idx * self.__trainer.accumulate_grad_batches
             case StepType.sample_idx:
                 return batch_idx * self.__trainer.accumulate_grad_batches * self.batch_size
             case _:
