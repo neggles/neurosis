@@ -3,12 +3,12 @@ from bisect import bisect_left
 
 import numpy as np
 
-from .base import AbstractLRSchedule
+from .base import AbstractLRSchedule, BaseLRScheduler
 
 logger = logging.getLogger(__name__)
 
 
-class CosineWarmUpSchedule(AbstractLRSchedule):
+class CosineWarmupSchedule(AbstractLRSchedule):
     """
     note: use with a base_lr of 1.0
     """
@@ -21,7 +21,7 @@ class CosineWarmUpSchedule(AbstractLRSchedule):
         lr_start: float,
         max_decay_steps: int,
         verbose: bool = False,
-        verbose_interval: int = 0,
+        verbose_interval: int = 100,
     ):
         self.lr_warm_up_steps = warm_up_steps
         self.lr_start = lr_start
@@ -50,7 +50,17 @@ class CosineWarmUpSchedule(AbstractLRSchedule):
         return lr
 
 
-class CosineWarmUpStagedSchedule(AbstractLRSchedule):
+class CosineWarmupScheduler(BaseLRScheduler):
+    def __init__(self, optimizer, last_epoch: int = -1, verbose: bool = False, **kwargs):
+        super().__init__(
+            optimizer,
+            CosineWarmupSchedule(verbose=verbose, **kwargs),
+            last_epoch,
+            verbose,
+        )
+
+
+class CosineWarmupStagedSchedule(AbstractLRSchedule):
     """
     supports repeated iterations, configurable via lists
     note: use with a base_lr of 1.0.
@@ -104,7 +114,7 @@ class CosineWarmUpStagedSchedule(AbstractLRSchedule):
         return f
 
 
-class LinearWarmUpSchedule(CosineWarmUpStagedSchedule):
+class LinearWarmupSchedule(CosineWarmupStagedSchedule):
     def schedule(self, n: int, **kwargs):
         cycle = bisect_left(self.cum_cycles[1:], n)
         n = n - self.cum_cycles[cycle]

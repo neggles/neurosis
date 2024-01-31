@@ -29,8 +29,8 @@ class BaseLRScheduler(LambdaLR):
 
         if not isinstance(schedule, (list, tuple)):
             schedules = [schedule] * num_groups
-        elif len(schedule) != num_groups:
-            raise ValueError(f"expected 1 or {num_groups} schedules, got {len(schedule)}")
+        elif len(schedules) != num_groups:
+            raise ValueError(f"expected 1 or {num_groups} schedules, got {len(schedules)}")
         else:
             logger.info(f"using {len(schedule)} schedules for {num_groups} param groups")
             schedules = list(schedule)
