@@ -219,7 +219,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         # now for GAN
         if optimizer_idx == 0:
             # update the generator
-            if (global_step < self.disc_start) or (self.training is False):
+            if (global_step >= self.disc_start) or (self.training is False):
                 r1_penalty = self.calc_r1_penalty(inputs)
                 logits_fake: Tensor = self.discr(reconstructions.contiguous())
                 g_loss = logits_fake.mean().neg() + r1_penalty
@@ -234,16 +234,11 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
                 f"{split}/loss/rec": rec_loss.detach().mean(),
                 f"{split}/loss/p": p_loss.detach().mean(),
                 f"{split}/loss/total": loss.detach().clone().mean(),
+                f"{split}/loss/p_rec": p_rec_loss.detach().mean(),
+                f"{split}/loss/g": g_loss.detach().mean(),
+                f"{split}/loss/g_weighted": g_weighted.detach().mean(),
+                f"{split}/scalars/r1_penalty": r1_penalty.detach(),
             }
-            if self.disc_factor > 0:
-                log_dict.update(
-                    {
-                        f"{split}/loss/p_rec": p_rec_loss.detach().mean(),
-                        f"{split}/loss/g": g_loss.detach().mean(),
-                        f"{split}/loss/g_weighted": g_weighted.detach().mean(),
-                        f"{split}/scalars/r1_penalty": r1_penalty.detach(),
-                    }
-                )
 
             return loss, log_dict
 
@@ -252,7 +247,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
             logits_real = self.discr(inputs.contiguous().detach())
             logits_fake = self.discr(reconstructions.contiguous().detach())
 
-            if (global_step < self.disc_start) or (self.training is False):
+            if (global_step >= self.disc_start) or (self.training is False):
                 d_loss = self.disc_factor * self.discr_loss(logits_real, logits_fake)
             else:
                 d_loss = torch.tensor(0.0, requires_grad=True)
