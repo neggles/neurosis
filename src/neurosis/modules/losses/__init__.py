@@ -1,12 +1,18 @@
-from .functions import adopt_weight, hinge_d_loss, vanilla_d_loss
-from .lpips import LPIPS
+from .functions import (
+    HingeDiscLoss,
+    VanillaDiscLoss,
+    apply_threshold_weight,
+    get_discr_loss_fn,
+)
 from .patchgan import NLayerDiscriminator, weights_init
+from .perceptual import LPIPS
 
 __all__ = [
+    "HingeDiscLoss",
     "LPIPS",
     "NLayerDiscriminator",
-    "adopt_weight",
-    "hinge_d_loss",
-    "vanilla_d_loss",
+    "VanillaDiscLoss",
+    "apply_threshold_weight",
+    "get_discr_loss_fn",
     "weights_init",
 ]

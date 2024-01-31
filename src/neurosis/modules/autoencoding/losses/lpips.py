@@ -4,7 +4,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from neurosis.modules.diffusion.model import Decoder
-from neurosis.modules.losses.lpips import LPIPS
+from neurosis.modules.losses.perceptual import LPIPS
 
 
 class LatentLPIPS(nn.Module):
