@@ -386,7 +386,7 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
             optimizer_idx = self.global_step % (self.acc_grad_batches * len(opts)) // self.acc_grad_batches
 
         # have we finished accumulating gradients this batch?
-        accumulated_grads = (self.global_step + 1) % self.acc_grad_batches == 0
+        accumulated_grads = self.global_step % self.acc_grad_batches == 0
 
         if optimizer_idx == 0:
             opt_ae, sched_ae = opts[0], scheds[0]
@@ -428,9 +428,7 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
             self.loss_ema_disc.update(log_dict["train/loss/disc"].cpu().item())
             log_dict["train/loss/disc_ema"] = self.loss_ema_disc.value
 
-        if accumulated_grads:
-            self.log_dict(log_dict, sync_dist=optimizer_idx == 1, on_step=True, on_epoch=False)
-
+        self.log_dict(log_dict, sync_dist=optimizer_idx == 1, on_step=True, on_epoch=False)
         return loss
 
     def validation_step(self, batch, batch_idx) -> dict:
@@ -504,7 +502,7 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
             "params": list(self.get_discriminator_params()),
             "initial_lr": self.base_lr,
         }
-        if len(disc_params["params"]) > 0 and self.loss.disc_factor > 0.0:
+        if len(disc_params["params"]) > 0:
             opt_disc = self.optimizer([disc_params])
             sched_disc = self.scheduler(opt_disc)
         else:
