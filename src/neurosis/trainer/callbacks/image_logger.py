@@ -1,19 +1,22 @@
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from warnings import warn
 
 import numpy as np
 import torch
 import wandb
+from diffusers import AutoencoderKL
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from PIL import Image
-from torch import Tensor
+from torch import Tensor, nn
 from torch.amp.autocast_mode import autocast
 
+from neurosis.models.utils import load_vae_ckpt
+from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
 from neurosis.utils.image.convert import pt_to_pil
 from neurosis.utils.image.grid import CaptionGrid
 from neurosis.utils.text import np_text_decode
@@ -43,6 +46,8 @@ class ImageLogger(Callback):
         disabled: bool = False,
         enable_autocast: bool = True,
         batch_size: int = 1,
+        ref_model_cls: Optional[str] = None,
+        ref_model_ckpt: Optional[str] = None,
     ):
         super().__init__()
         self.every_n_train_steps = every_n_train_steps
@@ -63,8 +68,22 @@ class ImageLogger(Callback):
         self.extra_log_keys = extra_log_keys
         self.batch_size = batch_size
 
+        # load ref model if provided
+        self.ref_model = None
+        if ref_model_ckpt is not None and ref_model_cls is not None:
+            ref_model_ckpt = Path(ref_model_ckpt).resolve()
+            if "vae" in ref_model_cls.lower():
+                logger.info(f"loading reference model from {ref_model_ckpt}")
+                self.ref_model = load_vae_ckpt(ref_model_ckpt, asymmetric="asym" in ref_model_cls)
+            else:
+                raise NotImplementedError(f"ref_model_cls {ref_model_cls} is not implemented yet")
+        elif ref_model_cls is not None:
+            raise ValueError("ref_model_cls provided but ref_model_ckpt is None")
+
+        if self.ref_model is not None:
+            self.ref_model = self.ref_model.eval().cpu().requires_grad_(False)
+
         self.__last_logged_step: int = -1
-        self.__trainer: Trainer = None
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.__trainer = trainer
@@ -235,6 +254,12 @@ class ImageLogger(Callback):
         # confirmed we're logging, save the step number
         self.__last_logged_step = self.get_step_idx(trainer.global_step, batch_idx)
 
+        # trim the batch to max_images
+        for k in batch:
+            batch[k] = batch[k][: self.max_images]
+            if isinstance(batch[k][0], (str, np.bytes_)):
+                batch[k] = [np_text_decode(x) for x in batch[k]]
+
         # set up autocast kwargs
         autocast_kwargs = dict(
             device_type="cuda",
@@ -247,6 +272,8 @@ class ImageLogger(Callback):
             images: list[Tensor] = pl_module.log_images(
                 batch, num_img=self.max_images, split=split, **self.log_func_kwargs
             )
+            if self.ref_model is not None:
+                images = self.vae_reference_recons(images, num_img=self.max_images)
 
         # if the model returned None, warn and return early
         if images is None:
@@ -254,18 +281,13 @@ class ImageLogger(Callback):
             return
 
         for k in images:
-            images[k] = images[k][: self.max_images]
+            images[k] = images[k]
             if isinstance(images[k], Tensor):
                 images[k] = images[k].detach().float().cpu()
                 if self.clamp:
                     images[k] = images[k].clamp(min=-1.0, max=1.0)
                 if self.rescale:
                     images[k] = (images[k] + 1.0) / 2.0
-
-        for k in batch:
-            batch[k] = batch[k][: self.max_images]
-            if isinstance(batch[k][0], (str, np.bytes_)):
-                batch[k] = [np_text_decode(x) for x in batch[k]]
 
         # log the images
         self.log_local(
@@ -295,3 +317,46 @@ class ImageLogger(Callback):
     ):
         if self.enabled and trainer.global_step > 0:
             self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="val")
+
+    @rank_zero_only
+    def vae_reference_recons(
+        self,
+        images: dict[str, Tensor],
+        num_img: int = 1,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        if self.ref_model is None:
+            return images
+
+        inputs: Tensor = images.get("inputs")
+        recons: Tensor = images.get("recons")
+
+        with torch.inference_mode():
+            recons = recons.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
+            inputs = inputs.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
+
+            ref_recons = self.ref_model.forward(inputs).sample
+
+            ref_diff = torch.clamp(ref_recons, -1.0, 1.0).sub(recons).abs().mul(0.5).clamp(0.0, 1.0)
+            ref_diff_boost = ref_diff.mul(3.0).clamp(0.0, 1.0)
+            ref_diff_input = torch.clamp(ref_recons, -1.0, 1.0).sub(inputs).abs().mul(0.5).clamp(0.0, 1.0)
+
+        ref_dict = {
+            "ref/recons": recons,
+            "ref/diff_input": 2.0 * ref_diff_input - 1.0,
+            "ref/diff": 2.0 * ref_diff - 1.0,
+            "ref/diff_boost": 2.0 * ref_diff_boost - 1.0,
+        }
+        images.update(ref_dict)
+        return images
+
+
+def is_vae_model(model: nn.Module) -> bool:
+    return all(
+        (
+            hasattr(model, "forward"),
+            hasattr(model, "sample"),
+            hasattr(model, "encode"),
+            hasattr(model, "decode"),
+        )
+    )

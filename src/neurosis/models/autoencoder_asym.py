@@ -5,7 +5,7 @@ from itertools import chain
 from os import PathLike
 from pathlib import Path
 from typing import Iterator, Optional
-from warnings import warn
+from warnings import filterwarnings, warn
 
 import torch
 import torch.nn.functional as F
@@ -19,12 +19,13 @@ from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from torch import Generator, Tensor, nn
 from torch.optim.optimizer import Optimizer
 
-from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
 from neurosis.modules.autoencoding.losses import AutoencoderLPIPSWithDiscr, GeneralLPIPSWithDiscriminator
 from neurosis.modules.distributions import DiagonalGaussianDistribution
 from neurosis.modules.ema import LitEma
 from neurosis.trainer.util import EMATracker
+
+from .utils import load_vae_ckpt
 
 logger = logging.getLogger(__name__)
 
@@ -242,8 +243,7 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         self,
         batch: dict,
         num_img: int = 1,
-        sample: bool = True,
-        ucg_keys: list[str] = None,
+        split: str = "train",
         **kwargs,
     ) -> dict:
         inputs: Tensor = self.get_input(batch)[:num_img]
@@ -267,33 +267,6 @@ class AsymmetricAutoencodingEngine(L.LightningModule):
         return log_dict
 
 
-def load_vae_ckpt(
-    model_path: Path, asymmetric: bool = False, **model_kwargs
-) -> AsymmetricAutoencoderKL | AutoencoderKL:
-    model_cls = AsymmetricAutoencoderKL if asymmetric else AutoencoderKL
-
-    if model_path.is_file():
-        if model_path.suffix.lower() in CHECKPOINT_EXTNS:
-            load_fn = model_cls.from_single_file
-        else:
-            raise ValueError(f"model file {model_path} is not a valid checkpoint file")
-    elif model_path.is_dir():
-        if model_path.joinpath("config.json").exists():
-            load_fn = model_cls.from_pretrained
-        else:
-            raise ValueError(f"model folder {model_path} is not a HF checkpoint (no config.json)")
-    else:
-        raise ValueError(f"model path {model_path} is not a file or directory")
-
-    return load_fn(model_path, **model_kwargs)
-
-
-def is_encoder_key(str):
-    if str.startswith("encoder") or str.startswith("quant_conv"):
-        return True
-    return False
-
-
 class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
     def __init__(
         self,
@@ -312,6 +285,9 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
 
         self.acc_grad_batches = accumulate_grad_batches
         self.wandb_watch = wandb_watch
+
+        # yeah, i shouldn't, but im gonna. one day i will work out why it is angry
+        filterwarnings("ignore", message=r"^Grad strides do not match bucket view")
 
     def on_train_start(self):
         if self.wandb_watch > 0:
@@ -443,8 +419,6 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
 
         posterior: DiagonalGaussianDistribution = self.vae.encode(x).latent_dist
         z = posterior.mode()
-        kl_loss = posterior.kl()
-        reg_log = {"kl_loss": torch.sum(kl_loss) / kl_loss.shape[0]}
         recons = self.vae.decode(z).sample
 
         # autoencoder loss
@@ -457,10 +431,10 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         if "last_layer" in self.loss.forward_keys:
             loss_kwargs["last_layer"] = self.get_last_layer()
 
-        ae_loss, log_dict = self.loss(optimizer_idx=0, **loss_kwargs)
+        _, log_dict = self.loss(optimizer_idx=0, **loss_kwargs)
 
         if len(self.optimizers()) > 1:
-            disc_loss, log_dict_disc = self.loss(optimizer_idx=1, **loss_kwargs)
+            _, log_dict_disc = self.loss(optimizer_idx=1, **loss_kwargs)
             log_dict.update(log_dict_disc)
 
         self.log_dict(log_dict, sync_dist=True)
@@ -498,7 +472,7 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
 
         # set up for discriminator, if applicable
         disc_params = {
-            "name": "Model",
+            "name": "Discriminator",
             "params": list(self.get_discriminator_params()),
             "initial_lr": self.base_lr,
         }
