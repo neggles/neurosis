@@ -1,4 +1,5 @@
 import logging
+from sys import maxsize
 from typing import Iterator, Optional
 
 import numpy as np
@@ -27,7 +28,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         recon_weight: float = 1.0,
         perceptual_type: PerceptualLoss | str = PerceptualLoss.LPIPS,
         perceptual_weight: float = 1.0,
-        disc_start: int = 0,
+        disc_start: int = -1,  # negative value = never start
         disc_factor: float = 1.0,
         disc_weight: float = 1.0,
         disc_lambda_r1: float = 0.0,
@@ -54,7 +55,8 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         self.percep_loss = LPIPS().eval()
         self.percep_weight = perceptual_weight
 
-        self.disc_start = disc_start
+        # cheap hack to set the discriminator to not start by making disc_start INT64_MAX
+        self.disc_start = disc_start if disc_start > 0 else maxsize
         self.disc_factor = disc_factor
         self.disc_weight = disc_weight
         self.disc_lambda_r1 = disc_lambda_r1
@@ -181,6 +183,8 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         # Add colorbar to plot
         annotated_grid = torch.cat((grid_logits, cbar), dim=1)
         blended_grid = torch.cat((grid_blend, cbar), dim=1)
+
+        plt.close(fig=fig)
         return {
             "vis_logits": 2 * annotated_grid[None, ...] - 1,
             "vis_logits_blended": 2 * blended_grid[None, ...] - 1,
@@ -231,13 +235,11 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
             loss = p_rec_loss + g_weighted
 
             log_dict = {
+                f"{split}/loss/total": loss.detach().clone().mean(),
                 f"{split}/loss/rec": rec_loss.detach().mean(),
                 f"{split}/loss/p": p_loss.detach().mean(),
-                f"{split}/loss/total": loss.detach().clone().mean(),
-                f"{split}/loss/p_rec": p_rec_loss.detach().mean(),
                 f"{split}/loss/g": g_loss.detach().mean(),
-                f"{split}/loss/g_weighted": g_weighted.detach().mean(),
-                f"{split}/scalars/r1_penalty": r1_penalty.detach(),
+                f"{split}/loss/r1_penalty": r1_penalty.detach(),
             }
 
             return loss, log_dict
