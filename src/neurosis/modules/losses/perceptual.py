@@ -1,5 +1,6 @@
 """Stripped and reworked version of https://github.com/richzhang/PerceptualSimilarity/tree/master/models"""
 import logging
+import warnings
 from collections import namedtuple
 
 from torch import Tensor, fx, nn
@@ -12,6 +13,8 @@ from neurosis.data import lpips_checkpoint
 VggOutputs = namedtuple("VggOutputs", ["relu1_2", "relu2_2", "relu3_3", "relu4_3", "relu5_3"])
 
 logger = logging.getLogger(__name__)
+
+warnings.filterwarnings("ignore", message=r"^'has_.*' is deprecated")
 
 
 # Learned perceptual metric

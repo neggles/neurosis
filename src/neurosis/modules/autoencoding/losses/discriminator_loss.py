@@ -189,6 +189,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         # Add colorbar to plot
         annotated_grid = torch.cat((grid_logits, cbar), dim=1)
         blended_grid = torch.cat((grid_blend, cbar), dim=1)
+        plt.close(fig=fig)
         return {
             "vis_logits": 2 * annotated_grid[None, ...] - 1,
             "vis_logits_blended": 2 * blended_grid[None, ...] - 1,
