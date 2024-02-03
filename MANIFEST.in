@@ -2,3 +2,11 @@
 prune .vscode
 prune misc
 prune temp
+
+# some of these are redundant with setuptools-scm but it's good to be explicit
+global-exclude *~ *.py[cod] *.so __pycache__
+global-exclude .DS_Store
+global-exclude .gitignore .gitattributes .gitmodules
+
+# likewise the README etc are tracked files but may as well
+include *.md
