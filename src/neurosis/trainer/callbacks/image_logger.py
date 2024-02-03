@@ -110,12 +110,12 @@ class ImageLogger(Callback):
 
         return tgt_dir
 
-    def get_step_idx(self, batch_idx: int) -> int:
+    def get_step_idx(self, global_step: int, batch_idx: int) -> int:
         match self.log_step_type:
             case StepType.batch_idx:
                 return batch_idx
             case StepType.global_step:
-                return self.__trainer.global_step
+                return global_step
             case StepType.global_batch:
                 return batch_idx * self.__trainer.accumulate_grad_batches
             case StepType.sample_idx:
@@ -123,8 +123,8 @@ class ImageLogger(Callback):
             case _:
                 raise ValueError(f"invalid log_step_type: {self.log_step_type}")
 
-    def check_step_idx(self, batch_idx: int) -> bool:
-        step_idx = self.get_step_idx(batch_idx)
+    def check_step_idx(self, global_step: int, batch_idx: int) -> bool:
+        step_idx = self.get_step_idx(global_step, batch_idx)
 
         # don't log the same step twice
         if step_idx <= self.__last_logged_step:
@@ -239,7 +239,7 @@ class ImageLogger(Callback):
             return
 
         # check if we should log this step and return early if not
-        if self.check_step_idx(batch_idx) is False:
+        if self.check_step_idx(trainer.global_step, batch_idx) is False:
             return
 
         # now make sure the module has a log_images method that we can call
@@ -252,7 +252,7 @@ class ImageLogger(Callback):
 
         # confirmed we're logging, save the step number
         if split == "train":
-            self.__last_logged_step = self.get_step_idx(batch_idx)
+            self.__last_logged_step = self.get_step_idx(trainer.global_step, batch_idx)
 
         # trim the batch to max_images and decode any text
         for k in batch:
