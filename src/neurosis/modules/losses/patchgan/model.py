@@ -1,5 +1,3 @@
-from warnings import warn
-
 from torch import Tensor, nn
 
 from neurosis.modules.layers import ActNorm
