@@ -1,7 +1,7 @@
 import logging
 from inspect import Parameter, signature
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from lightning.pytorch import Trainer
 from natsort import natsorted
@@ -11,16 +11,30 @@ logger = logging.getLogger(__name__)
 
 
 class EMATracker:
-    def __init__(self, alpha: float = 0.05):
+    def __init__(
+        self,
+        alpha: Optional[float] = None,
+        steps: Optional[int] = None,
+    ):
         super().__init__()
-        self.alpha = alpha
         self._value = None
+        if alpha is None and steps is None:
+            raise ValueError("Either alpha or steps must be provided")
 
-    def update(self, new_value):
+        if alpha is None:
+            self.alpha = 2 / (steps + 1)
+        else:
+            self.alpha = alpha
+
+    def __call__(self, new_value: float):
+        self.update(new_value)
+
+    def update(self, new_value: float):
         if self._value is None:
             self._value = new_value
-        else:
-            self._value = new_value * self.alpha + self._value * (1 - self.alpha)
+            return
+        # calculate new value
+        self._value = new_value * self.alpha + self._value * (1 - self.alpha)
 
     @property
     def value(self):

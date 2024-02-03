@@ -37,13 +37,36 @@ def pil_crop_square(
     # crop long edge to match bucket long edge
     min_edge = min(image.size)
 
-    delta_w = image.size[0] - min_edge
-    delta_h = image.size[1] - min_edge
-    if all([delta_w, delta_h]):
+    delta_w, delta_h = image.size[0] - min_edge, image.size[1] - min_edge
+    if all((delta_w, delta_h)):
         raise ValueError(f"Failed to crop short edge to match {size}!")
 
     top = np.random.randint(delta_h + 1)
     left = np.random.randint(delta_w + 1)
+    image = image.crop((left, top, left + size[0], top + size[1]))
+
+    return (image, (top, left))
+
+
+def pil_crop_random(
+    image: Image.Image,
+    size: int | tuple[int, int],
+    resampling: Image.Resampling = Image.Resampling.BICUBIC,
+) -> tuple[Image.Image, tuple[int, int]]:
+    if isinstance(size, int):
+        size = (size, size)
+
+    if image.size == size:
+        return (image, (0, 0))
+
+    # if too small upscale i guess
+    if image.size[0] < size[0] or image.size[1] < size[1]:
+        image = ImageOps.cover(image, size, method=resampling)
+
+    # now randomly crop the image to the desired size
+    delta_w, delta_h = image.size[0] - size[0], image.size[1] - size[1]
+
+    top, left = np.random.randint(delta_h + 1), np.random.randint(delta_w + 1)
     image = image.crop((left, top, left + size[0], top + size[1]))
 
     return (image, (top, left))
@@ -67,7 +90,6 @@ def pil_crop_bucket(
     image: Image.Image,
     bucket: AspectBucket,
     resampling: Image.Resampling = Image.Resampling.BICUBIC,
-    return_dict: bool = False,
 ) -> tuple[Image.Image, tuple[int, int]]:
     # resize short edge to match bucket short edge
     image = ImageOps.cover(image, bucket.size, method=resampling)
@@ -75,17 +97,13 @@ def pil_crop_bucket(
     # crop long edge to match bucket long edge
     min_edge = min(image.size)
 
-    delta_w = image.size[0] - min_edge
-    delta_h = image.size[1] - min_edge
-    if all([delta_w, delta_h]):
+    delta_w, delta_h = image.size[0] - min_edge, image.size[1] - min_edge
+    if all((delta_w, delta_h)):
         raise ValueError(f"Failed to crop short edge to match {bucket}!")
 
-    top = np.random.randint(delta_h + 1)
-    left = np.random.randint(delta_w + 1)
+    top, left = np.random.randint(delta_h + 1), np.random.randint(delta_w + 1)
     image = image.crop((left, top, left + bucket.width, top + bucket.height))
 
-    if return_dict:
-        return {"image": image, "crop_coords_top_left": (top, left)}
     return (image, (top, left))
 
 

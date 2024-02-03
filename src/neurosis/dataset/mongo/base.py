@@ -37,6 +37,7 @@ class BaseMongoDataset(Dataset):
         path_key: str = "s3_path",
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
+        no_resize: bool = False,
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
@@ -49,6 +50,7 @@ class BaseMongoDataset(Dataset):
         self.batch_size = batch_size
         self.path_key = path_key
         self.resampling = resampling
+        self.no_resize = no_resize
 
         # used to trigger a refresh check on first get just to be triple sure
         self._first_getitem = True
