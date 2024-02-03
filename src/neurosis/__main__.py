@@ -1,4 +1,4 @@
-from neurosis.cli import app
+from neurosis.trainer.cli import main
 
 if __name__ == "__main__":
-    app()
+    main()
