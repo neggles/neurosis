@@ -251,13 +251,14 @@ src/neurosis/_version.py
 # direnv
 .envrc
 .envrc.*
-!.envrc.example
 
 # dotenv
 .env
 .env.*
-!.env.example
 
 # temp files
 **/tmp_*.*
 **/*.tmp.*
+
+# but keep examples
+!*.example
