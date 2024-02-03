@@ -8,7 +8,6 @@ import lightning
 import torch
 import typer
 from lightning.pytorch.callbacks import (  # noqa: F401
-    DeviceStatsMonitor,
     LearningRateMonitor,
     ModelCheckpoint,
     ModelSummary,
@@ -81,6 +80,9 @@ def main(
         torch.backends.cudnn.allow_tf32 = True
 
     torch.set_float32_matmul_precision("high")  # it whines if we don't do this
+
+    if hasattr(args, "trainer") and hasattr(args.trainer, "default_root_dir"):
+        Path(args.trainer.default_root_dir).mkdir(exist_ok=True, parents=True)
 
     cli = DiffusionTrainerCli(  # type: ignore
         datamodule_class=None,

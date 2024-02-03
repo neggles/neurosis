@@ -11,7 +11,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 
 from neurosis.dataset.base import NoBucketDataset
-from neurosis.dataset.utils import pil_crop_square
+from neurosis.dataset.utils import pil_crop_random, pil_crop_square
 
 from .base import BaseMongoDataset, mongo_worker_init
 from .settings import MongoSettings, get_mongo_settings
@@ -32,6 +32,7 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
         path_key: str = "s3_path",
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
+        no_resize: bool = False,
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
@@ -49,6 +50,7 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
             path_key=path_key,
             extra_keys=extra_keys,
             resampling=resampling,
+            no_resize=no_resize,
             s3_bucket=s3_bucket,
             s3fs_kwargs=s3fs_kwargs,
             pma_schema=pma_schema,
@@ -62,6 +64,11 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
             **kwargs,
         )
 
+        if self.no_resize:
+            self.img_load_fn = pil_crop_random
+        else:
+            self.img_load_fn = pil_crop_square
+
         self.preload()
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
@@ -72,7 +79,7 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
 
         sample: pd.Series = self.samples.iloc[index]
         image = self._get_image(sample[self.path_key])
-        image, crop_coords = pil_crop_square(image, self.resolution, self.resampling)
+        image, crop_coords = self.img_load_fn(image, self.resolution, self.resampling)
 
         return {
             self.image_key: self.transforms(image),
@@ -92,6 +99,7 @@ class MongoVAEModule(LightningDataModule):
         path_key: str = "s3_path",
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
+        no_resize: bool = False,
         s3_bucket: Optional[str] = None,
         s3fs_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
@@ -113,6 +121,7 @@ class MongoVAEModule(LightningDataModule):
             path_key=path_key,
             extra_keys=extra_keys,
             resampling=resampling,
+            no_resize=no_resize,
             s3_bucket=s3_bucket,
             s3fs_kwargs=s3fs_kwargs,
             pma_schema=pma_schema,
