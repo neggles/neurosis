@@ -110,12 +110,12 @@ class ImageLogger(Callback):
 
         return tgt_dir
 
-    def get_step_idx(self, global_step: int, batch_idx: int) -> int:
+    def get_step_idx(self, batch_idx: int) -> int:
         match self.log_step_type:
-            case StepType.global_step:
-                return global_step
             case StepType.batch_idx:
                 return batch_idx
+            case StepType.global_step:
+                return self.__trainer.global_step
             case StepType.global_batch:
                 return batch_idx * self.__trainer.accumulate_grad_batches
             case StepType.sample_idx:
@@ -123,8 +123,8 @@ class ImageLogger(Callback):
             case _:
                 raise ValueError(f"invalid log_step_type: {self.log_step_type}")
 
-    def check_step_idx(self, global_step: int, batch_idx: int) -> bool:
-        step_idx = self.get_step_idx(global_step, batch_idx)
+    def check_step_idx(self, batch_idx: int) -> bool:
+        step_idx = self.get_step_idx(batch_idx)
 
         # don't log the same step twice
         if step_idx <= self.__last_logged_step:
@@ -135,7 +135,7 @@ class ImageLogger(Callback):
             return self.log_first_step
 
         # check if step_idx is a multiple of every_n_train_steps
-        if step_idx > 0 and (step_idx % self.every_n_train_steps) == 0:
+        if (step_idx % self.every_n_train_steps) == 0:
             return True
 
         # otherwise, don't log this step
@@ -216,10 +216,9 @@ class ImageLogger(Callback):
                 warn(f"batch[{k}] is not a list, not logging this key to table_dict")
 
         if len(table_dict) > 0:
-            table = wandb.Table(allow_mixed_types=True)
-            nrows = min([len(x) for x in table_dict.values()])
-            for k in table_dict:
-                table.add_column(k, table_dict[k][:nrows])
+            table = wandb.Table(columns=[str(x) for x in table_dict.keys()], allow_mixed_types=True)
+            for data in zip(*table_dict.values()):
+                table.add_data(*data)
             wandb_dict.update({f"{split}/table": table})
 
         if pl_module is not None:
@@ -236,11 +235,11 @@ class ImageLogger(Callback):
         split: str = "train",
     ):
         # if max_images is 0 or we're disabled, do nothing
-        if (not self.enabled) or (self.max_images == 0):
+        if self.enabled is False or self.max_images < 1:
             return
 
         # check if we should log this step and return early if not
-        if not self.check_step_idx(trainer.global_step, batch_idx):
+        if self.check_step_idx(batch_idx) is False:
             return
 
         # now make sure the module has a log_images method that we can call
@@ -252,9 +251,10 @@ class ImageLogger(Callback):
             return
 
         # confirmed we're logging, save the step number
-        self.__last_logged_step = self.get_step_idx(trainer.global_step, batch_idx)
+        if split == "train":
+            self.__last_logged_step = self.get_step_idx(batch_idx)
 
-        # trim the batch to max_images
+        # trim the batch to max_images and decode any text
         for k in batch:
             batch[k] = batch[k][: self.max_images]
             if isinstance(batch[k][0], (str, np.bytes_)):
@@ -269,10 +269,11 @@ class ImageLogger(Callback):
         )
         # call the actual log_images method
         with torch.inference_mode(), autocast(**autocast_kwargs):
-            images: list[Tensor] = pl_module.log_images(
+            images: dict[str, Tensor] = pl_module.log_images(
                 batch, num_img=self.max_images, split=split, **self.log_func_kwargs
             )
             if self.ref_model is not None:
+                logger.info(f"running reference model diff on {pl_module.__class__.__name__}")
                 images = self.vae_reference_recons(images, num_img=self.max_images)
 
         # if the model returned None, warn and return early
@@ -306,16 +307,10 @@ class ImageLogger(Callback):
             self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train")
 
     @rank_zero_only
-    def on_train_batch_start(self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx):
-        if self.enabled and trainer.global_step == 0 and self.log_before_start:
-            logger.info(f"{self.__class__.__name__} running log before training...")
-            self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train", force=True)
-
-    @rank_zero_only
     def on_validation_batch_end(
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, *args, **kwargs
     ):
-        if self.enabled and trainer.global_step > 0:
+        if self.enabled:
             self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="val")
 
     @rank_zero_only
@@ -335,7 +330,11 @@ class ImageLogger(Callback):
             recons = recons.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
             inputs = inputs.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
 
-            ref_recons = self.ref_model.forward(inputs).sample
+            ref_recons = [self.ref_model.forward(x.unsqueeze(0)).sample.squeeze(0) for x in inputs[:num_img]]
+            if len(ref_recons) == 1:
+                ref_recons = ref_recons[0].unsqueeze(0)
+            else:
+                ref_recons = torch.stack(ref_recons, dim=0)
 
             ref_diff = torch.clamp(ref_recons, -1.0, 1.0).sub(recons).abs().mul(0.5).clamp(0.0, 1.0)
             ref_diff_boost = ref_diff.mul(3.0).clamp(0.0, 1.0)

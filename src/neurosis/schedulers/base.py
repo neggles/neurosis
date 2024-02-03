@@ -8,6 +8,8 @@ logger = logging.getLogger(__name__)
 
 
 class AbstractLRSchedule(ABC):
+    last_epoch: int
+
     @abstractmethod
     def schedule(self, n: int, **kwargs) -> float:
         raise NotImplementedError("Abstract base class was called ;_;")
@@ -35,3 +37,8 @@ class BaseLRScheduler(LambdaLR):
             logger.info(f"using {len(schedule)} schedules for {num_groups} param groups")
             schedules = list(schedule)
         super().__init__(optimizer, schedules, last_epoch, verbose)
+
+    def __call__(self, n: int, **kwargs):
+        if n is None:
+            n = self.last_epoch
+        return self.schedule(n, **kwargs)
