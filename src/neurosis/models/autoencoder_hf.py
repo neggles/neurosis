@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from itertools import chain
 from os import PathLike
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Iterator, Optional
 from warnings import filterwarnings
 
 import torch
@@ -14,7 +14,7 @@ from diffusers.models.modeling_outputs import AutoencoderKLOutput
 from lightning import pytorch as L
 from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
+from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from torch import Generator, Tensor, nn
 
 from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
