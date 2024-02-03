@@ -1,13 +1,12 @@
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Optional, Union
 from warnings import warn
 
 import numpy as np
 import torch
 import wandb
-from diffusers import AutoencoderKL
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
@@ -16,7 +15,6 @@ from torch import Tensor, nn
 from torch.amp.autocast_mode import autocast
 
 from neurosis.models.utils import load_vae_ckpt
-from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
 from neurosis.utils.image.convert import pt_to_pil
 from neurosis.utils.image.grid import CaptionGrid
 from neurosis.utils.text import np_text_decode
