@@ -7,15 +7,18 @@ from warnings import warn
 import numpy as np
 import torch
 import wandb
+from diffusers import AutoencoderKL
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from PIL import Image
 from torch import Tensor, nn
 from torch.amp.autocast_mode import autocast
+from torch.nn import functional as F
 
 from neurosis.models.utils import load_vae_ckpt
-from neurosis.utils.image.convert import pt_to_pil
+from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
+from neurosis.utils.image.convert import numpy_to_pil, pt_to_pil
 from neurosis.utils.image.grid import CaptionGrid
 from neurosis.utils.text import np_text_decode
 
@@ -44,6 +47,7 @@ class ImageLogger(Callback):
         disabled: bool = False,
         enable_autocast: bool = True,
         batch_size: int = 1,
+        accumulate_grad_batches: int = 1,
         ref_model_cls: Optional[str] = None,
         ref_model_ckpt: Optional[str] = None,
     ):
@@ -65,26 +69,45 @@ class ImageLogger(Callback):
         self.log_func_kwargs = log_func_kwargs
         self.extra_log_keys = extra_log_keys
         self.batch_size = batch_size
+        self.accumulate_grad_batches = accumulate_grad_batches
 
         # load ref model if provided
-        self.ref_model = None
-        if ref_model_ckpt is not None and ref_model_cls is not None:
-            ref_model_ckpt = Path(ref_model_ckpt).resolve()
-            if "vae" in ref_model_cls.lower():
-                logger.info(f"loading reference model from {ref_model_ckpt}")
-                self.ref_model = load_vae_ckpt(ref_model_ckpt, asymmetric="asym" in ref_model_cls)
-            else:
-                raise NotImplementedError(f"ref_model_cls {ref_model_cls} is not implemented yet")
-        elif ref_model_cls is not None:
-            raise ValueError("ref_model_cls provided but ref_model_ckpt is None")
+        self.ref_model: nn.Module = None
+        self.ref_model_ckpt: Optional[Path] = None
+        self.ref_model_cls: Optional[str] = ref_model_cls
+        if self.ref_model_cls is not None:
+            if ref_model_ckpt is None:
+                raise ValueError("ref_model_cls provided but ref_model_ckpt is None")
+            self.ref_model_ckpt = Path(ref_model_ckpt).resolve()
 
-        if self.ref_model is not None:
-            self.ref_model = self.ref_model.eval().cpu().requires_grad_(False)
+        # TODO: Support moving the training model to CPU and the ref model to GPU while logging ref model diffs
+        # I suspect Lightning will make this a bit of a pain so I haven't tried it yet.
+        self.ref_model_device: torch.device = torch.device("cpu")
 
         self.__last_logged_step: int = -1
+        self.__trainer: Trainer = None
 
+    @rank_zero_only
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.__trainer = trainer
+
+        if self.enabled:
+            if self.ref_model is None and all((self.ref_model_ckpt, self.ref_model_cls)):
+                if "vae" in self.ref_model_cls.lower():
+                    logger.info(f"loading reference model from {self.ref_model_ckpt}")
+                    self.ref_model = load_vae_ckpt(
+                        self.ref_model_ckpt, asymmetric="asym" in self.ref_model_cls
+                    )
+                else:
+                    raise NotImplementedError(f"ref_model_cls {self.ref_model_cls} is not implemented yet")
+
+            if self.ref_model is not None:
+                if self.ref_model.device != self.ref_model_device:
+                    logger.info(f"moving reference model to {self.ref_model_device}")
+                    self.ref_model = self.ref_model.to(self.ref_model_device)
+                if self.ref_model.training:
+                    logger.info("Freezing reference model")
+                    self.ref_model = self.ref_model.eval().requires_grad_(False)
 
     @property
     def local_dir(self) -> Optional[Path]:
@@ -110,14 +133,14 @@ class ImageLogger(Callback):
 
     def get_step_idx(self, global_step: int, batch_idx: int) -> int:
         match self.log_step_type:
+            case StepType.global_step:
+                return self.__trainer.global_step
             case StepType.batch_idx:
                 return batch_idx
-            case StepType.global_step:
-                return global_step
             case StepType.global_batch:
-                return batch_idx * self.__trainer.accumulate_grad_batches
+                return batch_idx * self.accumulate_grad_batches
             case StepType.sample_idx:
-                return batch_idx * self.__trainer.accumulate_grad_batches * self.batch_size
+                return batch_idx * self.accumulate_grad_batches * self.batch_size
             case _:
                 raise ValueError(f"invalid log_step_type: {self.log_step_type}")
 
@@ -139,6 +162,19 @@ class ImageLogger(Callback):
         # otherwise, don't log this step
         return False
 
+    def make_caption_grid(
+        self,
+        images: list[Image.Image],
+        captions: list[str],
+        title: Optional[str] = None,
+        ncols: Optional[int] = None,
+    ) -> Image.Image:
+        if len(images) != len(captions):
+            raise ValueError("Number of images and captions must match!")
+
+        capgrid: CaptionGrid = CaptionGrid()
+        return capgrid(images, captions, title, ncols)
+
     @rank_zero_only
     def log_local(
         self,
@@ -153,65 +189,73 @@ class ImageLogger(Callback):
         save_dir = self.local_dir.joinpath("images", split)
         save_dir.mkdir(exist_ok=True, parents=True)
 
+        fstem = f"gs{step:06d}_e{epoch:06d}_b{batch_idx:06d}"
+        title = fstem.replace("-", "").replace("_", " ").upper()
+
         wandb_dict = {"trainer/global_step": step}
         table_dict = {}
 
-        for k in images:
-            imgpath = save_dir / f"{k}_gs-{step:06}_e-{epoch:06}_b-{batch_idx:06}.png"
-            if isinstance(images[k], Tensor) and images[k].ndim == 4 and images[k].shape[1] == 3:
-                images[k] = [pt_to_pil(x) for x in images[k]]
+        def add_to_both(k: str, v):
+            wandb_dict[k] = v
+            table_dict[k] = v
 
-            if k == "samples" and "caption" in batch:
-                captions = batch["caption"]
-                capgrid: CaptionGrid = CaptionGrid()
-                img: Image.Image = capgrid(
-                    images[k], captions, title=f"GS{step:06} E{epoch:06} B{batch_idx:06} samples"
-                )
-                img.save(imgpath)
-                wandb_dict.update({f"{split}/{k}": wandb.Image(img, caption="Sample Grid")})
+        if "samples" in images:
+            samples = pt_to_pil(images.pop("samples"), aslist=True)
+            for idx, img in enumerate(samples):
+                img.save(save_dir / f"samples_{fstem}_{idx:02d}.png")
 
-            elif isinstance(images[k][0], Image.Image):
-                wandb_dict.update({f"{split}/{k}": [wandb.Image(x) for x in images[k]]})
-
+            if "caption" in batch:
+                wandb_samples = [wandb.Image(img, caption=cap) for img, cap in zip(samples, batch["caption"])]
+                try:
+                    grid = self.make_caption_grid(samples, batch["caption"], title=title + " samples")
+                    grid.save(save_dir.joinpath(f"samples_{fstem}_s-grid.png"))
+                    wandb_dict[f"{split}/sample_grid"] = wandb.Image(grid, caption="Sample Grid")
+                except Exception as e:
+                    logger.exception("Failed to make sample grid, continuing", e)
             else:
-                batch[k] = images[k]
+                wandb_samples = [wandb.Image(img) for img in samples]
+            add_to_both(f"{split}/samples", wandb_samples)
+
+        for k in images:
+            try:
+                val = images[k]
+
+                if isinstance(val[0], Tensor):
+                    val = pt_to_pil(val, aslist=True)
+                if isinstance(val, np.ndarray):
+                    val = numpy_to_pil(val, aslist=True)
+
+                # we should now have a list of PIL images, so save them
+                if isinstance(val[0], Image.Image):
+                    for idx, img in enumerate(val):
+                        img.save(save_dir / f"{k.replace('/', '_')}_{fstem}_{idx:02d}.png")
+                    add_to_both(f"{split}/{k}", [wandb.Image(x) for x in images[k]])
+            except Exception:
+                logger.exception(f"Failed to log {k}, continuing")
+                continue
 
         for k in [x for x in batch if x in self.extra_log_keys]:
-            if isinstance(batch[k], list):
-                if isinstance(batch[k][0], (str, np.bytes_)):
-                    table_dict[k] = np_text_decode(batch[k], aslist=True)
-                if isinstance(batch[k][0], Tensor):
-                    # mildly hacky, turn tensor list back into tensor so the thing below can process it
-                    if batch[k][0].ndim == 3 and batch[k][0].shape[0] == 3:
-                        batch[k] = torch.stack(batch[k], dim=0)
-                    # and if you passed in a list of batch-1 images, turn it into a batch
-                    # you should not be doing this and i should not be allowing it but here we are
-                    elif batch[k][0].ndim == 4 and batch[k][0].shape[1] == 3:
-                        batch[k] = torch.cat(batch[k], dim=0)
-                    elif batch[k][0].ndim == 2:
-                        batch[k] = [tuple(x.cpu().tolist()) for x in batch[k]]
-                    elif batch[k][0].ndim == 1:
-                        batch[k] = [tuple(x.cpu().tolist()) for x in batch[k]]
-                elif isinstance(batch[k][0], Image.Image):
-                    for image in images[k]:
-                        imgpath = save_dir / f"{k}_gs-{step:06}_e-{epoch:06}_b-{batch_idx:06}.png"
-                        image.save(imgpath)
-                    batch[k] = [wandb.Image(x) for x in images[k]]
+            try:
+                val = batch[k]
+                if isinstance(val[0], Tensor):
+                    if val[0].ndim == 3 and val[0].shape[0] == 3:
+                        val = pt_to_pil(val, aslist=True)
+                    elif val[0].ndim in [1, 2]:
+                        val = [tuple(x.cpu().tolist()) for x in val]
 
-            if isinstance(batch[k], Tensor):
-                batch[k] = batch[k].detach().cpu()
-                if (batch[k].ndim == 4 and batch[k].shape[1] == 3) or (
-                    batch[k].ndim == 3 and batch[k].shape[0] == 3
-                ):
-                    batch[k] = pt_to_pil(batch[k], aslist=True)
-                    batch[k] = [wandb.Image(x) for x in batch[k]]
+                if isinstance(val[0], Image.Image):
+                    for idx, img in enumerate(val):
+                        img.save(save_dir / f"{k.replace('/', '_')}_{fstem}_{idx:02d}.png")
+                    val = [wandb.Image(x) for x in val]
+
+                if isinstance(val, list):
+                    table_dict[k] = val
                 else:
-                    del batch[k]
+                    warn(f"batch[{k}] is not a list, not logging this key to table_dict")
 
-            if isinstance(batch[k], list):
-                table_dict[k] = batch[k]
-            else:
-                warn(f"batch[{k}] is not a list, not logging this key to table_dict")
+            except Exception:
+                logger.exception(f"Failed to log {k}, continuing")
+                continue
 
         if len(table_dict) > 0:
             table = wandb.Table(columns=[str(x) for x in table_dict.keys()], allow_mixed_types=True)
@@ -270,8 +314,7 @@ class ImageLogger(Callback):
             images: dict[str, Tensor] = pl_module.log_images(
                 batch, num_img=self.max_images, split=split, **self.log_func_kwargs
             )
-            if self.ref_model is not None:
-                logger.info(f"running reference model diff on {pl_module.__class__.__name__}")
+            if "vae" in self.ref_model_cls:
                 images = self.vae_reference_recons(images, num_img=self.max_images)
 
         # if the model returned None, warn and return early
@@ -290,26 +333,18 @@ class ImageLogger(Callback):
 
         # log the images
         self.log_local(
-            split,
-            images,
-            batch,
-            trainer.global_step,
-            pl_module.current_epoch,
-            batch_idx,
-            pl_module=pl_module,
+            split, images, batch, trainer.global_step, pl_module.current_epoch, batch_idx, pl_module=pl_module
         )
 
     @rank_zero_only
     def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx):
-        if self.enabled:
-            self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train")
+        self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train")
 
     @rank_zero_only
     def on_validation_batch_end(
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, *args, **kwargs
     ):
-        if self.enabled:
-            self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="val")
+        self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="val")
 
     @rank_zero_only
     def vae_reference_recons(
@@ -348,12 +383,40 @@ class ImageLogger(Callback):
         return images
 
 
-def is_vae_model(model: nn.Module) -> bool:
-    return all(
-        (
-            hasattr(model, "forward"),
-            hasattr(model, "sample"),
-            hasattr(model, "encode"),
-            hasattr(model, "decode"),
-        )
-    )
+@torch.compile(mode="reduce-overhead", fullgraph=True, dynamic=True)
+@torch.no_grad()
+def diff_images(
+    inputs: Tensor,
+    recons: Tensor,
+    boost: float = 3.0,
+) -> Tensor:
+    diff = torch.clamp(recons, -1.0, 1.0).sub(inputs).abs().mul(0.5)
+
+    boosted = diff.mul(boost).clamp(0.0, 1.0).mul(2.0).sub(1.0)
+    diff = diff.mul(2.0).sub(1.0)
+
+    return diff.contiguous(), boosted.contiguous()
+
+
+@torch.no_grad()
+def run_reference_vae(
+    ref_model: AutoencoderKL | AsymmetricAutoencoderKL,
+    inputs: Tensor,
+    recons: Tensor,
+    diff_boost: float = 3.0,
+):
+    inputs = inputs.detach().clone().to(ref_model.device, ref_model.dtype)
+    recons = recons.detach().clone().to(ref_model.device, ref_model.dtype)
+
+    # do these batch size 1 to reduce memory usage and compu
+    ref_recons = torch.empty_like(recons).to(ref_model.device, ref_model.dtype)
+    for idx, x in enumerate(inputs):
+        ref_recons[idx] = ref_model.forward(x.unsqueeze(0)).sample.squeeze(0)
+
+    diff_input, diff_input_boost = diff_images(inputs, ref_recons, diff_boost)
+    diff_recons, diff_recons_boost = diff_images(ref_recons, recons, diff_boost)
+
+    recon_mse = F.mse_loss(recons, inputs, reduction="none").mean(dim=(1, 2, 3))
+    ref_recon_mse = F.mse_loss(ref_recons, inputs, reduction="none").mean(dim=(1, 2, 3))
+
+    pass

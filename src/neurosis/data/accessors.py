@@ -19,12 +19,14 @@ def get_image_font(name: str = "NotoSansMono", size: int = 10) -> ImageFont.Free
 
 
 @contextmanager
-def lpips_checkpoint(name: str = "vgg_lpips_v0.1") -> Generator[BufferedReader, Any, None]:
+def lpips_checkpoint(name: str = "vgg", version: str = "v0.1") -> Generator[BufferedReader, Any, None]:
+    ckpt_name = f"{name}_lpips_{version}"
+
     rsrc_dir = resources.files(f"{__package__}.lpips")
     try:
-        if rsrc_dir.joinpath(f"{name}.safetensors").exists():
-            yield safetensors_load(rsrc_dir.joinpath(f"{name}.safetensors"))
-        elif rsrc_dir.joinpath(f"{name}.pth").exists():
-            yield torch_load(rsrc_dir.joinpath(f"{name}.pth"), map_location="cpu", weights_only=True)
+        if rsrc_dir.joinpath(f"{ckpt_name}.safetensors").exists():
+            yield safetensors_load(rsrc_dir.joinpath(f"{ckpt_name}.safetensors"))
+        elif rsrc_dir.joinpath(f"{ckpt_name}.pth").exists():
+            yield torch_load(rsrc_dir.joinpath(f"{ckpt_name}.pth"), map_location="cpu", weights_only=True)
     finally:
         pass

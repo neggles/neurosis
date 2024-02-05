@@ -15,6 +15,9 @@ def numpy_to_pil(images: np.ndarray | list[np.ndarray], aslist: bool = False) ->
     If a list of images, returns a list of PIL images.
     """
     if isinstance(images, list):
+        # make func idempotent
+        if isinstance(images[0], Image.Image):
+            return images
         # we say you should pass in a list of HWC arrays, but we'll be nice
         # and allow a list of NHWC arrays too (as long as N=1)
         images = np.stack([x.squeeze(0) for x in images], axis=0)
@@ -109,6 +112,8 @@ def pt_to_pil(images: Tensor | list[Tensor], aslist: bool = False) -> list[Image
     If a list or batch of images, returns a list of PIL images.
     set aslist=True to force a list even if only one image is passed in.
     """
+    if isinstance(images, list) and isinstance(images[0], Image.Image):
+        return images
 
     images = pt_to_numpy(images)
     images = numpy_to_pil(images, aslist=aslist)

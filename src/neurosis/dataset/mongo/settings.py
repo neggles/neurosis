@@ -21,6 +21,7 @@ class Query(BaseModel):
     projection: Optional[dict[str, Any]] = Field(None)
     sort: Optional[list[tuple[str, int]]] = Field(None)
     limit: Optional[int] = Field(None)
+    skip: Optional[int] = Field(None)
 
     @computed_field
     @property
@@ -30,6 +31,8 @@ class Query(BaseModel):
             args.update({"projection": self.projection})
         if self.sort is not None:
             args.update({"sort": self.sort})
+        if self.skip is not None:
+            args.update({"skip": self.skip})
         if self.limit is not None:
             args.update({"limit": self.limit})
         return args
@@ -91,8 +94,10 @@ class MongoSettings(BaseSettings):
         ]
         if self.query.sort is not None:
             aggr.insert(1, {"$sort": dict(self.query.sort)})
+        if self.query.skip is not None:
+            aggr.insert(-2, {"$skip": self.query.skip})
         if self.query.limit is not None:
-            aggr.insert(1, {"$limit": self.query.limit})
+            aggr.insert(-2, {"$limit": self.query.limit})
         count = self.collection.aggregate(aggr).next()["count"]
         return count
 
