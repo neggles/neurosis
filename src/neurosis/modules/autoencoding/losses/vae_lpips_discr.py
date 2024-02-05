@@ -91,8 +91,8 @@ class AutoencoderPerceptual(nn.Module):
         loss = (rec_loss * self.recon_weight) + (p_loss * self.percep_weight)
 
         log_loss = loss.detach().clone().mean()
-        log_p_loss = p_loss.detach().mean()
         log_rec_loss = rec_loss.detach().mean()
+        log_p_loss = p_loss.detach().mean()
 
         self.t_ema.update(log_loss.item())
         self.r_ema.update(log_rec_loss.item())
