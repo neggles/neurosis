@@ -61,7 +61,11 @@ def pil_crop_random(
 
     # if too small upscale i guess
     if image.size[0] < size[0] or image.size[1] < size[1]:
-        image = ImageOps.cover(image, size, method=resampling)
+        image = ImageOps.cover(image, size, method=Image.Resampling.LANCZOS)
+
+    # downscale short edge to 2x the target size
+    if image.size[0] > (size[0] * 2) and image.size[1] > (size[1] * 2):
+        image = ImageOps.cover(image, (size[0] * 2, size[1] * 2), method=resampling)
 
     # now randomly crop the image to the desired size
     delta_w, delta_h = image.size[0] - size[0], image.size[1] - size[1]

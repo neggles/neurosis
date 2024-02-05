@@ -246,18 +246,35 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         self.loss_ema_disc = EMATracker(alpha=self.loss_ema.alpha)
         self.acc_grad_batches = accumulate_grad_batches
 
+    @property
+    def accumulate_grad_batches(self) -> int:
+        return self.acc_grad_batches
+
     @cached_property
     def disc_start(self) -> int:
         if hasattr(self.loss, "disc_start"):
             return self.loss.disc_start
         else:
-            return 0
+            return -1
 
     def get_discriminator_params(self) -> Iterator[nn.Parameter]:
         if hasattr(self.loss, "get_trainable_parameters"):
             yield from self.loss.get_trainable_parameters()  # e.g., discriminator
         else:
             yield from ()
+
+    def get_opt_idx(self, opts: list[OptimizerLRScheduler], batch_idx: int) -> int:
+        """Get the active optimizer index for this batch"""
+        if (batch_idx < self.disc_start) or (self.disc_start < 0):
+            # force optimizer zero if we're not yet at the disc_start step
+            return 0
+        else:
+            # otherwise switch between AE and disc optimizers every acc_grad_batches
+            return batch_idx % (self.acc_grad_batches * len(opts)) // self.acc_grad_batches
+
+    def check_grad_accumulation(self, batch_idx: int) -> bool:
+        """Check if we're ready to step the optimizer (accumulation done or last step)"""
+        return ((batch_idx + 1) % self.acc_grad_batches == 0) or self.trainer.is_last_batch
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int):
         opts = self.optimizers()
@@ -268,15 +285,8 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
         if not isinstance(scheds, list):
             scheds = [scheds]
 
-        if batch_idx < self.disc_start:
-            # force optimizer zero if we're not yet at the disc_start step
-            optimizer_idx = 0
-        else:
-            # otherwise switch between AE and disc optimizers every acc_grad_batches
-            optimizer_idx = batch_idx % (self.acc_grad_batches * len(opts)) // self.acc_grad_batches
-
-        # have we finished accumulating gradients this batch?
-        accumulated_grads = ((batch_idx + 1) % self.acc_grad_batches == 0) or self.trainer.is_last_batch
+        optimizer_idx = self.get_opt_idx(opts, batch_idx)
+        accumulated_grads = self.check_grad_accumulation(batch_idx)
 
         if optimizer_idx == 0:
             opt_ae, sched_ae = opts[0], scheds[0]
@@ -292,12 +302,8 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
                     loss, log_dict = opt_ae.step(closure=closure_ae)
                     sched_ae.step()
                     opt_ae.zero_grad()
-                    log_dict["lr-vae"] = sched_ae.get_last_lr()[0]
                 else:
                     loss, log_dict = closure_ae()
-
-            self.loss_ema.update(log_dict["train/loss/total"].cpu().item())
-            log_dict["train/loss/total_ema"] = self.loss_ema.value
 
         elif optimizer_idx == 1:
             opt_disc, sched_disc = opts[1], scheds[1]
@@ -313,15 +319,11 @@ class AsymmetricAutoencodingEngineDisc(AsymmetricAutoencodingEngine):
                     loss, log_dict = opt_disc.step(closure=closure_disc)
                     sched_disc.step()
                     opt_disc.zero_grad()
-                    log_dict["lr-disc"] = sched_disc.get_last_lr()[0]
                 else:
                     loss, log_dict = closure_disc()
 
-            self.loss_ema_disc.update(log_dict["train/loss/disc"].cpu().item())
-            log_dict["train/loss/disc_ema"] = self.loss_ema_disc.value
-
         log_dict["optimizer_idx"] = optimizer_idx
-        self.log_dict(log_dict, sync_dist=optimizer_idx == 1, on_step=True, on_epoch=False)
+        self.log_dict(log_dict, sync_dist=accumulated_grads, on_step=True, on_epoch=False)
         return loss
 
     def validation_step(self, batch, batch_idx) -> dict:

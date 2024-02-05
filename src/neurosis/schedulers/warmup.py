@@ -67,7 +67,7 @@ class CosineDecayWithWarmup(LRScheduler):
 
         else:
             # cosine decay phase
-            t = (self.last_epoch - self.warmup_steps) / (self.decay_steps - self.warmup_steps)
+            t = (self.last_epoch - self.warmup_steps) / (self.total_steps - self.warmup_steps)
             return [
                 min_lr + (max_lr - min_lr) * (1 + np.cos(t * np.pi)) / 2.0
                 for min_lr, max_lr, _ in zip(self.min_lrs, self.max_lrs, self.optimizer.param_groups)
