@@ -29,6 +29,7 @@ class AutoencoderPerceptual(nn.Module):
         recon_weight: float = 1.0,
         perceptual_type: PerceptualLoss | str = PerceptualLoss.LPIPS,
         perceptual_weight: float = 1.0,
+        lpips_type: str = "alex",
         resize_input: bool = False,
         resize_target: bool = False,
         loss_ema_steps: int = 64,
@@ -56,7 +57,7 @@ class AutoencoderPerceptual(nn.Module):
         self.percep_type = PerceptualLoss(perceptual_type.lower())
         if self.percep_type != PerceptualLoss.LPIPS:
             raise NotImplementedError(f"Perceptual loss {perceptual_type} not implemented")
-        self.percep_loss = LPIPS().eval()
+        self.percep_loss = LPIPS(pnet_type=lpips_type).eval()
         self.percep_weight = perceptual_weight
 
         # set up EMA loss tracking if desired
@@ -94,16 +95,16 @@ class AutoencoderPerceptual(nn.Module):
         log_rec_loss = rec_loss.detach().mean()
 
         self.t_ema.update(log_loss.item())
-        self.p_ema.update(log_p_loss.item())
         self.r_ema.update(log_rec_loss.item())
+        self.p_ema.update(log_p_loss.item())
 
         log_dict = {
             f"{split}/loss/total": log_loss,
             f"{split}/loss/rec": log_rec_loss,
             f"{split}/loss/p": log_p_loss,
             f"{split}/loss/total_ema": self.t_ema.value,
-            f"{split}/loss/rec_ema": self.t_ema.value,
-            f"{split}/loss/p_ema": self.t_ema.value,
+            f"{split}/loss/rec_ema": self.r_ema.value,
+            f"{split}/loss/p_ema": self.p_ema.value,
         }
         return loss, log_dict
 

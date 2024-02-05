@@ -95,23 +95,21 @@ def wrap_captions(
 class CaptionGrid:
     def __init__(
         self,
-        font: Optional[FontWrapper | FreeTypeFont] = None,
-        tfont: Optional[FontWrapper | FreeTypeFont] = None,
+        font: Optional[FontWrapper | FreeTypeFont | int] = None,
+        tfont: Optional[FontWrapper | FreeTypeFont | int] = None,
     ):
         if font is None:
             font = get_image_font(size=18)
+        elif isinstance(font, int):
+            font = get_image_font(size=font)
+
         if tfont is None:
             tfont = get_image_font(size=48)
+        elif isinstance(font, int):
+            tfont = get_image_font(size=tfont)
 
-        if isinstance(font, FontWrapper):
-            self.font = font
-        else:
-            self.font = FontWrapper(font)
-
-        if isinstance(tfont, FontWrapper):
-            self.tfont = tfont
-        else:
-            self.tfont = FontWrapper(tfont)
+        self.font = font if isinstance(font, FontWrapper) else FontWrapper(font)
+        self.tfont = tfont if isinstance(tfont, FontWrapper) else FontWrapper(tfont)
 
     @property
     def _t_xpos(self):

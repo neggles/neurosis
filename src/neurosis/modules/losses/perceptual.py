@@ -2,30 +2,62 @@
 import logging
 import warnings
 from collections import namedtuple
+from typing import NamedTuple
 
+import torch
 from torch import Tensor, fx, nn
 from torch.nn import functional as F
-from torchvision import models as tvm
-from torchvision.models.feature_extraction import create_feature_extractor
 
 from neurosis.data import lpips_checkpoint
-
-VggOutputs = namedtuple("VggOutputs", ["relu1_2", "relu2_2", "relu3_3", "relu4_3", "relu5_3"])
+from neurosis.modules.losses.extractors import create_alexnet_extractor, create_vgg_extractor
 
 logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", message=r"^'has_.*' is deprecated")
+
+VggOutputs: NamedTuple = namedtuple("VggOutputs", ["relu1", "relu2", "relu3", "relu4", "relu5"])
+AlexOutputs: NamedTuple = namedtuple("AlexOutputs", ["relu1", "relu2", "relu3", "relu4", "relu5"])
+
+
+PNET_CONFIG = {
+    "alex": {
+        "channels": [64, 192, 384, 256, 256],
+        "features": {
+            "features.1": "relu1",
+            "features.4": "relu2",
+            "features.7": "relu3",
+            "features.9": "relu4",
+            "features.11": "relu5",
+        },
+        "load_fn": create_alexnet_extractor,
+        "out_type": AlexOutputs,
+    },
+    "vgg": {
+        "channels": [64, 128, 256, 512, 512],
+        "features": {
+            "features.3": "relu1",
+            "features.8": "relu2",
+            "features.15": "relu3",
+            "features.22": "relu4",
+            "features.29": "relu5",
+        },
+        "load_fn": create_vgg_extractor,
+        "out_type": VggOutputs,
+    },
+}
 
 
 # Learned perceptual metric
 class LPIPS(nn.Module):
     def __init__(
         self,
-        pretrained=True,
+        pnet_type: str = "alex",
+        pretrained: bool = True,
         lpips: bool = True,
         pnet_rand: bool = False,
         pnet_tune: bool = False,
-        use_dropout: bool = True,
+        use_dropout: bool = False,
+        spatial: bool = False,
         freeze: bool = True,
         verbose: bool = True,
     ):
@@ -58,29 +90,29 @@ class LPIPS(nn.Module):
         """
 
         super().__init__()
-        if verbose:
-            print("Setting up [LPIPS] perceptual loss: trunk [vgg16], v[0.1]")
+        if "vgg" in pnet_type:
+            pnet_type = "vgg"
+        if "alex" in pnet_type:
+            pnet_type = "alex"
 
+        if verbose:
+            print(f"Setting up [LPIPS] perceptual loss: trunk [{pnet_type}], v[0.1]")
+
+        self.pnet_type = pnet_type
         self.pnet_tune = pnet_tune
         self.pnet_rand = pnet_rand
+        self.pnet_conf = PNET_CONFIG[pnet_type]
         self.lpips = lpips  # false means baseline of just averaging all layers
+        self.spatial = spatial
+
         self.scaling_layer = ScalingLayer()
+        self.chns = self.pnet_conf["channels"]
+        self.L = len(self.chns)
+        self.out_type: AlexOutputs | VggOutputs = self.pnet_conf["out_type"]
 
-        self.chns = [64, 128, 256, 512, 512]
-
-        pnet_feats = {
-            "features.3": "relu1_2",
-            "features.8": "relu2_2",
-            "features.15": "relu3_3",
-            "features.22": "relu4_3",
-            "features.29": "relu5_3",
-        }
+        pnet_feats = self.pnet_conf["features"]
         self.pnet_keys = list(pnet_feats.values())
-        self.pnet: fx.GraphModule = create_vgg_extractor(
-            features=pnet_feats,
-            weights=tvm.VGG16_Weights.IMAGENET1K_V1 if not pnet_rand else None,
-            requires_grad=pnet_tune,
-        )
+        self.pnet: fx.GraphModule = self.pnet_conf["load_fn"](features=pnet_feats, requires_grad=pnet_tune)
 
         if lpips:
             self.lin0 = NetLinLayer(self.chns[0], use_dropout=use_dropout)
@@ -88,24 +120,23 @@ class LPIPS(nn.Module):
             self.lin2 = NetLinLayer(self.chns[2], use_dropout=use_dropout)
             self.lin3 = NetLinLayer(self.chns[3], use_dropout=use_dropout)
             self.lin4 = NetLinLayer(self.chns[4], use_dropout=use_dropout)
-            self.lins = [self.lin0, self.lin1, self.lin2, self.lin3, self.lin4]
-            self.lins = nn.ModuleDict({key: val for key, val in zip(self.pnet_keys, self.lins)})
+            lins = [self.lin0, self.lin1, self.lin2, self.lin3, self.lin4]
+            self.lins = nn.ModuleDict({key: val for key, val in zip(self.pnet_keys, lins)})
 
             if pretrained:
-                self._load_pretrained()
+                self._load_pretrained(pnet_type)
 
         if freeze:
             self.requires_grad_(False)
 
-    def _load_pretrained(self, name="vgg_lpips_v0.1"):
+    def _load_pretrained(self, name: str):
         with lpips_checkpoint(name) as state_dict:
             self.load_state_dict(state_dict, strict=False)
-        logger.info("loaded pretrained LPIPS loss from {}.pth".format(name))
+        logger.info(f"loaded pretrained LPIPS loss from '{name}'")
 
     def forward(self, x: Tensor, y: Tensor, retPerLayer: bool = False, normalize: bool = False):
         if normalize:  # turn on this flag if input is [0,1] so it can be adjusted to [-1, +1]
-            x = x.mul(2.0).add(-1.0)
-            y = y.mul(2.0).add(-1.0)
+            x, y = x.mul(2.0).add(-1.0), y.mul(2.0).add(-1.0)
 
         inX, inY = self.scaling_layer(x), self.scaling_layer(y)
         outX, outY = self.pnet.forward(inX), self.pnet.forward(inY)
@@ -117,14 +148,20 @@ class LPIPS(nn.Module):
             diffs = featsX.sub(featsY).pow(2)
             if self.lpips:
                 diffs = self.lins[key](diffs)
-                res[key] = spatial_average(diffs, keepdim=True)
+                if self.spatial:
+                    res[key] = upsample(diffs, out_HW=x.shape[2:])
+                else:
+                    res[key] = spatial_average(diffs, keepdim=True)
             else:
                 diffs = diffs.sum(dim=1, keepdim=True)
-                res[key] = upsample(diffs, out_HW=x.shape[2:])
+                if self.spatial:
+                    res[key] = upsample(diffs, out_HW=x.shape[2:])
+                else:
+                    res[key] = spatial_average(diffs, keepdim=True)
             val += res[key]
 
         if retPerLayer:
-            return (val, VggOutputs(**res))
+            return (val, self.out_type(**res))
         return val
 
 
@@ -133,39 +170,28 @@ class ScalingLayer(nn.Module):
     scale: Tensor
 
     def __init__(self):
-        super().__init__()
-        self.register_buffer("shift", Tensor([-0.030, -0.088, -0.188])[None, :, None, None])
-        self.register_buffer("scale", Tensor([0.458, 0.448, 0.450])[None, :, None, None])
+        super(ScalingLayer, self).__init__()
+        self.register_buffer("shift", torch.Tensor([-0.030, -0.088, -0.188])[None, :, None, None])
+        self.register_buffer("scale", torch.Tensor([0.458, 0.448, 0.450])[None, :, None, None])
 
-    def forward(self, x: Tensor) -> Tensor:
-        x = x.sub(self.shift).div(self.scale)
-        return x
+    def forward(self, inp):
+        return (inp - self.shift) / self.scale
 
 
 class NetLinLayer(nn.Module):
     """A single linear layer which does a 1x1 conv"""
 
-    def __init__(self, chn_in: int, chn_out: int = 1, use_dropout: bool = False):
-        super().__init__()
-        self.dropout = nn.Dropout() if use_dropout else nn.Identity()
-        self.layer = nn.Conv2d(chn_in, chn_out, 1, stride=1, padding=0, bias=False)
+    def __init__(self, chn_in, chn_out=1, use_dropout=False):
+        super(NetLinLayer, self).__init__()
 
-    def forward(self, x: Tensor) -> Tensor:
-        x = self.dropout(x)
-        x = self.layer(x)
-        return x
+        layers = [
+            nn.Dropout() if use_dropout else nn.Identity(),
+            nn.Conv2d(chn_in, chn_out, 1, stride=1, padding=0, bias=False),
+        ]
+        self.model = nn.Sequential(*layers)
 
-
-def create_vgg_extractor(
-    features: dict[str, str],
-    weights: tvm.VGG16_Weights = tvm.VGG16_Weights.IMAGENET1K_V1,
-    requires_grad: bool = False,
-) -> fx.GraphModule:
-    vgg = tvm.vgg16(weights=weights)
-    if not requires_grad:
-        vgg = vgg.eval()
-        vgg.requires_grad_(requires_grad)
-    return create_feature_extractor(vgg, features)
+    def forward(self, x):
+        return self.model(x)
 
 
 def normalize_tensor(in_feat: Tensor, eps: float = 1e-10) -> Tensor:

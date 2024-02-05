@@ -65,7 +65,8 @@ dependencies = [
 dev = [
   "ruff >=0.0.289",
   "setuptools-scm >= 8.0.0",
-  "pre-commit >= 3.0.0",
+  "pre-commit >= 3.0.0",     # remember to run `pre-commit install` after installing
+  "tabulate >= 0.8.9",       # for inductor log prettyprinting
 ]
 extra = [
   "datasets >= 2.13.0",
