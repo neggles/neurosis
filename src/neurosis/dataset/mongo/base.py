@@ -6,7 +6,6 @@ from time import sleep
 from typing import Literal, Optional
 
 import pandas as pd
-from botocore.exceptions import ConnectionError
 from PIL import Image
 from pymongo import MongoClient
 from pymongo.collection import Collection as MongoCollection

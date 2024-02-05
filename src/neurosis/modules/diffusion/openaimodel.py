@@ -35,9 +35,7 @@ class AttentionPool2d(nn.Module):
         output_dim: Optional[int] = None,
     ):
         super().__init__()
-        self.positional_embedding = nn.Parameter(
-            torch.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5
-        )
+        self.positional_embedding = nn.Parameter(torch.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5)
         self.qkv_proj = conv_nd(1, embed_dim, 3 * embed_dim, 1)
         self.c_proj = conv_nd(1, embed_dim, output_dim or embed_dim, 1)
         self.num_heads = embed_dim // num_heads_channels
@@ -691,19 +689,21 @@ class UNetModel(nn.Module):
                 use_checkpoint=use_checkpoint,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
-            SpatialTransformer(
-                ch,
-                num_heads,
-                dim_head,
-                depth=transformer_depth_middle,
-                context_dim=context_dim,
-                disable_self_attn=disable_middle_self_attn,
-                use_linear=use_linear_in_transformer,
-                attn_type=spatial_transformer_attn_type,
-                use_checkpoint=use_checkpoint,
-            )
-            if not disable_middle_transformer
-            else nn.Identity(),
+            (
+                SpatialTransformer(
+                    ch,
+                    num_heads,
+                    dim_head,
+                    depth=transformer_depth_middle,
+                    context_dim=context_dim,
+                    disable_self_attn=disable_middle_self_attn,
+                    use_linear=use_linear_in_transformer,
+                    attn_type=spatial_transformer_attn_type,
+                    use_checkpoint=use_checkpoint,
+                )
+                if not disable_middle_transformer
+                else nn.Identity()
+            ),
             ResBlock(
                 ch,
                 time_embed_dim,

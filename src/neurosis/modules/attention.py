@@ -459,9 +459,9 @@ class BasicTransformerBlock(nn.Module):
                 self.norm1(x),
                 context=context if self.disable_self_attn else None,
                 additional_tokens=additional_tokens,
-                n_times_crossframe_attn_in_self=n_times_crossframe_attn_in_self
-                if not self.disable_self_attn
-                else 0,
+                n_times_crossframe_attn_in_self=(
+                    n_times_crossframe_attn_in_self if not self.disable_self_attn else 0
+                ),
             )
             + x
         )
@@ -473,7 +473,7 @@ class BasicTransformerBlock(nn.Module):
 class BasicTransformerSingleLayerBlock(nn.Module):
     ATTENTION_MODES = {
         "softmax": CrossAttention,  # vanilla attention
-        "softmax-xformers": MemoryEfficientCrossAttention  # on the A100s not quite as fast as the above version
+        "softmax-xformers": MemoryEfficientCrossAttention,  # on the A100s not quite as fast as the above version
         # (todo might depend on head_dim, check, falls back to semi-optimized kernels for dim!=[16,32,64,128])
     }
 

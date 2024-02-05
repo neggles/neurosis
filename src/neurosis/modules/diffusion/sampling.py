@@ -1,6 +1,7 @@
 """
     Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py
 """
+
 import logging
 from abc import abstractmethod
 from typing import Optional
