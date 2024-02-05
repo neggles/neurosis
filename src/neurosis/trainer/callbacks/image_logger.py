@@ -12,7 +12,7 @@ from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from PIL import Image
-from torch import Tensor, nn
+from torch import Tensor
 from torch.amp.autocast_mode import autocast
 from torch.nn import functional as F
 
@@ -72,7 +72,7 @@ class ImageLogger(Callback):
         self.accumulate_grad_batches = accumulate_grad_batches
 
         # load ref model if provided
-        self.ref_model: nn.Module = None
+        self.ref_model: AutoencoderKL | AsymmetricAutoencoderKL = None
         self.ref_model_ckpt: Optional[Path] = None
         self.ref_model_cls: Optional[str] = ref_model_cls
         if self.ref_model_cls is not None:
@@ -82,8 +82,9 @@ class ImageLogger(Callback):
 
         # TODO: Support moving the training model to CPU and the ref model to GPU while logging ref model diffs
         # I suspect Lightning will make this a bit of a pain so I haven't tried it yet.
-        self.ref_model_device: torch.device = torch.device("cpu")
+        self.ref_device: torch.device = torch.device("cpu")
 
+        self.diff_boost = 3.0
         self.__last_logged_step: int = -1
         self.__trainer: Trainer = None
 
@@ -102,9 +103,9 @@ class ImageLogger(Callback):
                     raise NotImplementedError(f"ref_model_cls {self.ref_model_cls} is not implemented yet")
 
             if self.ref_model is not None:
-                if self.ref_model.device != self.ref_model_device:
-                    logger.info(f"moving reference model to {self.ref_model_device}")
-                    self.ref_model = self.ref_model.to(self.ref_model_device)
+                if self.ref_model.device != self.ref_device:
+                    logger.info(f"moving reference model to {self.ref_device}")
+                    self.ref_model = self.ref_model.to(self.ref_device)
                 if self.ref_model.training:
                     logger.info("Freezing reference model")
                     self.ref_model = self.ref_model.eval().requires_grad_(False)
@@ -360,25 +361,32 @@ class ImageLogger(Callback):
         recons: Tensor = images.get("recons")
 
         with torch.inference_mode():
-            recons = recons.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
             inputs = inputs.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
+            recons = recons.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
 
-            ref_recons = [self.ref_model.forward(x.unsqueeze(0)).sample.squeeze(0) for x in inputs[:num_img]]
-            if len(ref_recons) == 1:
-                ref_recons = ref_recons[0].unsqueeze(0)
-            else:
-                ref_recons = torch.stack(ref_recons, dim=0)
+            # do these batch size 1 to reduce memory usage and compu
+            ref_recons = torch.empty_like(recons).to(self.ref_model.device, self.ref_model.dtype)
+            for idx, x in enumerate(inputs):
+                ref_recons[idx] = self.ref_model.forward(x.unsqueeze(0)).sample.squeeze(0)
 
-            ref_diff = torch.clamp(ref_recons, -1.0, 1.0).sub(recons).abs().mul(0.5).clamp(0.0, 1.0)
-            ref_diff_boost = ref_diff.mul(3.0).clamp(0.0, 1.0)
-            ref_diff_input = torch.clamp(ref_recons, -1.0, 1.0).sub(inputs).abs().mul(0.5).clamp(0.0, 1.0)
+            diff_input, _ = diff_images(inputs, ref_recons, self.diff_boost)
+            diff_recons, diff_recons_boost = diff_images(recons, ref_recons, self.diff_boost)
 
-        ref_dict = {
-            "ref/recons": recons,
-            "ref/diff_input": 2.0 * ref_diff_input - 1.0,
-            "ref/diff": 2.0 * ref_diff - 1.0,
-            "ref/diff_boost": 2.0 * ref_diff_boost - 1.0,
-        }
+            ref_mse = F.mse_loss(ref_recons, inputs, reduction="none").mean(dim=(1, 2, 3)) * 65025.0
+            vae_mse = F.mse_loss(recons, inputs, reduction="none").mean(dim=(1, 2, 3)) * 65025.0
+
+            # percentage decrease in MSE from ref to student
+            pct_decrease = (vae_mse - ref_mse) / ref_mse * -1
+
+            ref_dict = {
+                "ref/recons": ref_recons,
+                "ref/diff_input": diff_input,
+                "ref/diff": diff_recons,
+                "ref/diff_boost": diff_recons_boost,
+                "ref/mse_flt": ref_mse,
+                "mse_flt": vae_mse,
+                "mse_rel_pct": pct_decrease,
+            }
         images.update(ref_dict)
         return images
 
@@ -413,10 +421,20 @@ def run_reference_vae(
     for idx, x in enumerate(inputs):
         ref_recons[idx] = ref_model.forward(x.unsqueeze(0)).sample.squeeze(0)
 
-    diff_input, diff_input_boost = diff_images(inputs, ref_recons, diff_boost)
-    diff_recons, diff_recons_boost = diff_images(ref_recons, recons, diff_boost)
+    diff_input, _ = diff_images(inputs, ref_recons, diff_boost)
+    diff_recons, diff_recons_boost = diff_images(recons, ref_recons, diff_boost)
+    ref_mse = F.mse_loss(ref_recons, inputs, reduction="none").mean(dim=(1, 2, 3)) * 65025.0
+    vae_mse = F.mse_loss(recons, inputs, reduction="none").mean(dim=(1, 2, 3)) * 65025.0
 
-    recon_mse = F.mse_loss(recons, inputs, reduction="none").mean(dim=(1, 2, 3))
-    ref_recon_mse = F.mse_loss(ref_recons, inputs, reduction="none").mean(dim=(1, 2, 3))
+    # percentage decrease in MSE from ref to student
+    pct_decrease = (vae_mse - ref_mse) / ref_mse * -1
 
-    pass
+    return {
+        "ref/recons": ref_recons,
+        "ref/diff_input": diff_input,
+        "ref/diff": diff_recons,
+        "ref/diff_boost": diff_recons_boost,
+        "ref/mse_flt": ref_mse,
+        "mse_flt": vae_mse,
+        "mse_rel_pct": pct_decrease,
+    }
