@@ -83,8 +83,8 @@ class AutoencoderPerceptual(nn.Module):
             reconstructions = F.interpolate(reconstructions, inputs.shape[2:], mode="bicubic", antialias=True)
 
         # do reconstruction and perceptual loss
-        inputs = inputs.contiguous()
-        reconstructions = reconstructions.contiguous()
+        inputs = inputs.clamp(-1.0, 1.0).contiguous()
+        reconstructions = reconstructions.clamp(-1.0, 1.0).contiguous()
 
         rec_loss = self.recon_loss(inputs, reconstructions)
         p_loss = self.percep_loss(inputs, reconstructions).relu()
@@ -301,9 +301,12 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
             reconstructions = F.interpolate(reconstructions, inputs.shape[2:], mode="bicubic", antialias=True)
 
         # do reconstruction and perceptual loss
-        rec_loss = self.recon_loss(inputs.contiguous(), reconstructions.contiguous())
+        inputs = inputs.clamp(-1.0, 1.0).contiguous()
+        reconstructions = reconstructions.clamp(-1.0, 1.0).contiguous()
+
+        rec_loss = self.recon_loss(inputs, reconstructions)
         if self.percep_weight > 0:
-            p_loss = self.percep_loss(inputs.contiguous(), reconstructions.contiguous())
+            p_loss = self.percep_loss(inputs, reconstructions)
             p_loss = F.relu(p_loss)
             p_rec_loss = (rec_loss * self.recon_weight) + (p_loss * self.percep_weight)
         else:
