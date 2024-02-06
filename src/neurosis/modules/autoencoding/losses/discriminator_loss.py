@@ -107,7 +107,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
 
         # parameters for colormapping
         high = max(logits_fake.abs().max(), logits_real.abs().max()).item()
-        cmap = colormaps["PiYG"]  # diverging colormap
+        cmap = colormaps["cet_gwv_r"]  # diverging colormap
 
         def to_colormap(logits: Tensor) -> Tensor:
             """(b, 1, ...) -> (b, 3, ...)"""
