@@ -9,6 +9,7 @@ from typing import Annotated, Any, Optional
 import torch
 import typer
 from diffusers import AutoencoderKL
+from rich.traceback import install as traceback_install
 from safetensors.torch import save_file
 from typer import Typer
 
@@ -16,6 +17,10 @@ app = Typer(
     name="pl2sd",
     add_help_option=True,
     rich_help_panel=True,
+)
+_ = traceback_install(
+    show_locals=False,
+    width=120,
 )
 
 
@@ -59,7 +64,9 @@ def load_pl(path: PathLike) -> OrderedDict:
     except Exception:
         pl_sd = torch.load(str(path), map_location="cpu")
 
-    return pl_sd["state_dict"]
+    pl_sd = pl_sd["state_dict"]
+    vae_sd = {k.replace("vae.", ""): v for k, v in pl_sd.items() if k.startswith("vae.")}
+    return vae_sd
 
 
 def save_safetensors(
@@ -117,11 +124,16 @@ def resolve_out_path(
     if diffusers is True:
         if out_path.exists():
             out_path = out_path.parent.joinpath(out_name)
-        if out_path.exists():
+        if out_path.exists() and out_path.is_file():
             out_path = out_path.parent.joinpath(f"{out_name}-diffusers")
-        out_path.mkdir(parents=True, exist_ok=True)
-
+        elif out_path.exists() and out_path.is_dir():
+            if len(list(out_path.iterdir())) == 0:
+                # empty dir, remove it
+                out_path.unlink()
+            else:
+                out_path = out_path.joinpath(f"{out_name}-diffusers")
         hf_path = out_path
+        hf_path.mkdir(parents=True)
         out_path = out_path.joinpath(out_name + ".safetensors")
 
     else:
