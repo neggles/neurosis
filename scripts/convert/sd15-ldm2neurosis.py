@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Convert Stable Diffusion 1.5 full-state checkpoint to a Neurosis SafeTensors checkpoint."""
 from collections import OrderedDict
 from os import PathLike
