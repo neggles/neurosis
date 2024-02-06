@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Convert PyTorch Lightning full-state checkpoint to a SafeTensors state dict."""
 from collections import OrderedDict
 from os import PathLike

@@ -220,10 +220,16 @@ class ImageLogger(Callback):
         for k in images:
             try:
                 val = images[k]
+                # if we have a single number, log it directly
+                if isinstance(val, (int, float)):
+                    wandb_dict[f"{split}/{k}"] = val
+                    continue
 
+                # cast images to PIL if they're not already
                 if isinstance(val[0], Tensor):
-                    val = pt_to_pil(val, aslist=True)
-                if isinstance(val, np.ndarray):
+                    if val[0].ndim == 3:
+                        val = pt_to_pil(val, aslist=True)
+                if isinstance(val[0], np.ndarray):
                     val = numpy_to_pil(val, aslist=True)
 
                 # we should now have a list of PIL images, so save them
@@ -231,6 +237,7 @@ class ImageLogger(Callback):
                     for idx, img in enumerate(val):
                         img.save(save_dir / f"{k.replace('/', '_')}_{fstem}_{idx:02d}.png")
                     add_to_both(f"{split}/{k}", [wandb.Image(x) for x in images[k]])
+
             except Exception:
                 logger.exception(f"Failed to log {k}, continuing")
                 continue
@@ -372,8 +379,8 @@ class ImageLogger(Callback):
             diff_input, _ = diff_images(inputs, ref_recons, self.diff_boost)
             diff_recons, diff_recons_boost = diff_images(recons, ref_recons, self.diff_boost)
 
-            ref_mse = F.mse_loss(ref_recons, inputs, reduction="none").mean(dim=(1, 2, 3)) * 65025.0
-            vae_mse = F.mse_loss(recons, inputs, reduction="none").mean(dim=(1, 2, 3)) * 65025.0
+            ref_mse = F.mse_loss(ref_recons, inputs, reduction="mean") * 65025.0
+            vae_mse = F.mse_loss(recons, inputs, reduction="mean") * 65025.0
 
             # percentage decrease in MSE from ref to student
             pct_decrease = (vae_mse - ref_mse) / ref_mse * -1
@@ -383,9 +390,9 @@ class ImageLogger(Callback):
                 "ref/diff_input": diff_input,
                 "ref/diff": diff_recons,
                 "ref/diff_boost": diff_recons_boost,
-                "ref/mse_flt": ref_mse,
-                "mse_flt": vae_mse,
-                "mse_rel_pct": pct_decrease,
+                "ref/mse_flt": ref_mse.item(),
+                "mse_flt": vae_mse.item(),
+                "mse_rel_pct": pct_decrease.item(),
             }
         images.update(ref_dict)
         return images
