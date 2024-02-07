@@ -1,7 +1,6 @@
 """Stripped and reworked version of https://github.com/richzhang/PerceptualSimilarity/tree/master/models"""
 import logging
 import warnings
-from collections import namedtuple
 from typing import NamedTuple
 
 import torch
@@ -15,8 +14,21 @@ logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", message=r"^'has_.*' is deprecated")
 
-VggOutputs: NamedTuple = namedtuple("VggOutputs", ["relu1", "relu2", "relu3", "relu4", "relu5"])
-AlexOutputs: NamedTuple = namedtuple("AlexOutputs", ["relu1", "relu2", "relu3", "relu4", "relu5"])
+
+class AlexOutputs(NamedTuple):
+    relu1: Tensor
+    relu2: Tensor
+    relu3: Tensor
+    relu4: Tensor
+    relu5: Tensor
+
+
+class VggOutputs(NamedTuple):
+    relu1: Tensor
+    relu2: Tensor
+    relu3: Tensor
+    relu4: Tensor
+    relu5: Tensor
 
 
 PNET_CONFIG = {
