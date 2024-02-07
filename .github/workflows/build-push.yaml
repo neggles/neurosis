@@ -48,19 +48,6 @@ env:
   IMAGE_PLATFORMS: "linux/amd64"
 
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    outputs:
-      targets: ${{ steps.generate.outputs.targets }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: List targets
-        id: generate
-        uses: docker/bake-action/subaction/list-targets@v4
-        with:
-          target: neurosis
-
   build:
     name: Build
     runs-on: ubuntu-latest

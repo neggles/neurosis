@@ -4,6 +4,8 @@ from enum import Enum
 class PerceptualLoss(str, Enum):
     LPIPS = "lpips"
     MSE = "mse"
+    DISTS = "dists"
+    DreamSim = "dreamsim"
 
 
 class GenericLoss(str, Enum):
