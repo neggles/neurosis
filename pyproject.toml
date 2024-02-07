@@ -76,7 +76,6 @@ extra = [
   "tensorboard",
 ]
 vae = [
-  "peft @ git+https://github.com/neggles/peft.git@legacy#egg=peft",
   "dreamsim @ git+https://github.com/neggles/dreamsim.git@dev#egg=dreamsim",
 ]
 mongo = [
