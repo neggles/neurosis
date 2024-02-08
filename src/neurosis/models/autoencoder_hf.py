@@ -17,9 +17,8 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from torch import Generator, Tensor, nn
 
-from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
 from neurosis.modules.autoencoding.losses import AutoencoderPerceptual
-from neurosis.modules.ema import EMA, LitEma
+from neurosis.modules.ema import LitEma
 
 from .utils import load_vae_ckpt
 
@@ -29,7 +28,7 @@ logger = logging.getLogger(__name__)
 class DiffusersAutoencodingEngine(L.LightningModule):
     def __init__(
         self,
-        model: str | PathLike | AutoencoderKL | AsymmetricAutoencoderKL,
+        model: str | PathLike | AutoencoderKL,
         loss: AutoencoderPerceptual = ...,
         optimizer: OptimizerCallable = ...,
         scheduler: LRSchedulerCallable = ...,
@@ -76,7 +75,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         self.ema_decay = ema_decay
         self.ema_kwargs = ema_kwargs
         self.use_ema = self.ema_decay is not None
-        self.vae_ema: EMA = None  # set up in configure_model
+        self.vae_ema: LitEma = None  # set up in configure_model
 
         self.save_hyperparameters(ignore=["model", "optimizer", "scheduler", "loss"] + ignore_keys)
 
@@ -176,7 +175,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
     def configure_model(self) -> None:
         # load the model if it's not already loaded
         if self.vae is None:
-            self.vae = load_vae_ckpt(self._model_path, asymmetric=False, **self._model_kwargs)
+            self.vae = load_vae_ckpt(self._model_path, **self._model_kwargs)
             # make sure the model is in the right mode
             self.freeze(encoder=self.only_train_decoder, decoder=False)
             self.vae.set_attn_processor(AttnProcessor2_0())
