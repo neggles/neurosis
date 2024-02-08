@@ -17,7 +17,6 @@ from torch.amp.autocast_mode import autocast
 from torch.nn import functional as F
 
 from neurosis.models.utils import load_vae_ckpt
-from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
 from neurosis.utils.image.convert import numpy_to_pil, pt_to_pil
 from neurosis.utils.image.grid import CaptionGrid
 from neurosis.utils.text import np_text_decode
@@ -72,7 +71,7 @@ class ImageLogger(Callback):
         self.accumulate_grad_batches = accumulate_grad_batches
 
         # load ref model if provided
-        self.ref_model: AutoencoderKL | AsymmetricAutoencoderKL = None
+        self.ref_model: AutoencoderKL = None
         self.ref_model_ckpt: Optional[Path] = None
         self.ref_model_cls: Optional[str] = ref_model_cls
         if self.ref_model_cls is not None:
@@ -96,9 +95,7 @@ class ImageLogger(Callback):
             if self.ref_model is None and all((self.ref_model_ckpt, self.ref_model_cls)):
                 if "vae" in self.ref_model_cls.lower():
                     logger.info(f"loading reference model from {self.ref_model_ckpt}")
-                    self.ref_model = load_vae_ckpt(
-                        self.ref_model_ckpt, asymmetric="asym" in self.ref_model_cls
-                    )
+                    self.ref_model = load_vae_ckpt(self.ref_model_ckpt)
                 else:
                     raise NotImplementedError(f"ref_model_cls {self.ref_model_cls} is not implemented yet")
 
@@ -415,7 +412,7 @@ def diff_images(
 
 @torch.no_grad()
 def run_reference_vae(
-    ref_model: AutoencoderKL | AsymmetricAutoencoderKL,
+    ref_model: AutoencoderKL,
     inputs: Tensor,
     recons: Tensor,
     diff_boost: float = 3.0,

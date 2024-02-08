@@ -4,27 +4,26 @@ from pathlib import Path
 from diffusers import AutoencoderKL
 
 from neurosis.constants import CHECKPOINT_EXTNS
-from neurosis.modules.autoencoding.asymmetric import AsymmetricAutoencoderKL
 
 logger = logging.getLogger(__name__)
 
 
 def load_vae_ckpt(
     model_path: Path,
-    asymmetric: bool = False,
-    model_cls: type = None,
+    asymmetric: bool = False,  # not currently implemented
     **model_kwargs,
-) -> AsymmetricAutoencoderKL | AutoencoderKL:
-    model_cls = AsymmetricAutoencoderKL if asymmetric else AutoencoderKL
+) -> AutoencoderKL:
+    if asymmetric is not False:
+        raise NotImplementedError("asymmetric VAE is currently not implemented")
 
     if model_path.is_file():
         if model_path.suffix.lower() in CHECKPOINT_EXTNS:
-            load_fn = model_cls.from_single_file
+            load_fn = AutoencoderKL.from_single_file
         else:
             raise ValueError(f"model file {model_path} is not a valid checkpoint file")
     elif model_path.is_dir():
         if model_path.joinpath("config.json").exists():
-            load_fn = model_cls.from_pretrained
+            load_fn = AutoencoderKL.from_pretrained
         else:
             raise ValueError(f"model folder {model_path} is not a HF checkpoint (no config.json)")
     else:
