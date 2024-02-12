@@ -54,11 +54,11 @@ class AutoencoderPerceptual(nn.Module):
         self.scale_target_to_input = resize_target
 
         # set up perceptual loss
-        self.percep_type = PerceptualLoss(perceptual_type.lower())
-        if self.percep_type != PerceptualLoss.LPIPS:
+        self.perceptual_type = PerceptualLoss(perceptual_type.lower())
+        if self.perceptual_type != PerceptualLoss.LPIPS:
             raise NotImplementedError(f"Perceptual loss {perceptual_type} not implemented")
-        self.percep_loss = LPIPS(pnet_type=lpips_type).eval()
-        self.percep_weight = perceptual_weight
+        self.perceptual_loss = LPIPS(pnet_type=lpips_type).eval()
+        self.perceptual_weight = perceptual_weight
 
         # set up EMA loss tracking if desired
         self.t_ema = EMATracker(steps=loss_ema_steps)
@@ -87,8 +87,8 @@ class AutoencoderPerceptual(nn.Module):
         reconstructions = reconstructions.clamp(-1.0, 1.0).contiguous()
 
         rec_loss = self.recon_loss(inputs, reconstructions)
-        p_loss = self.percep_loss(inputs, reconstructions).relu()
-        loss = (rec_loss * self.recon_weight) + (p_loss * self.percep_weight)
+        p_loss = self.perceptual_loss(inputs, reconstructions).relu()
+        loss = (rec_loss * self.recon_weight) + (p_loss * self.perceptual_weight)
 
         log_loss = loss.detach().clone().mean()
         log_rec_loss = rec_loss.detach().mean()
@@ -140,8 +140,8 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
 
         if perceptual_type != PerceptualLoss.LPIPS:
             raise NotImplementedError(f"Perceptual loss {perceptual_type} not implemented")
-        self.percep_loss = LPIPS().eval()
-        self.percep_weight = perceptual_weight
+        self.perceptual_loss = LPIPS().eval()
+        self.perceptual_weight = perceptual_weight
 
         # cheap hack to set the discriminator to not start by making disc_start INT64_MAX
         self.disc_start = disc_start if disc_start > 0 else maxsize
@@ -305,10 +305,10 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         reconstructions = reconstructions.clamp(-1.0, 1.0).contiguous()
 
         rec_loss = self.recon_loss(inputs, reconstructions)
-        if self.percep_weight > 0:
-            p_loss = self.percep_loss(inputs, reconstructions)
+        if self.perceptual_weight > 0:
+            p_loss = self.perceptual_loss(inputs, reconstructions)
             p_loss = F.relu(p_loss)
-            p_rec_loss = (rec_loss * self.recon_weight) + (p_loss * self.percep_weight)
+            p_rec_loss = (rec_loss * self.recon_weight) + (p_loss * self.perceptual_weight)
         else:
             p_loss = torch.tensor(0.0, requires_grad=True)
             p_rec_loss = rec_loss * self.recon_weight
