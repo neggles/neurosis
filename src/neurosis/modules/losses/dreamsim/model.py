@@ -1,3 +1,5 @@
+from abc import abstractmethod
+
 import torch
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models.modeling_utils import ModelMixin
@@ -10,6 +12,27 @@ from .vit import VisionTransformer, vit_base_dreamsim
 
 
 class DreamsimModel(ModelMixin, ConfigMixin):
+    @abstractmethod
+    def forward_features(self, x: Tensor) -> Tensor:
+        raise NotImplementedError("abstract base class was called ;_;")
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Dreamsim forward pass for similarity computation.
+        Args:
+            x (Tensor): Input tensor of shape [2, B, 3, H, W].
+
+        Returns:
+            sim (torch.Tensor): dreamsim similarity score of shape [B].
+        """
+        all_images = x.view(-1, 3, *x.shape[-2:])
+
+        x = self.forward_features(all_images)
+        x = x.view(*x.shape[:2], -1)
+
+        return 1 - F.cosine_similarity(x[0], x[1], dim=1)
+
+
+class DreamsimSingle(DreamsimModel):
     @register_to_config
     def __init__(
         self,
@@ -64,38 +87,25 @@ class DreamsimModel(ModelMixin, ConfigMixin):
         x.sub_(x.mean(dim=1, keepdim=True))
         return x
 
-    def forward(self, x: Tensor) -> Tensor:
-        """Dreamsim forward pass for similarity computation.
-        Args:
-            x (Tensor): Input tensor of shape [2, B, 3, H, W].
 
-        Returns:
-            sim (torch.Tensor): dreamsim similarity score of shape [B].
-        """
-        all_images = x.view(-1, 3, *x.shape[-2:])
-
-        x = self.forward_features(all_images)
-        x = x.view(*x.shape[:2], -1)
-
-        return 1 - F.cosine_similarity(x[0], x[1], dim=1)
-
-
-class DreamsimEnsemble(ModelMixin, ConfigMixin):
+class DreamsimEnsemble(DreamsimModel):
     @register_to_config
     def __init__(
         self,
         image_size: int = 224,
         patch_size: int = 16,
         layer_norm_eps: float | tuple[float, ...] = (1e-6, 1e-5, 1e-5),
-        num_classes: tuple[int, int, int] = (0, 512, 512),
+        num_classes: int | tuple[int, ...] = (0, 512, 512),
         do_resize: bool = False,
     ) -> None:
         super().__init__()
         if isinstance(layer_norm_eps, float):
             layer_norm_eps = (layer_norm_eps,) * 3
+        if isinstance(num_classes, int):
+            num_classes = (num_classes,) * 3
 
         self.image_size = ensure_tuple(image_size, 2)
-        self.patch_size = patch_size
+        self.patch_size = ensure_tuple(patch_size, 2)
         self.do_resize = do_resize
 
         self.dino: VisionTransformer = vit_base_dreamsim(
@@ -156,18 +166,3 @@ class DreamsimEnsemble(ModelMixin, ConfigMixin):
         z.div_(z.norm(dim=1, keepdim=True))
         z.sub_(z.mean(dim=1, keepdim=True))
         return z
-
-    def forward(self, x: Tensor) -> Tensor:
-        """Dreamsim forward pass for similarity computation.
-        Args:
-            x (Tensor): Input tensor of shape [2, B, 3, H, W].
-
-        Returns:
-            sim (torch.Tensor): dreamsim similarity score of shape [B].
-        """
-        all_images = x.view(-1, 3, *x.shape[-2:])
-
-        x = self.forward_features(all_images)
-        x = x.view(*x.shape[:2], -1)
-
-        return 1 - F.cosine_similarity(x[0], x[1], dim=1)
