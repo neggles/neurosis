@@ -43,10 +43,10 @@ class MongoSettings(BaseSettings):
     username: Optional[str] = Field(None, description="Username for the user")
     password: Optional[str] = Field(None, description="Password for the user")
 
-    authMechanism: Optional[str] = Field(None, description="Authentication mechanism")
-    authSource: Optional[str] = Field(None, description="Database to authenticate against")
+    authMechanism: Optional[str] = Field("SCRAM-SHA-256", description="Authentication mechanism")
+    authSource: Optional[str] = Field("admin", description="Database to authenticate against")
     tls: bool = Field(False, description="Use TLS")
-    tlsInsecure: Optional[bool] = Field(None, description="Allow insecure TLS connections")
+    tlsInsecure: Optional[bool] = Field(True, description="Allow insecure TLS connections")
 
     db_name: str = Field(..., description="Database to query", alias="database")
     coll_name: str = Field(..., description="Collection to query", alias="collection")
