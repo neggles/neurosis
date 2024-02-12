@@ -48,7 +48,7 @@ class DreamsimModel(DreamsimBackbone):
         super().__init__()
 
         self.image_size = ensure_tuple(image_size, 2)
-        self.patch_size = patch_size
+        self.patch_size = ensure_tuple(patch_size, 2)
         self.layer_norm_eps = layer_norm_eps
         self.pre_norm = pre_norm
         self.do_resize = do_resize
