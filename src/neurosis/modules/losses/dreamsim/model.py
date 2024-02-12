@@ -11,7 +11,7 @@ from .common import ensure_tuple
 from .vit import VisionTransformer, vit_base_dreamsim
 
 
-class DreamsimModel(ModelMixin, ConfigMixin):
+class DreamsimBackbone(ModelMixin, ConfigMixin):
     @abstractmethod
     def forward_features(self, x: Tensor) -> Tensor:
         raise NotImplementedError("abstract base class was called ;_;")
@@ -32,7 +32,7 @@ class DreamsimModel(ModelMixin, ConfigMixin):
         return 1 - F.cosine_similarity(x[0], x[1], dim=1)
 
 
-class DreamsimSingle(DreamsimModel):
+class DreamsimModel(DreamsimBackbone):
     @register_to_config
     def __init__(
         self,
@@ -88,7 +88,7 @@ class DreamsimSingle(DreamsimModel):
         return x
 
 
-class DreamsimEnsemble(DreamsimModel):
+class DreamsimEnsemble(DreamsimBackbone):
     @register_to_config
     def __init__(
         self,
