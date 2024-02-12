@@ -179,9 +179,9 @@ class PatchEmbed(nn.Module):
         dynamic_pad: bool = False,
     ):
         super().__init__()
-        self.img_size = ensure_tuple(img_size)
-        self.patch_size = ensure_tuple(patch_size)
-        self.num_patches = (img_size // patch_size) ** 2
+        self.img_size = ensure_tuple(img_size, 2)
+        self.patch_size = ensure_tuple(patch_size, 2)
+        self.num_patches = (self.img_size[0] // self.patch_size[0]) * (self.img_size[1] // self.patch_size[1])
 
         self.dynamic_pad = dynamic_pad
 
