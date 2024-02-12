@@ -41,7 +41,6 @@ class FolderSquareDataset(NoBucketDataset):
             raise FileNotFoundError(f"Folder {self.folder} does not exist or is not a directory.")
 
         self.batch_size = batch_size
-
         self.image_key = image_key
         self.caption_key = caption_key
 

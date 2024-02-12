@@ -41,10 +41,14 @@ class ImageFolderDataset(AspectBucketDataset):
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
     ):
-        super().__init__(buckets, batch_size, image_key, caption_key)
+        super().__init__(buckets)
         self.folder = Path(folder).resolve()
         if not (self.folder.exists() and self.folder.is_dir()):
             raise FileNotFoundError(f"Folder {self.folder} does not exist or is not a directory.")
+
+        self.batch_size = batch_size
+        self.image_key = image_key
+        self.caption_key = caption_key
 
         self.caption_ext = caption_ext
         self.tag_sep = tag_sep
