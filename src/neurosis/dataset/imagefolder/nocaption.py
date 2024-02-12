@@ -28,12 +28,14 @@ class FolderVAEDataset(NoBucketDataset):
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
     ):
-        super().__init__(resolution, batch_size)
+        super().__init__(resolution)
         self.folder = Path(folder).resolve()
         if not (self.folder.exists() and self.folder.is_dir()):
             raise FileNotFoundError(f"Folder {self.folder} does not exist or is not a directory.")
 
+        self.batch_size = batch_size
         self.image_key = image_key
+
         self.recursive = recursive
         self.resampling = resampling
         self.clamp_orig = clamp_orig
