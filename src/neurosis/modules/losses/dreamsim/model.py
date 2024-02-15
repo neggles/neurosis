@@ -150,7 +150,8 @@ class DreamsimEnsemble(DreamsimBackbone):
     def transforms(self, x: Tensor, resize: bool = False) -> tuple[Tensor, Tensor, Tensor]:
         if resize:
             x = self.resize(x)
-        return self.dino_norm(x), self.clip_norm(x), self.clip_norm(x)
+        x = self.dino_norm(x), self.clip_norm(x), self.clip_norm(x)
+        return x
 
     def forward_features(self, x: Tensor) -> Tensor:
         if x.ndim == 3:
