@@ -17,7 +17,7 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities.types import OptimizerLRScheduler
 from torch import Generator, Tensor, nn
 
-from neurosis.modules.autoencoding.losses import AutoencoderPerceptual
+from neurosis.modules.autoencoding.losses import AutoencoderLoss
 from neurosis.modules.ema import LitEma
 
 from .utils import load_vae_ckpt
@@ -29,7 +29,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
     def __init__(
         self,
         model: str | PathLike | AutoencoderKL,
-        loss: AutoencoderPerceptual = ...,
+        loss: AutoencoderLoss = ...,
         optimizer: OptimizerCallable = ...,
         scheduler: LRSchedulerCallable = ...,
         input_key: str = "image",
@@ -54,7 +54,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         self.diff_boost_factor = diff_boost_factor
         self.wandb_watch = wandb_watch
 
-        self.loss: AutoencoderPerceptual = loss
+        self.loss: AutoencoderLoss = loss
 
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -179,11 +179,14 @@ class DiffusersAutoencodingEngine(L.LightningModule):
             # make sure the model is in the right mode
             self.freeze(encoder=self.only_train_decoder, decoder=False)
             self.vae.set_attn_processor(AttnProcessor2_0())
-
         # set up EMA
         if self.use_ema is True and self.vae_ema is None:
             self.vae_ema = LitEma(self.vae, decay=self.ema_decay, **self.ema_kwargs)
             logger.info(f"Keeping EMAs of {len(list(self.vae_ema.buffers()))} weights.")
+
+        # call configure_model() on loss if it exists
+        if hasattr(self.loss, "configure_model"):
+            self.loss.configure_model()
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         encoder_params = {
@@ -217,11 +220,9 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         **kwargs,
     ) -> dict:
         inputs: Tensor = self.get_input(batch)[:num_img]
-
-        with torch.inference_mode():
-            recons = self.forward(inputs).sample
-            diff = torch.clamp(recons, -1.0, 1.0).sub(inputs).abs().mul(0.5).clamp(0.0, 1.0)
-            diff_boost = diff.mul(self.diff_boost_factor).clamp(0.0, 1.0)
+        recons = self.forward(inputs).sample
+        diff = torch.clamp(recons, -1.0, 1.0).sub(inputs).abs().mul(0.5).clamp(0.0, 1.0)
+        diff_boost = diff.mul(self.diff_boost_factor).clamp(0.0, 1.0)
 
         log_dict = {
             "inputs": inputs,

@@ -24,10 +24,9 @@ class DreamsimBackbone(ModelMixin, ConfigMixin):
         Returns:
             sim (torch.Tensor): dreamsim similarity score of shape [B].
         """
-        all_images = x.view(-1, 3, *x.shape[-2:])
+        inputs = x.view(-1, 3, *x.shape[-2:])
 
-        x = self.forward_features(all_images)
-        x = x.view(*x.shape[:2], -1)
+        x = self.forward_features(inputs).view(*x.shape[:2], -1)
 
         return 1 - F.cosine_similarity(x[0], x[1], dim=1)
 
@@ -93,8 +92,8 @@ class DreamsimModel(DreamsimBackbone):
         x = self.transforms(x)
         x = self.extractor.forward(x, norm=self.pre_norm)
 
-        x.div_(x.norm(dim=1, keepdim=True))
-        x.sub_(x.mean(dim=1, keepdim=True))
+        x = x.div(x.norm(dim=1, keepdim=True))
+        x = x.sub(x.mean(dim=1, keepdim=True))
         return x
 
 
@@ -184,6 +183,6 @@ class DreamsimEnsemble(DreamsimBackbone):
         x_clip2 = self.clip2.forward(x_clip2, norm=True)
 
         z: Tensor = torch.cat([x_dino, x_clip1, x_clip2], dim=1)
-        z.div_(z.norm(dim=1, keepdim=True))
-        z.sub_(z.mean(dim=1, keepdim=True))
+        z = z.div(z.norm(dim=1, keepdim=True))
+        z = z.sub(z.mean(dim=1, keepdim=True))
         return z

@@ -5,6 +5,7 @@ from .autoencoder import (
     AutoencodingEngine,
     IdentityFirstStage,
 )
+from .autoencoder_hf import DiffusersAutoencodingEngine
 from .diffusion import DiffusionEngine
 from .embedding import (
     AbstractEmbModel,
@@ -35,6 +36,7 @@ __all__ = [
     "AbstractEmbModel",
     "ClassEmbedder",
     "ClassEmbedderForMultiCond",
+    "DiffusersAutoencodingEngine",
     "GeneralConditioner",
     "IdentityEncoder",
     "LowScaleEncoder",
