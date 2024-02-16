@@ -1,5 +1,4 @@
 import logging
-from enum import Enum
 from pathlib import Path
 from typing import Optional, Union
 from warnings import warn
@@ -7,28 +6,20 @@ from warnings import warn
 import numpy as np
 import torch
 import wandb
-from diffusers import AutoencoderKL
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from PIL import Image
 from torch import Tensor
 from torch.amp.autocast_mode import autocast
-from torch.nn import functional as F
 
-from neurosis.models.utils import load_vae_ckpt
 from neurosis.utils.image.convert import numpy_to_pil, pt_to_pil
 from neurosis.utils.image.grid import CaptionGrid
 from neurosis.utils.text import np_text_decode
 
+from .common import BatchDictType, LogDictType, StepType
+
 logger = logging.getLogger(__name__)
-
-
-class StepType(str, Enum):
-    global_step = "global_step"  # default
-    batch_idx = "batch_idx"  # batch index instead of global step
-    global_batch = "global_batch"  # global step * accumulate_grad_batches
-    sample_idx = "sample_idx"  # global step * accumulate_grad_batches * batch_size
 
 
 class ImageLogger(Callback):
@@ -47,8 +38,6 @@ class ImageLogger(Callback):
         enable_autocast: bool = True,
         batch_size: int = 1,
         accumulate_grad_batches: int = 1,
-        ref_model_cls: Optional[str] = None,
-        ref_model_ckpt: Optional[str] = None,
     ):
         super().__init__()
         self.every_n_train_steps = every_n_train_steps
@@ -70,19 +59,6 @@ class ImageLogger(Callback):
         self.batch_size = batch_size
         self.accumulate_grad_batches = accumulate_grad_batches
 
-        # load ref model if provided
-        self.ref_model: AutoencoderKL = None
-        self.ref_model_ckpt: Optional[Path] = None
-        self.ref_model_cls: Optional[str] = ref_model_cls
-        if self.ref_model_cls is not None:
-            if ref_model_ckpt is None:
-                raise ValueError("ref_model_cls provided but ref_model_ckpt is None")
-            self.ref_model_ckpt = Path(ref_model_ckpt).resolve()
-
-        # TODO: Support moving the training model to CPU and the ref model to GPU while logging ref model diffs
-        # I suspect Lightning will make this a bit of a pain so I haven't tried it yet.
-        self.ref_device: torch.device = torch.device("cpu")
-
         self.diff_boost = 3.0
         self.__last_logged_step: int = -1
         self.__trainer: Trainer = None
@@ -90,22 +66,6 @@ class ImageLogger(Callback):
     @rank_zero_only
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.__trainer = trainer
-
-        if self.enabled:
-            if self.ref_model is None and all((self.ref_model_ckpt, self.ref_model_cls)):
-                if "vae" in self.ref_model_cls.lower():
-                    logger.info(f"loading reference model from {self.ref_model_ckpt}")
-                    self.ref_model = load_vae_ckpt(self.ref_model_ckpt)
-                else:
-                    raise NotImplementedError(f"ref_model_cls {self.ref_model_cls} is not implemented yet")
-
-            if self.ref_model is not None:
-                if self.ref_model.device != self.ref_device:
-                    logger.info(f"moving reference model to {self.ref_device}")
-                    self.ref_model = self.ref_model.to(self.ref_device)
-                if self.ref_model.training:
-                    logger.info("Freezing reference model")
-                    self.ref_model = self.ref_model.eval().requires_grad_(False)
 
     @property
     def local_dir(self) -> Optional[Path]:
@@ -125,7 +85,7 @@ class ImageLogger(Callback):
                 logger.debug(f"using {self.__trainer.__class__.__name__} default_root_dir")
                 tgt_dir = Path(self.__trainer.default_root_dir)
             else:
-                logger.debug("no save_dir, log_dir, or default_root_dir found...")
+                raise ValueError("no save_dir, log_dir, or default_root_dir found!")
 
         return tgt_dir
 
@@ -144,19 +104,15 @@ class ImageLogger(Callback):
 
     def check_step_idx(self, global_step: int, batch_idx: int) -> bool:
         step_idx = self.get_step_idx(global_step, batch_idx)
-
         # don't log the same step twice
         if step_idx <= self.__last_logged_step:
             return False
-
         # log the first step if log_first_step is True
         if step_idx == 0:
             return self.log_first_step
-
         # check if step_idx is a multiple of every_n_train_steps
         if (step_idx % self.every_n_train_steps) == 0:
             return True
-
         # otherwise, don't log this step
         return False
 
@@ -173,12 +129,47 @@ class ImageLogger(Callback):
         capgrid: CaptionGrid = CaptionGrid()
         return capgrid(images, captions, title, ncols)
 
+    def rescale_pixel_values(self, images: LogDictType) -> LogDictType:
+        for k in images:
+            images[k] = images[k]
+            if isinstance(images[k], Tensor):
+                images[k] = images[k].detach().float().cpu()
+                if self.clamp:
+                    images[k] = images[k].clamp(min=-1.0, max=1.0)
+                if self.rescale:
+                    images[k] = images[k].add(1.0).div(2.0)
+        return images
+
+    @rank_zero_only
+    def call_log_images(
+        self,
+        pl_module: LightningModule,
+        batch: BatchDictType,
+        batch_idx: int = -1,
+        split: str = "train",
+        num_img: int = 4,
+    ) -> LogDictType:
+        # set up autocast kwargs
+        autocast_kwargs = dict(
+            device_type="cuda",
+            enabled=self.enable_autocast,
+            dtype=torch.get_autocast_gpu_dtype(),
+            cache_enabled=torch.is_autocast_cache_enabled(),
+        )
+        # call the actual log_images method
+        with autocast(**autocast_kwargs):
+            images: dict[str, Tensor] = pl_module.log_images(
+                batch, num_img=num_img, split=split, **self.log_func_kwargs
+            )
+
+        return images
+
     @rank_zero_only
     def log_local(
         self,
         split: str,
-        images: dict[str, np.ndarray | Tensor] = {},
-        batch: dict[str, np.ndarray | Tensor | str] = {},
+        images: LogDictType = {},
+        batch: BatchDictType = {},
         step: int = ...,
         epoch: int = ...,
         batch_idx: int = ...,
@@ -189,6 +180,9 @@ class ImageLogger(Callback):
 
         fstem = f"gs{step:06d}_e{epoch:06d}_b{batch_idx:06d}"
         title = fstem.replace("-", "").replace("_", " ").upper()
+
+        # apply range scaling and clamping to images
+        images = self.rescale_pixel_values(images)
 
         wandb_dict = {"trainer/global_step": step}
         table_dict = {}
@@ -307,34 +301,12 @@ class ImageLogger(Callback):
             if isinstance(batch[k][0], (str, np.bytes_)):
                 batch[k] = [np_text_decode(x) for x in batch[k]]
 
-        # set up autocast kwargs
-        autocast_kwargs = dict(
-            device_type="cuda",
-            enabled=self.enable_autocast,
-            dtype=torch.get_autocast_gpu_dtype(),
-            cache_enabled=torch.is_autocast_cache_enabled(),
-        )
-        # call the actual log_images method
-        with torch.inference_mode(), autocast(**autocast_kwargs):
-            images: dict[str, Tensor] = pl_module.log_images(
-                batch, num_img=self.max_images, split=split, **self.log_func_kwargs
-            )
-            if "vae" in self.ref_model_cls:
-                images = self.vae_reference_recons(images, num_img=self.max_images)
-
+        # do the actual log image generation
+        images = self.call_log_images(pl_module, batch, batch_idx, split=split, num_img=self.max_images)
         # if the model returned None, warn and return early
         if images is None:
             warn(f"{pl_module.__class__.__name__} returned None from log_images")
             return
-
-        for k in images:
-            images[k] = images[k]
-            if isinstance(images[k], Tensor):
-                images[k] = images[k].detach().float().cpu()
-                if self.clamp:
-                    images[k] = images[k].clamp(min=-1.0, max=1.0)
-                if self.rescale:
-                    images[k] = (images[k] + 1.0) / 2.0
 
         # log the images
         self.log_local(
@@ -350,95 +322,3 @@ class ImageLogger(Callback):
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, *args, **kwargs
     ):
         self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="val")
-
-    @rank_zero_only
-    def vae_reference_recons(
-        self,
-        images: dict[str, Tensor],
-        num_img: int = 1,
-        **kwargs,
-    ) -> dict[str, Tensor]:
-        if self.ref_model is None:
-            return images
-
-        inputs: Tensor = images.get("inputs")
-        recons: Tensor = images.get("recons")
-
-        with torch.inference_mode():
-            inputs = inputs.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
-            recons = recons.detach().clone().to(self.ref_model.device, self.ref_model.dtype)
-
-            # do these batch size 1 to reduce memory usage and compu
-            ref_recons = torch.empty_like(recons).to(self.ref_model.device, self.ref_model.dtype)
-            for idx, x in enumerate(inputs):
-                ref_recons[idx] = self.ref_model.forward(x.unsqueeze(0)).sample.squeeze(0)
-
-            diff_input, _ = diff_images(inputs, ref_recons, self.diff_boost)
-            diff_recons, diff_recons_boost = diff_images(recons, ref_recons, self.diff_boost)
-
-            ref_mse = F.mse_loss(ref_recons, inputs, reduction="mean") * 65025.0
-            vae_mse = F.mse_loss(recons, inputs, reduction="mean") * 65025.0
-
-            # percentage decrease in MSE from ref to student
-            pct_decrease = (vae_mse - ref_mse) / ref_mse * -1
-
-            ref_dict = {
-                "ref/recons": ref_recons,
-                "ref/diff_input": diff_input,
-                "ref/diff": diff_recons,
-                "ref/diff_boost": diff_recons_boost,
-                "ref/mse_flt": ref_mse.item(),
-                "mse_flt": vae_mse.item(),
-                "mse_rel_pct": pct_decrease.item(),
-            }
-        images.update(ref_dict)
-        return images
-
-
-@torch.compile(mode="reduce-overhead", fullgraph=True, dynamic=True)
-@torch.no_grad()
-def diff_images(
-    inputs: Tensor,
-    recons: Tensor,
-    boost: float = 3.0,
-) -> Tensor:
-    diff = torch.clamp(recons, -1.0, 1.0).sub(inputs).abs().mul(0.5)
-
-    boosted = diff.mul(boost).clamp(0.0, 1.0).mul(2.0).sub(1.0)
-    diff = diff.mul(2.0).sub(1.0)
-
-    return diff.contiguous(), boosted.contiguous()
-
-
-@torch.no_grad()
-def run_reference_vae(
-    ref_model: AutoencoderKL,
-    inputs: Tensor,
-    recons: Tensor,
-    diff_boost: float = 3.0,
-):
-    inputs = inputs.detach().clone().to(ref_model.device, ref_model.dtype)
-    recons = recons.detach().clone().to(ref_model.device, ref_model.dtype)
-
-    # do these batch size 1 to reduce memory usage and compu
-    ref_recons = torch.empty_like(recons).to(ref_model.device, ref_model.dtype)
-    for idx, x in enumerate(inputs):
-        ref_recons[idx] = ref_model.forward(x.unsqueeze(0)).sample.squeeze(0)
-
-    diff_input, _ = diff_images(inputs, ref_recons, diff_boost)
-    diff_recons, diff_recons_boost = diff_images(recons, ref_recons, diff_boost)
-    ref_mse = F.mse_loss(ref_recons, inputs, reduction="none").mean(dim=(1, 2, 3)) * 65025.0
-    vae_mse = F.mse_loss(recons, inputs, reduction="none").mean(dim=(1, 2, 3)) * 65025.0
-
-    # percentage decrease in MSE from ref to student
-    pct_decrease = (vae_mse - ref_mse) / ref_mse * -1
-
-    return {
-        "ref/recons": ref_recons,
-        "ref/diff_input": diff_input,
-        "ref/diff": diff_recons,
-        "ref/diff_boost": diff_recons_boost,
-        "ref/mse_flt": ref_mse,
-        "mse_flt": vae_mse,
-        "mse_rel_pct": pct_decrease,
-    }
