@@ -236,7 +236,7 @@ class ReferenceModelImageLogger(ImageLogger):
             f"{prefix}/recons": ref_recons,
             f"{prefix}/diff_input": diff_input,
             f"{prefix}/mse_flt": ref_mse.item(),
-            "{prefix}/diff_model": diff_ref,
+            f"{prefix}/diff_model": diff_ref,
             "diff_ref_boost": diff_ref_boost,
         }
         images.update(images_dict)
