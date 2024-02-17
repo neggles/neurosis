@@ -11,7 +11,7 @@ from torch import load as torch_load
 from .files import open_package_file
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=8)
 def get_image_font(name: str = "NotoSansMono", size: int = 10) -> ImageFont.FreeTypeFont:
     with open_package_file("fonts", f"{name}.ttf", "rb") as f:
         font = ImageFont.truetype(f, size=size)
