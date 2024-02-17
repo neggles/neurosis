@@ -61,6 +61,7 @@ class ReferenceModelImageLogger(ImageLogger):
         enable_autocast: bool = True,
         batch_size: int = 1,
         accumulate_grad_batches: int = 1,
+        label_img: bool = False,
         ref_cls: Optional[str] = None,
         ref_ckpt: Optional[str] = None,
         ref_device: str = "cpu",
@@ -84,6 +85,7 @@ class ReferenceModelImageLogger(ImageLogger):
             enable_autocast=enable_autocast,
             batch_size=batch_size,
             accumulate_grad_batches=accumulate_grad_batches,
+            label_img=label_img,
             *args,
             **kwargs,
         )

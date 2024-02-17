@@ -13,8 +13,7 @@ from PIL import Image
 from torch import Tensor
 from torch.amp.autocast_mode import autocast
 
-from neurosis.utils.image.convert import numpy_to_pil, pt_to_pil
-from neurosis.utils.image.grid import CaptionGrid
+from neurosis.utils.image import CaptionGrid, label_batch, numpy_to_pil, pt_to_pil
 from neurosis.utils.text import np_text_decode
 
 from .common import BatchDictType, LogDictType, StepType
@@ -38,6 +37,7 @@ class ImageLogger(Callback):
         enable_autocast: bool = True,
         batch_size: int = 1,
         accumulate_grad_batches: int = 1,
+        label_img: bool = False,
     ):
         super().__init__()
         self.every_n_train_steps = every_n_train_steps
@@ -47,6 +47,7 @@ class ImageLogger(Callback):
         self.clamp = clamp
         self.enable_autocast = enable_autocast
         self.enabled = not disabled
+        self.label_img = label_img
 
         if self.max_images < 1 and self.enabled:
             raise ValueError("max_images must be >= 1 if disable=False")
@@ -193,14 +194,17 @@ class ImageLogger(Callback):
 
         if "samples" in images:
             samples = pt_to_pil(images.pop("samples"), aslist=True)
+            if self.label_img:
+                samples = label_batch(samples, step, copy=True)
+
             for idx, img in enumerate(samples):
-                img.save(save_dir / f"samples_{fstem}_{idx:02d}.png")
+                img.save(save_dir / f"{fstem}_samples_{idx:02d}.png")
 
             if "caption" in batch:
                 wandb_samples = [wandb.Image(img, caption=cap) for img, cap in zip(samples, batch["caption"])]
                 try:
                     grid = self.make_caption_grid(samples, batch["caption"], title=title + " samples")
-                    grid.save(save_dir.joinpath(f"samples_{fstem}_s-grid.png"))
+                    grid.save(save_dir.joinpath(f"{fstem}_samples_grid.png"))
                     wandb_dict[f"{split}/sample_grid"] = wandb.Image(grid, caption="Sample Grid")
                 except Exception as e:
                     logger.exception("Failed to make sample grid, continuing", e)
@@ -225,8 +229,10 @@ class ImageLogger(Callback):
 
                 # we should now have a list of PIL images, so save them
                 if isinstance(val[0], Image.Image):
+                    if self.label_img:
+                        val = label_batch(val, step, copy=True)
                     for idx, img in enumerate(val):
-                        img.save(save_dir / f"{k.replace('/', '_')}_{fstem}_{idx:02d}.png")
+                        img.save(save_dir / f"{fstem}_{k.replace('/', '_')}_{idx:02d}.png")
                     add_to_both(f"{split}/{k}", [wandb.Image(x) for x in images[k]])
 
             except Exception:
@@ -243,8 +249,10 @@ class ImageLogger(Callback):
                         val = [tuple(x.cpu().tolist()) for x in val]
 
                 if isinstance(val[0], Image.Image):
+                    if self.label_img:
+                        val = label_batch(val, step, copy=True)
                     for idx, img in enumerate(val):
-                        img.save(save_dir / f"{k.replace('/', '_')}_{fstem}_{idx:02d}.png")
+                        img.save(save_dir / f"{fstem}_{k.replace('/', '_')}_{idx:02d}.png")
                     val = [wandb.Image(x) for x in val]
 
                 if isinstance(val, list):
