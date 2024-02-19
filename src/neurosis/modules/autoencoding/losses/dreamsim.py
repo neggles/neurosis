@@ -117,16 +117,16 @@ class AutoencoderDreamsim(nn.Module):
             recons = F.interpolate(recons, inputs.shape[2:], mode="bicubic", antialias=True)
 
         # do reconstruction and perceptual loss
-        if self.rescale_input:
-            inputs = inputs.clamp(-1.0, 1.0).add(1.0).div(2.0).contiguous()
-            recons = recons.clamp(-1.0, 1.0).add(1.0).div(2.0).contiguous()
-        else:
-            inputs = inputs.clamp(0.0, 1.0).contiguous()
-            recons = recons.clamp(0.0, 1.0).contiguous()
+        inputs = inputs.clamp(-1.0, 1.0).contiguous()
+        recons = recons.clamp(-1.0, 1.0).contiguous()
+        rec_loss = self.recon_loss(inputs, recons)
 
-        rec_loss = self.recon_loss(inputs, recons).mean(dim=(1, 2, 3))
+        if self.rescale_input:
+            inputs = (inputs / 2 + 0.5).clamp(0.0, 1.0)
+            recons = (recons / 2 + 0.5).clamp(0.0, 1.0)
+
         ds_inputs = torch.stack([inputs, recons], dim=0)
-        ds_loss = self.dreamsim_loss(ds_inputs.to(self.dreamsim_loss.device)).mean(dim=0)
+        ds_loss = self.dreamsim_loss(ds_inputs).sum().relu()
 
         loss = (rec_loss * self.recon_weight) + (ds_loss * self.dreamsim_weight)
 

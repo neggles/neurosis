@@ -8,7 +8,6 @@ from warnings import filterwarnings
 
 import torch
 from diffusers import AutoencoderKL
-from diffusers.models.attention_processor import AttnProcessor2_0
 from diffusers.models.autoencoders.vae import DecoderOutput
 from diffusers.models.modeling_outputs import AutoencoderKLOutput
 from lightning import pytorch as L
@@ -63,11 +62,12 @@ class DiffusersAutoencodingEngine(L.LightningModule):
             self.vae: AutoencoderKL = model
             # make sure the model is in the right mode
             self.freeze(encoder=self.only_train_decoder, decoder=False)
-            self.vae.set_attn_processor(AttnProcessor2_0())
         elif isinstance(model, (str, PathLike)):
             self._model_path = Path(model)
             self._model_kwargs = model_kwargs
-            self.vae: AutoencoderKL = None
+            self.vae = load_vae_ckpt(self._model_path, **self._model_kwargs)
+            # make sure the model is in the right mode
+            self.freeze(encoder=self.only_train_decoder, decoder=False)
         else:
             raise ValueError(f"model must be nn.Module or str, got {model}")
 
@@ -152,12 +152,12 @@ class DiffusersAutoencodingEngine(L.LightningModule):
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
         inputs: Tensor = self.get_input(batch)
 
-        recons: Tensor = self.forward(inputs).sample
+        recons: Tensor = self.forward(inputs, return_dict=False)[0]
 
         loss, log_dict = self.loss(inputs, recons, split="train", global_step=batch_idx)
 
         self.log_dict(log_dict, on_step=True, on_epoch=False)
-        return loss.mean()
+        return loss.sum()
 
     def on_train_end(self) -> None:
         if self.wandb_watch > 0:
@@ -178,7 +178,6 @@ class DiffusersAutoencodingEngine(L.LightningModule):
             self.vae = load_vae_ckpt(self._model_path, **self._model_kwargs)
             # make sure the model is in the right mode
             self.freeze(encoder=self.only_train_decoder, decoder=False)
-            self.vae.set_attn_processor(AttnProcessor2_0())
         # set up EMA
         if self.use_ema is True and self.vae_ema is None:
             self.vae_ema = LitEma(self.vae, decay=self.ema_decay, **self.ema_kwargs)

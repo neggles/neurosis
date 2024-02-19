@@ -7,6 +7,8 @@ from PIL import Image, PngImagePlugin
 from torch.utils.data import Dataset
 from torchvision.transforms import v2 as T
 
+from neurosis.dataset.utils import VAENormalize
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,6 @@ class NoBucketDataset(Dataset):
             [
                 T.ToImage(),
                 T.ToDtype(torch.float32, scale=True),
-                T.Normalize(mean=[0.5], std=[0.5]),
+                VAENormalize(),
             ]
         )
