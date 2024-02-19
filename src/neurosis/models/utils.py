@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import torch
 from diffusers import AutoencoderKL
 
 from neurosis.constants import CHECKPOINT_EXTNS
@@ -29,4 +30,4 @@ def load_vae_ckpt(
     else:
         raise ValueError(f"model path {model_path} is not a file or directory")
 
-    return load_fn(model_path, **model_kwargs)
+    return load_fn(model_path, torch_dtype=torch.float32, low_cpu_mem_usage=False, **model_kwargs)

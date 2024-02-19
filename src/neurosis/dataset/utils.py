@@ -3,9 +3,18 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageOps
+from torch import Tensor, nn
 
 from neurosis.dataset.aspect.bucket import AspectBucket
 from neurosis.utils.image import pil_ensure_rgb
+
+
+class VAENormalize(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: Tensor) -> Tensor:
+        return 2.0 * x - 1.0
 
 
 def clear_fsspec():

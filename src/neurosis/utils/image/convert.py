@@ -22,7 +22,17 @@ def numpy_to_pil(images: np.ndarray | list[np.ndarray], aslist: bool = False) ->
         # and allow a list of NHWC arrays too (as long as N=1)
         images = np.stack([x.squeeze(0) for x in images], axis=0)
 
-    images = (images * 255.0).clip(0, 255).astype("uint8")
+    if np.isnan(images).any():
+        np.save("./temp/nan_image.npy", images)
+        raise ValueError("Images must not contain NaNs")
+    if np.isinf(images).any():
+        np.save("./temp/inf_image.npy", images)
+        raise ValueError("Images must be finite")
+
+    if images.dtype != np.float32:
+        images = images.astype(np.float32)
+
+    images = (images * 255.0).clip(0, 255).astype(np.uint8)
 
     if images.shape[-1] == 1:
         # special case for grayscale (single channel) images
@@ -46,7 +56,7 @@ def pil_to_numpy(images: Image.Image | list[Image.Image]) -> np.ndarray:
     if not isinstance(images, list):
         images = [images]
 
-    images = [np.array(x) for x in images]
+    images = [np.array(x, dtype=np.uint8) for x in images]
     images = np.stack(images, axis=0).astype(np.float32) / 255.0
 
     return images.squeeze()
@@ -68,6 +78,12 @@ def numpy_to_pt(images: np.ndarray | list[np.ndarray]) -> Tensor:
         # we say you should pass in a list of HWC arrays, but we'll be nice
         # and allow a list of NHWC arrays too (as long as N=1)
         images = np.stack([x.squeeze(0) for x in images], axis=0)
+
+    if np.isnan(images).any() or np.isinf(images).any():
+        raise ValueError("Images must be finite and not contain NaNs")
+
+    if images.dtype != np.float32:
+        images = images.astype(np.float32)
 
     if len(images.shape) == 3:
         images = np.expand_dims(images, axis=0)
