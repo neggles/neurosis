@@ -157,7 +157,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         loss, log_dict = self.loss(inputs, recons, split="train", global_step=batch_idx)
 
         self.log_dict(log_dict, on_step=True, on_epoch=False)
-        return loss.sum()
+        return loss.mean()
 
     def on_train_end(self) -> None:
         if self.wandb_watch > 0:
