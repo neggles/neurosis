@@ -73,22 +73,26 @@ class AutoencoderPerceptual(nn.Module):
     def forward(
         self,
         inputs: Tensor,
-        reconstructions: Tensor,
+        recons: Tensor,
         split: str = "train",
         **kwargs,
     ) -> tuple[Tensor, dict]:
         if self.scale_input_to_target:
-            inputs = F.interpolate(inputs, reconstructions.shape[2:], mode="bicubic", antialias=True)
+            inputs = F.interpolate(inputs, recons.shape[2:], mode="bicubic", antialias=True)
         if self.scale_target_to_input:
-            reconstructions = F.interpolate(reconstructions, inputs.shape[2:], mode="bicubic", antialias=True)
+            recons = F.interpolate(recons, inputs.shape[2:], mode="bicubic", antialias=True)
 
         # do reconstruction and perceptual loss
         inputs = inputs.clamp(-1.0, 1.0).contiguous()
-        reconstructions = reconstructions.clamp(-1.0, 1.0).contiguous()
+        recons = recons.clamp(-1.0, 1.0).contiguous()
 
-        rec_loss = self.recon_loss(inputs, reconstructions)
-        p_loss = self.perceptual_loss(inputs, reconstructions).relu()
-        loss = (rec_loss * self.recon_weight) + (p_loss * self.perceptual_weight)
+        rec_loss = self.recon_loss(inputs, recons)
+        rec_loss = rec_loss * self.recon_weight
+
+        p_loss = self.perceptual_loss(inputs, recons).relu()
+        p_loss = p_loss * self.perceptual_weight
+
+        loss = rec_loss + p_loss
 
         log_loss = loss.detach().clone().mean()
         log_rec_loss = rec_loss.detach().mean()
@@ -175,7 +179,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
     def log_images(
         self,
         inputs: Tensor,
-        reconstructions: Tensor,
+        recons: Tensor,
         **kwargs,
     ) -> dict[str, Tensor]:
         if self.disc_start < 0 or self.disc_factor == 0:
@@ -186,7 +190,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         if len(logits_real.shape) < 4:
             # Non patch-discriminator
             return dict()
-        logits_fake = self.discr(reconstructions.contiguous().detach())
+        logits_fake = self.discr(recons.contiguous().detach())
         # -> (b, 1, h, w)
 
         # parameters for colormapping
@@ -209,7 +213,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         )
         logits_fake = torch.nn.functional.interpolate(
             logits_fake,
-            size=reconstructions.shape[-2:],
+            size=recons.shape[-2:],
             mode="nearest",
             antialias=False,
         )
@@ -241,7 +245,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         # -> (3, h, w)
 
         grid_images_real = make_grid(0.5 * inputs + 0.5, nrow=4)
-        grid_images_fake = make_grid(0.5 * reconstructions + 0.5, nrow=4)
+        grid_images_fake = make_grid(0.5 * recons + 0.5, nrow=4)
         grid_images = torch.cat((grid_images_real, grid_images_fake), dim=1)
         # -> (3, h, w) in range [0, 1]
 
@@ -290,23 +294,23 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
     def forward(
         self,
         inputs: Tensor,
-        reconstructions: Tensor,
+        recons: Tensor,
         global_step: int,
         optimizer_idx: int = 0,
         split: str = "train",
     ) -> tuple[Tensor, dict]:
         if self.scale_input_to_target:
-            inputs = F.interpolate(inputs, reconstructions.shape[2:], mode="bicubic", antialias=True)
+            inputs = F.interpolate(inputs, recons.shape[2:], mode="bicubic", antialias=True)
         if self.scale_target_to_input:
-            reconstructions = F.interpolate(reconstructions, inputs.shape[2:], mode="bicubic", antialias=True)
+            recons = F.interpolate(recons, inputs.shape[2:], mode="bicubic", antialias=True)
 
         # do reconstruction and perceptual loss
         inputs = inputs.clamp(-1.0, 1.0).contiguous()
-        reconstructions = reconstructions.clamp(-1.0, 1.0).contiguous()
+        recons = recons.clamp(-1.0, 1.0).contiguous()
 
-        rec_loss = self.recon_loss(inputs, reconstructions)
+        rec_loss = self.recon_loss(inputs, recons)
         if self.perceptual_weight > 0:
-            p_loss = self.perceptual_loss(inputs, reconstructions)
+            p_loss = self.perceptual_loss(inputs, recons)
             p_loss = F.relu(p_loss)
             p_rec_loss = (rec_loss * self.recon_weight) + (p_loss * self.perceptual_weight)
         else:
@@ -318,7 +322,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
             # update the generator
             if (global_step >= self.disc_start) or (self.training is False):
                 r1_penalty = self.calc_r1_penalty(inputs)
-                logits_fake: Tensor = self.discr(reconstructions.contiguous())
+                logits_fake: Tensor = self.discr(recons.contiguous())
                 g_loss = logits_fake.mean().neg() + r1_penalty
             else:
                 r1_penalty = torch.tensor(0.0, requires_grad=True)
@@ -340,7 +344,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         elif optimizer_idx == 1:
             # second pass for discriminator update
             logits_real = self.discr(inputs.contiguous().detach())
-            logits_fake = self.discr(reconstructions.contiguous().detach())
+            logits_fake = self.discr(recons.contiguous().detach())
 
             if (global_step >= self.disc_start) or (self.training is False):
                 d_loss = self.disc_factor * self.discr_loss(logits_real, logits_fake)

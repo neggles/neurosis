@@ -119,6 +119,7 @@ class AutoencoderDreamsim(nn.Module):
         # do reconstruction and perceptual loss
         inputs = inputs.clamp(-1.0, 1.0).contiguous()
         recons = recons.clamp(-1.0, 1.0).contiguous()
+
         rec_loss = self.recon_loss(inputs, recons)
         rec_loss = rec_loss * self.recon_weight
 
