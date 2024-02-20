@@ -30,9 +30,9 @@ class DreamsimBackbone(ModelMixin, ConfigMixin):
 
         return 1 - F.cosine_similarity(x[0], x[1], dim=1)
 
-    def compile(self, *args, **kwargs):
+    def compile(self, *, mode: str = "reduce-overhead", force: bool = False, **kwargs):
         """Compile the model with Inductor. This is a no-op unless overridden by a subclass."""
-        return self
+        return super().compile(mode=mode, **kwargs)
 
 
 class DreamsimModel(DreamsimBackbone):
@@ -75,11 +75,12 @@ class DreamsimModel(DreamsimBackbone):
         )
         self.img_norm = T.Normalize(mean=self.img_mean, std=self.img_std)
 
+        self._compiled = False
+
     def compile(self, *, mode: str = "reduce-overhead", force: bool = False, **kwargs):
         if (not self._compiled) or force:
-            self.extractor = torch.compile(self.extractor, mode=mode, **kwargs)
+            self.extractor.compile(mode=mode, **kwargs)
             self._compiled = True
-        return self
 
     def transforms(self, x: Tensor) -> Tensor:
         if self.do_resize:
@@ -160,11 +161,10 @@ class DreamsimEnsemble(DreamsimBackbone):
 
     def compile(self, *, mode: str = "reduce-overhead", force: bool = False, **kwargs):
         if (not self._compiled) or force:
-            self.dino = torch.compile(self.dino, mode=mode, **kwargs)
-            self.clip1 = torch.compile(self.clip1, mode=mode, **kwargs)
-            self.clip2 = torch.compile(self.clip2, mode=mode, **kwargs)
+            self.dino.compile(mode=mode, **kwargs)
+            self.clip1.compile(mode=mode, **kwargs)
+            self.clip2.compile(mode=mode, **kwargs)
             self._compiled = True
-        return self
 
     def transforms(self, x: Tensor, resize: bool = False) -> tuple[Tensor, Tensor, Tensor]:
         if resize:
