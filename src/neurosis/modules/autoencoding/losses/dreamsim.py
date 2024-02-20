@@ -120,6 +120,7 @@ class AutoencoderDreamsim(nn.Module):
         inputs = inputs.clamp(-1.0, 1.0).contiguous()
         recons = recons.clamp(-1.0, 1.0).contiguous()
         rec_loss = self.recon_loss(inputs, recons)
+        rec_loss = rec_loss * self.recon_weight
 
         if self.rescale_input:
             inputs = (inputs / 2 + 0.5).clamp(0.0, 1.0)
@@ -127,8 +128,9 @@ class AutoencoderDreamsim(nn.Module):
 
         ds_inputs = torch.stack([inputs, recons], dim=0)
         ds_loss = self.dreamsim_loss(ds_inputs).sum().relu()
+        ds_loss = ds_loss * self.dreamsim_weight
 
-        loss = (rec_loss * self.recon_weight) + (ds_loss * self.dreamsim_weight)
+        loss = rec_loss + ds_loss
 
         log_loss = loss.detach().clone().mean()
         log_rec_loss = rec_loss.detach().mean()
