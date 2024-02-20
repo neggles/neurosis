@@ -25,15 +25,17 @@ logger = logging.getLogger(__name__)
 class AutoencoderPerceptual(nn.Module):
     def __init__(
         self,
-        recon_type: GenericLoss | str = GenericLoss.L1,
-        recon_weight: float = 1.0,
         perceptual_type: PerceptualLoss | str = PerceptualLoss.LPIPS,
         perceptual_weight: float = 1.0,
         lpips_type: str = "alex",
+        recon_type: GenericLoss | str = GenericLoss.L1,
+        recon_weight: float = 1.0,
         resize_input: bool = False,
         resize_target: bool = False,
         loss_ema_steps: int = 64,
         extra_log_keys: list[str] = [],
+        delay_setup: bool = False,
+        compile: bool = False,
     ):
         super().__init__()
         # set up reconstruction loss
@@ -50,14 +52,15 @@ class AutoencoderPerceptual(nn.Module):
         # validate the resize options (not likely to be used anyway)
         if resize_input and resize_target:
             raise ValueError("Only one of resize_input and resize_target can be True")
-        self.scale_input_to_target = resize_input
-        self.scale_target_to_input = resize_target
+        self.resize_input_to_target = resize_input
+        self.resize_target_to_input = resize_target
 
         # set up perceptual loss
         self.perceptual_type = PerceptualLoss(perceptual_type.lower())
         if self.perceptual_type != PerceptualLoss.LPIPS:
             raise NotImplementedError(f"Perceptual loss {perceptual_type} not implemented")
-        self.perceptual_loss = LPIPS(pnet_type=lpips_type).eval()
+        self._lpips_type = lpips_type
+        self.perceptual_loss: LPIPS = None
         self.perceptual_weight = perceptual_weight
 
         # set up EMA loss tracking if desired
@@ -69,6 +72,27 @@ class AutoencoderPerceptual(nn.Module):
         self.forward_keys = ["split"]
         # extra log keys
         self.extra_log_keys = set(extra_log_keys)
+        # whether to try TorchInductor compilation (fraught with peril)
+        self._compile = compile
+
+        if delay_setup:
+            logger.info("Delaying Dreamsim model loading until configure_model() call")
+        else:
+            self.configure_model()
+
+    @property
+    def device(self):
+        return self.parameters().__next__().device
+
+    @property
+    def dtype(self):
+        return self.parameters().__next__().dtype
+
+    def configure_model(self) -> None:
+        if self.perceptual_loss is None:
+            self.perceptual_loss: LPIPS = LPIPS(pnet_type=self._lpips_type).eval()
+        if self._compile and hasattr(self.perceptual_loss, "compile"):
+            self.perceptual_loss.compile()
 
     def forward(
         self,
@@ -77,9 +101,9 @@ class AutoencoderPerceptual(nn.Module):
         split: str = "train",
         **kwargs,
     ) -> tuple[Tensor, dict]:
-        if self.scale_input_to_target:
+        if self.resize_input_to_target:
             inputs = F.interpolate(inputs, recons.shape[2:], mode="bicubic", antialias=True)
-        if self.scale_target_to_input:
+        if self.resize_target_to_input:
             recons = F.interpolate(recons, inputs.shape[2:], mode="bicubic", antialias=True)
 
         # do reconstruction and perceptual loss
@@ -161,8 +185,8 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
 
         if resize_input and resize_target:
             raise ValueError("Only one of resize_input and resize_target can be True")
-        self.scale_input_to_target = resize_input
-        self.scale_target_to_input = resize_target
+        self.resize_input_to_target = resize_input
+        self.resize_target_to_input = resize_target
 
         self.forward_keys = [
             "global_step",
@@ -299,9 +323,9 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         optimizer_idx: int = 0,
         split: str = "train",
     ) -> tuple[Tensor, dict]:
-        if self.scale_input_to_target:
+        if self.resize_input_to_target:
             inputs = F.interpolate(inputs, recons.shape[2:], mode="bicubic", antialias=True)
-        if self.scale_target_to_input:
+        if self.resize_target_to_input:
             recons = F.interpolate(recons, inputs.shape[2:], mode="bicubic", antialias=True)
 
         # do reconstruction and perceptual loss
