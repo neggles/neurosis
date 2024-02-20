@@ -74,11 +74,11 @@ class AutoencoderDreamsim(nn.Module):
 
     @property
     def device(self):
-        return self.dreamsim_loss.device
+        return self.parameters().__next__().device
 
     @property
     def dtype(self):
-        return self.dreamsim_loss.dtype
+        return self.parameters().__next__().dtype
 
     def configure_model(self) -> None:
         if self.dreamsim_loss is not None:
