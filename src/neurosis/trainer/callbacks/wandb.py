@@ -29,4 +29,6 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
                 logger.exception("Failed to log hyperparameters to wandb as dict, logging as str")
                 trainer.logger.log_hyperparams({"config": config})
 
+            run.log_code(root=Path.cwd().joinpath("src"))
+
         return super().save_config(trainer, pl_module, stage)
