@@ -120,7 +120,6 @@ class AutoencoderDreamsim(nn.Module):
         inputs = inputs.clamp(-1.0, 1.0).contiguous()
         recons = recons.clamp(-1.0, 1.0).contiguous()
         rec_loss = self.recon_loss(inputs, recons)
-        rec_loss = rec_loss.mean(dim=(1, 2, 3)).sum().relu()
 
         if self.rescale_input:
             inputs = (inputs / 2 + 0.5).clamp(0.0, 1.0)
