@@ -49,7 +49,7 @@ class GPUMemoryUsage(Callback):
         self.device = device
 
         if self.device.type == "cuda":
-            self.device_props: "_CudaDeviceProperties" = torch.cuda.get_device_properties(self.device)
+            self.device_props: "_CudaDeviceProperties" = torch.cuda.get_device_properties(self.device)  # type: ignore
             self.total_memory = self.device_props.total_memory
         else:
             self.device_props = {}
