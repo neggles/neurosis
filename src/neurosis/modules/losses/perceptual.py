@@ -141,6 +141,14 @@ class LPIPS(nn.Module):
         if freeze:
             self.requires_grad_(False)
 
+    @property
+    def device(self):
+        return self.parameters().__next__().device
+
+    @property
+    def dtype(self):
+        return self.parameters().__next__().dtype
+
     def _load_pretrained(self, name: str):
         with lpips_checkpoint(name) as state_dict:
             self.load_state_dict(state_dict, strict=False)
