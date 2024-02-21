@@ -21,7 +21,7 @@ Major changes from `generative-models` include:
   - Use of PyTorch Lightning's `Trainer` class for training
   - Support for multiple GPUs (and multiple nodes, if you're into that)
   - Support for individual learning rates for the UNet and for each TE module
-  - VAE training support![^1]
+  - VAE training support! (kinda! discriminators are iffy but it works mostly)
 - Module changes:
   - Rework of the `ImageLogger` to... sorta kinda work?
   - Adding support for `Adafactor` scheduler as well as the usual BitsAndBytes etc. ones
@@ -34,10 +34,9 @@ Major changes from `generative-models` include:
   - Shiny new ImageFolder datasets in "square", "square with captions", and "aspect-bucketed with captions" flavors
   - Support for custom datasets (see `neurosis/dataset/` for examples)
   - Funny hybrid mongo+s3 dataset we're using for large-scale training (stop judging me, it works)
-  - Support for custom data transform functions injected into the dataset pipeline[^2]
+  - Support for custom data transform functions injected into the dataset pipeline[^1]
 
-[^1]: well okay no VAE training just yet but soon:tm: it just needs testing
-[^2]: completely untested and not entirely pushed to public yet sry
+[^1]: completely untested and not entirely pushed to public yet sry
 
 ## Installation
 
