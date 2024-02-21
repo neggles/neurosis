@@ -144,9 +144,9 @@ class AutoencoderDreamsim(nn.Module):
         log_dict = {
             f"{split}/loss/total": log_loss,
             f"{split}/loss/rec": log_rec_loss,
-            f"{split}/loss/ds": log_ds_loss,
+            f"{split}/loss/p": log_ds_loss,
             f"{split}/loss/total_ema": self.t_ema.value,
             f"{split}/loss/rec_ema": self.r_ema.value,
-            f"{split}/loss/ds_ema": self.ds_ema.value,
+            f"{split}/loss/p_ema": self.ds_ema.value,
         }
         return loss, log_dict
