@@ -101,8 +101,8 @@ class AutoencoderDreamsim(nn.Module):
             ).eval()
 
         self.dreamsim_loss = self.dreamsim_loss.requires_grad_(False)
-        if self.dreamsim_compile and hasattr(self.dreamsim_loss, "compile"):
-            self.dreamsim_loss.compile()
+        if self.dreamsim_compile:
+            self.dreamsim_loss = torch.compile(self.dreamsim_loss, dynamic=True, mode="reduce-overhead")
 
     def forward(
         self,
