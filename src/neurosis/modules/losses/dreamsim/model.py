@@ -30,10 +30,6 @@ class DreamsimBackbone(ModelMixin, ConfigMixin):
 
         return 1 - F.cosine_similarity(x[0], x[1], dim=1)
 
-    def compile(self, *, mode: str = "reduce-overhead", force: bool = False, **kwargs):
-        """Compile the model with Inductor. This is a no-op unless overridden by a subclass."""
-        return super().compile(mode=mode, **kwargs)
-
 
 class DreamsimModel(DreamsimBackbone):
     @register_to_config
@@ -77,11 +73,6 @@ class DreamsimModel(DreamsimBackbone):
 
         self._compiled = False
 
-    def compile(self, *, mode: str = "reduce-overhead", force: bool = False, **kwargs):
-        if (not self._compiled) or force:
-            self.extractor.compile(mode=mode, **kwargs)
-            self._compiled = True
-
     def transforms(self, x: Tensor) -> Tensor:
         if self.do_resize:
             x = self.resize(x)
@@ -91,7 +82,7 @@ class DreamsimModel(DreamsimBackbone):
         if x.ndim == 3:
             x = x.unsqueeze(0)
         x = self.transforms(x)
-        x = self.extractor.forward(x, norm=self.pre_norm)
+        x = self.extractor(x, norm=self.pre_norm)
 
         x = x.div(x.norm(dim=1, keepdim=True))
         x = x.sub(x.mean(dim=1, keepdim=True))
@@ -159,13 +150,6 @@ class DreamsimEnsemble(DreamsimBackbone):
 
         self._compiled = False
 
-    def compile(self, *, mode: str = "reduce-overhead", force: bool = False, **kwargs):
-        if (not self._compiled) or force:
-            self.dino.compile(mode=mode, **kwargs)
-            self.clip1.compile(mode=mode, **kwargs)
-            self.clip2.compile(mode=mode, **kwargs)
-            self._compiled = True
-
     def transforms(self, x: Tensor, resize: bool = False) -> tuple[Tensor, Tensor, Tensor]:
         if resize:
             x = self.resize(x)
@@ -178,9 +162,9 @@ class DreamsimEnsemble(DreamsimBackbone):
         x_dino, x_clip1, x_clip2 = self.transforms(x, self.do_resize)
 
         # these expect to always receive a batch, and will return a batch
-        x_dino = self.dino.forward(x_dino, norm=False)
-        x_clip1 = self.clip1.forward(x_clip1, norm=True)
-        x_clip2 = self.clip2.forward(x_clip2, norm=True)
+        x_dino = self.dino(x_dino, norm=False)
+        x_clip1 = self.clip1(x_clip1, norm=True)
+        x_clip2 = self.clip2(x_clip2, norm=True)
 
         z: Tensor = torch.cat([x_dino, x_clip1, x_clip2], dim=1)
         z = z.div(z.norm(dim=1, keepdim=True))

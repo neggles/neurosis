@@ -142,7 +142,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         return_dict: bool = True,
         generator: Optional[Generator] = None,
     ) -> DecoderOutput | Tensor:
-        return self.vae.forward(sample, sample_posterior, return_dict, generator)
+        return self.vae(sample, sample_posterior, return_dict, generator)
 
     def on_train_start(self):
         if self.wandb_watch > 0:
