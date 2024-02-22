@@ -39,6 +39,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         ema_steps: int = -1,
         ema_kwargs: dict = {},
         ignore_keys: list[str] = [],
+        compile_vae: bool = False,
         **model_kwargs,
     ):
         super().__init__()
@@ -76,6 +77,9 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         self.ema_kwargs = ema_kwargs
         self.use_ema = self.ema_decay is not None
         self.vae_ema: LitEma = None  # set up in configure_model
+
+        self.compile_vae = compile_vae
+        self.__compile_done = False
 
         self.save_hyperparameters(ignore=["model", "optimizer", "scheduler", "loss"] + ignore_keys)
 
@@ -186,6 +190,13 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         # call configure_model() on loss if it exists
         if hasattr(self.loss, "configure_model"):
             self.loss.configure_model()
+
+        if self.compile_vae and not self.__compile_done:
+            import torch._dynamo
+
+            torch._dynamo.config.suppress_errors = True
+            self.vae = torch.compile(self.vae, dynamic=True, mode="reduce-overhead")
+            self.__compile_done = True
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         encoder_params = {

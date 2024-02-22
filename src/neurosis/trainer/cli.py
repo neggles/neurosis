@@ -56,6 +56,11 @@ class DiffusionTrainerCli(LightningCLI):
             nested_key="image_logger",
             required=False,
         )
+        # parser.add_instantiator(
+        #     instantiate_compile_class,
+        #     class_type=lightning.LightningModule,
+        #     subclasses=True,
+        # )
 
 
 @train_app.command(add_help_option=False)
@@ -66,7 +71,7 @@ def main(
     ] = None,
 ):
     """
-    Main entrypoint for training Stable Diffusion models.
+    Main entrypoint for training models.
     """
     logger.info(f"neurosis v{__version__} training script running!")
     logger.debug(f"PyTorch {torch.__version__}, Lightning {lightning.__version__}")
@@ -79,7 +84,11 @@ def main(
         logger.info("Enabling TensorFloat32 in cuDNN library")
         torch.backends.cudnn.allow_tf32 = True
 
-    torch.set_float32_matmul_precision("high")  # it whines if we don't do this
+    if hasattr(torch, "cuda") and torch.cuda.is_available():
+        logger.info("Enabling TensorFloat32 in CUDA library")
+        torch.backends.cuda.matmul.allow_tf32 = True
+
+    torch.set_float32_matmul_precision("high")  # enables tf32 stuff
 
     if hasattr(args, "trainer") and hasattr(args.trainer, "default_root_dir"):
         Path(args.trainer.default_root_dir).mkdir(exist_ok=True, parents=True)
