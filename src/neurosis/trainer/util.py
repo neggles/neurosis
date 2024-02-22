@@ -1,13 +1,25 @@
 import logging
 from inspect import Parameter, signature
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Type
 
+import lightning.pytorch as L
+import torch
 from lightning.pytorch import Trainer
 from natsort import natsorted
 from packaging.version import Version
 
 logger = logging.getLogger(__name__)
+
+
+def instantiate_compile_class(class_type: Type[L.LightningModule], *args, **kwargs) -> L.LightningModule:
+    compile_kwargs = kwargs.pop("compile_kwargs", None)
+
+    module = class_type(*args, **kwargs)
+    if compile_kwargs is not None:
+        logger.info(f"Compiling module {module} with TorchDynamo...")
+        module = torch.compile(module, **compile_kwargs)
+    return module
 
 
 class EMATracker:
