@@ -209,6 +209,9 @@ class ImageLogger(Callback):
                 if isinstance(val, (int, float)):
                     wandb_dict[f"{split}/{k}"] = val
                     continue
+                if isinstance(val, Tensor) and val.ndim == 0:
+                    wandb_dict[f"{split}/{k}"] = val.item()
+                    continue
 
                 # cast images to PIL if they're not already
                 if isinstance(val[0], Tensor):
