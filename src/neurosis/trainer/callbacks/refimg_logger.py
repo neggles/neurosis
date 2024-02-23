@@ -178,7 +178,7 @@ class ReferenceModelImageLogger(ImageLogger):
         log_dict = self.call_log_images(
             pl_module,
             batch={pl_module.input_key: inputs.detach().to(pl_module.device, pl_module.dtype)},
-            split=split,
+            split="static",
             num_img=len(inputs),
         )
 
@@ -192,6 +192,7 @@ class ReferenceModelImageLogger(ImageLogger):
         # percentage decrease in MSE from ref to student
         pct_decrease = (vae_mse - ref_mse) / ref_mse * -1
 
+        # diff images against ref reconstructions
         diff_ref, diff_ref_boost = diff_images(self.ref_data.recons, recons, self.diff_boost)
 
         images_dict = {
@@ -204,6 +205,9 @@ class ReferenceModelImageLogger(ImageLogger):
             "static/mse_flt": vae_mse.item(),
             "static/mse_pct": pct_decrease.item(),
         }
+        images_dict.update(
+            {f"static/{k.rsplit('/', 1)[-1]}": v.cpu() for k, v in log_dict.items() if "/loss" in k}
+        )
         images.update(images_dict)
         return images
 

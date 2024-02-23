@@ -11,7 +11,6 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.utilities import rank_zero_only
 from PIL import Image
 from torch import Tensor
-from torch.amp.autocast_mode import autocast
 
 from neurosis.utils.image import CaptionGrid, label_batch, numpy_to_pil, pt_to_pil
 from neurosis.utils.text import np_text_decode
@@ -142,6 +141,7 @@ class ImageLogger(Callback):
         return images
 
     @rank_zero_only
+    @torch.no_grad()
     def call_log_images(
         self,
         pl_module: LightningModule,
@@ -150,19 +150,9 @@ class ImageLogger(Callback):
         split: str = "train",
         num_img: int = 4,
     ) -> LogDictType:
-        # set up autocast kwargs
-        autocast_kwargs = dict(
-            device_type="cuda",
-            enabled=self.enable_autocast,
-            dtype=torch.get_autocast_gpu_dtype(),
-            cache_enabled=torch.is_autocast_cache_enabled(),
+        images: dict[str, Tensor] = pl_module.log_images(
+            batch, num_img=num_img, split=split, **self.log_func_kwargs
         )
-        # call the actual log_images method
-        with autocast(**autocast_kwargs):
-            images: dict[str, Tensor] = pl_module.log_images(
-                batch, num_img=num_img, split=split, **self.log_func_kwargs
-            )
-
         return images
 
     @rank_zero_only

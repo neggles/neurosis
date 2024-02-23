@@ -227,6 +227,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         self,
         batch: dict,
         num_img: int = 1,
+        split: str = "train",
         **kwargs,
     ) -> dict:
         inputs: Tensor = self.get_input(batch)[:num_img]
@@ -242,7 +243,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         }
 
         if hasattr(self.loss, "log_images"):
-            loss_log = self.loss.log_images(inputs, recons, **kwargs)
+            loss_log = self.loss.log_images(inputs, recons, split=split, **kwargs)
             log_dict.update(loss_log)
 
         return log_dict

@@ -3,6 +3,7 @@ from os import PathLike
 from pathlib import Path
 
 import torch
+from lightning.pytorch.utilities import rank_zero_only
 from torch import Tensor, nn
 from torch.nn import functional as F
 
@@ -137,16 +138,37 @@ class AutoencoderDreamsim(nn.Module):
         log_rec_loss = rec_loss.detach().mean()
         log_ds_loss = ds_loss.detach().mean()
 
-        self.t_ema.update(log_loss.item())
-        self.r_ema.update(log_rec_loss.item())
-        self.ds_ema.update(log_ds_loss.item())
-
         log_dict = {
             f"{split}/loss/total": log_loss,
             f"{split}/loss/rec": log_rec_loss,
             f"{split}/loss/p": log_ds_loss,
-            f"{split}/loss/total_ema": self.t_ema.value,
-            f"{split}/loss/rec_ema": self.r_ema.value,
-            f"{split}/loss/p_ema": self.ds_ema.value,
         }
+
+        if split == "train":
+            self.t_ema.update(log_loss.item())
+            self.r_ema.update(log_rec_loss.item())
+            self.ds_ema.update(log_ds_loss.item())
+            log_dict.update(
+                {
+                    f"{split}/loss/total_ema": self.t_ema.value,
+                    f"{split}/loss/rec_ema": self.r_ema.value,
+                    f"{split}/loss/p_ema": self.ds_ema.value,
+                }
+            )
+
         return loss, log_dict
+
+    @rank_zero_only
+    @torch.no_grad()
+    def log_images(
+        self,
+        inputs: Tensor,
+        recons: Tensor,
+        split: str = "train",
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        _, log_dict = self.forward(inputs=inputs, recons=recons, split=split, **kwargs)
+
+        log_dict = {k.replace("loss/", "loss_", 1): v for k, v in log_dict.items()}
+
+        return log_dict
