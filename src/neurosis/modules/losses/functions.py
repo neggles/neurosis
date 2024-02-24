@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
@@ -58,3 +60,67 @@ def get_discr_loss_fn(
             return VanillaDiscLoss(weight, start_step)
         case _:
             raise ValueError(f"Unknown discriminator loss: {kind}")
+
+
+class BatchL1Loss(nn.Module):
+    reduction: str
+    __constants__ = ["reduction"]
+
+    def __init__(self, reduction: str = "mean"):
+        super().__init__()
+        if reduction not in ("none", "mean", "sum"):
+            raise ValueError(f"Unknown reduction mode: {reduction}")
+
+        self.reduction = reduction
+        self.loss_fn = torch.vmap(F.l1_loss, in_dims=0, out_dims=0, randomness="same")
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return self.loss_fn(input, target, reduction=self.reduction)
+
+
+class BatchMSELoss(nn.Module):
+    reduction: str
+    __constants__ = ["reduction"]
+
+    def __init__(self, reduction: str = "mean"):
+        super().__init__()
+        if reduction not in ("none", "mean", "sum"):
+            raise ValueError(f"Unknown reduction mode: {reduction}")
+
+        self.reduction = reduction
+        self.loss_fn = torch.vmap(F.mse_loss, in_dims=0, out_dims=0, randomness="same")
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return self.loss_fn(input, target, reduction=self.reduction)
+
+
+class BatchNLLLoss(nn.Module):
+    ignore_index: int
+    reduction: str
+    __constants__ = ["ignore_index", "reduction"]
+
+    def __init__(
+        self,
+        weight: Optional[Tensor] = None,
+        ignore_index: int = -100,
+        reduction: str = "mean",
+    ):
+        super().__init__()
+        if reduction not in ("none", "mean", "sum"):
+            raise ValueError(f"Unknown reduction mode: {reduction}")
+
+        self.register_buffer("weight", weight)
+        self.weight: Optional[Tensor]
+
+        self.reduction = reduction
+        self.ignore_index = ignore_index
+        self.loss_fn = torch.vmap(F.nll_loss, in_dims=0, out_dims=0, randomness="same")
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return self.loss_fn(
+            input,
+            target,
+            weight=self.weight,
+            ignore_index=self.ignore_index,
+            reduction=self.reduction,
+        )
