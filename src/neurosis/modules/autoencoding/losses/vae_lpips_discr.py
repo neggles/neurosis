@@ -13,7 +13,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from torchvision.utils import make_grid
 
-from neurosis.modules.losses.functions import get_discr_loss_fn
+from neurosis.modules.losses.functions import BatchL1Loss, BatchMSELoss, get_discr_loss_fn
 from neurosis.modules.losses.patchgan import NLayerDiscriminator, weights_init
 from neurosis.modules.losses.perceptual import LPIPS
 from neurosis.modules.losses.types import DiscriminatorLoss, GenericLoss, PerceptualLoss
@@ -42,9 +42,9 @@ class AutoencoderPerceptual(nn.Module):
         self.recon_type = recon_type
         match self.recon_type:
             case GenericLoss.L1:
-                self.recon_loss = nn.L1Loss(reduction="none")
+                self.recon_loss = BatchL1Loss(reduction="mean")
             case GenericLoss.L2 | GenericLoss.MSE:
-                self.recon_loss = nn.MSELoss(reduction="none")
+                self.recon_loss = BatchMSELoss(reduction="mean")
             case _:
                 raise ValueError(f"Unknown reconstruction loss type {self.recon_type}")
         self.recon_weight = recon_weight
