@@ -93,7 +93,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
     def log_images(
         self,
         inputs: Tensor,
-        reconstructions: Tensor,
+        recons: Tensor,
         split: str = "train",
         **kwargs,
     ) -> dict[str, Tensor]:
@@ -102,7 +102,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         if len(logits_real.shape) < 4:
             # Non patch-discriminator
             return dict()
-        logits_fake = self.discriminator(reconstructions.contiguous().detach())
+        logits_fake = self.discriminator(recons.contiguous().detach())
         # -> (b, 1, h, w)
 
         # parameters for colormapping
@@ -125,7 +125,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         )
         logits_fake = torch.nn.functional.interpolate(
             logits_fake,
-            size=reconstructions.shape[-2:],
+            size=recons.shape[-2:],
             mode="nearest",
             antialias=False,
         )
@@ -157,7 +157,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         # -> (3, h, w)
 
         grid_images_real = make_grid(0.5 * inputs + 0.5, nrow=4)
-        grid_images_fake = make_grid(0.5 * reconstructions + 0.5, nrow=4)
+        grid_images_fake = make_grid(0.5 * recons + 0.5, nrow=4)
         grid_images = torch.cat((grid_images_real, grid_images_fake), dim=1)
         # -> (3, h, w) in range [0, 1]
 
@@ -229,7 +229,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
     def forward(
         self,
         inputs: Tensor,
-        reconstructions: Tensor,
+        recons: Tensor,
         global_step: int,
         regularization_log: dict = {},
         optimizer_idx: int = 0,
@@ -238,23 +238,23 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         weights: Optional[Tensor] = None,
     ) -> tuple[Tensor, dict]:
         if self.scale_input_to_tgt_size:
-            inputs = F.interpolate(inputs, reconstructions.shape[2:], mode="bicubic", antialias=True)
+            inputs = F.interpolate(inputs, recons.shape[2:], mode="bicubic", antialias=True)
 
         if self.dims > 2:
-            inputs, reconstructions = map(
+            inputs, recons = map(
                 lambda x: rearrange(x, "b c t h w -> (b t) c h w"),
-                (inputs, reconstructions),
+                (inputs, recons),
             )
 
         if self.rec_loss_type == "l1":
-            rec_loss = F.l1_loss(inputs.contiguous(), reconstructions.contiguous(), reduction="none")
+            rec_loss = F.l1_loss(inputs.contiguous(), recons.contiguous(), reduction="none")
         elif self.rec_loss_type == "l2":
-            rec_loss = F.mse_loss(inputs.contiguous(), reconstructions.contiguous(), reduction="none")
+            rec_loss = F.mse_loss(inputs.contiguous(), recons.contiguous(), reduction="none")
         else:
             raise ValueError(f"Unknown rec_loss_type {self.rec_loss_type}")
 
         if self.perceptual_weight > 0:
-            p_loss = self.perceptual_loss(inputs.contiguous(), reconstructions.contiguous())
+            p_loss = self.perceptual_loss(inputs.contiguous(), recons.contiguous())
             p_rec_loss = (rec_loss * self.rec_weight) + (self.perceptual_weight * p_loss)
         else:
             p_loss = torch.tensor(0.0, requires_grad=True)
@@ -266,7 +266,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         if optimizer_idx == 0:
             # generator update
             if (not self.training) or global_step >= self.disc_start:
-                logits_fake = self.discriminator(reconstructions.contiguous())
+                logits_fake = self.discriminator(recons.contiguous())
                 g_loss = -torch.mean(logits_fake)
                 if self.training:
                     d_weight = self.calculate_adaptive_weight(nll_loss, g_loss, last_layer=last_layer)
@@ -305,7 +305,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         elif optimizer_idx == 1:
             # second pass for discriminator update
             logits_real = self.discriminator(inputs.contiguous().detach())
-            logits_fake = self.discriminator(reconstructions.contiguous().detach())
+            logits_fake = self.discriminator(recons.contiguous().detach())
 
             if (not self.training) or global_step >= self.disc_start:
                 d_loss = self.disc_factor * self.disc_loss(logits_real, logits_fake)
