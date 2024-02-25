@@ -377,12 +377,17 @@ class AutoencodingEngine(AbstractAutoencoder):
         return opts
 
     @torch.no_grad()
-    def log_images(self, batch: dict, additional_log_kwargs: Optional[dict] = None, **kwargs) -> dict:
-        additional_decode_kwargs = {}
-        x = self.get_input(batch)
-        additional_decode_kwargs.update(
-            {key: batch[key] for key in self.additional_decode_keys.intersection(batch)}
-        )
+    def log_images(
+        self,
+        batch: dict,
+        num_img: int = 1,
+        additional_log_kwargs: Optional[dict] = None,
+        **kwargs,
+    ) -> dict[str, Tensor]:
+        x = self.get_input(batch)[:num_img]
+        additional_decode_kwargs = {
+            key: batch[key] for key in self.additional_decode_keys.intersection(batch)
+        }
 
         _, xrec, _ = self(x, **additional_decode_kwargs)
         diff = 0.5 * torch.abs(torch.clamp(xrec, -1.0, 1.0) - x)

@@ -361,4 +361,4 @@ class DiffusionEngine(L.LightningModule):
             samples = self.decode_first_stage(samples)
             log_dict["samples"] = samples
 
-        return log_dict
+        return log_dict, batch

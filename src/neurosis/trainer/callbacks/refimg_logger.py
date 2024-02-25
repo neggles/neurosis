@@ -15,8 +15,8 @@ from torch.nn import functional as F
 
 from neurosis.models import DiffusersAutoencodingEngine
 from neurosis.models.utils import load_vae_ckpt
+from neurosis.trainer.common import BatchDictType, LogDictType, StepType, diff_images
 
-from .common import BatchDictType, LogDictType, StepType, diff_images
 from .image_logger import ImageLogger
 
 logger = logging.getLogger(__name__)

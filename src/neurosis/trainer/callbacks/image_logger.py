@@ -12,10 +12,9 @@ from lightning.pytorch.utilities import rank_zero_only
 from PIL import Image
 from torch import Tensor
 
-from neurosis.utils.image import CaptionGrid, label_batch, numpy_to_pil, pt_to_pil
+from neurosis.trainer.common import BatchDictType, LogDictType, StepType
+from neurosis.utils.image import CaptionGrid, is_image_tensor, label_batch, numpy_to_pil, pt_to_pil
 from neurosis.utils.text import np_text_decode
-
-from .common import BatchDictType, LogDictType, StepType
 
 logger = logging.getLogger(__name__)
 
@@ -131,13 +130,13 @@ class ImageLogger(Callback):
 
     def rescale_pixel_values(self, images: LogDictType) -> LogDictType:
         for k in images:
-            images[k] = images[k]
             if isinstance(images[k], Tensor):
                 images[k] = images[k].detach().float().cpu()
-                if self.clamp:
-                    images[k] = images[k].clamp(min=-1.0, max=1.0)
-                if self.rescale:
-                    images[k] = images[k].add(1.0).div(2.0)
+                if is_image_tensor(images[k]):
+                    if self.clamp:
+                        images[k] = images[k].clamp(min=-1.0, max=1.0)
+                    if self.rescale:
+                        images[k] = images[k].add(1.0).div(2.0)
         return images
 
     @rank_zero_only
@@ -150,7 +149,7 @@ class ImageLogger(Callback):
         split: str = "train",
         num_img: int = 4,
     ) -> LogDictType:
-        images: dict[str, Tensor] = pl_module.log_images(
+        images: LogDictType = pl_module.log_images(
             batch, num_img=num_img, split=split, **self.log_func_kwargs
         )
         return images
@@ -215,7 +214,7 @@ class ImageLogger(Callback):
 
                 # cast images to PIL if they're not already
                 if isinstance(val[0], Tensor):
-                    if val[0].ndim == 3:
+                    if is_image_tensor(val[0]):
                         val = pt_to_pil(val, aslist=True)
                 if isinstance(val[0], np.ndarray):
                     val = numpy_to_pil(val, aslist=True)
@@ -236,7 +235,7 @@ class ImageLogger(Callback):
             try:
                 val = batch[k]
                 if isinstance(val[0], Tensor):
-                    if val[0].ndim == 3 and val[0].shape[0] == 3:
+                    if is_image_tensor(val[0]):
                         val = pt_to_pil(val, aslist=True)
                     elif val[0].ndim in [1, 2]:
                         val = [tuple(x.cpu().tolist()) for x in val]

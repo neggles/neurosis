@@ -3,7 +3,6 @@ from os import PathLike
 from pathlib import Path
 
 import torch
-from lightning.pytorch.utilities import rank_zero_only
 from torch import Tensor, nn
 from torch.nn import functional as F
 
@@ -159,9 +158,8 @@ class AutoencoderDreamsim(nn.Module):
 
         return loss, log_dict
 
-    @rank_zero_only
     @torch.no_grad()
-    def log_images(
+    def log_loss(
         self,
         inputs: Tensor,
         recons: Tensor,
