@@ -2,11 +2,12 @@ from .convert import numpy_to_pil, numpy_to_pt, pil_to_numpy, pil_to_pt, pt_to_n
 from .grid import CaptionGrid
 from .label import label_batch, label_image
 from .pil import pil_ensure_rgb, pil_pad_square
-from .vae import denormalize, normalize
+from .vae import denormalize, is_image_tensor, normalize
 
 __all__ = [
     "CaptionGrid",
     "denormalize",
+    "is_image_tensor",
     "label_batch",
     "label_image",
     "normalize",

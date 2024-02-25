@@ -229,13 +229,13 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         num_img: int = 1,
         split: str = "train",
         **kwargs,
-    ) -> dict:
+    ) -> dict[str, Tensor]:
         inputs: Tensor = self.get_input(batch)[:num_img]
         recons = self.forward(inputs).sample
         diff = torch.clamp(recons, -1.0, 1.0).sub(inputs).abs().mul(0.5).clamp(0.0, 1.0)
         diff_boost = diff.mul(self.diff_boost_factor).clamp(0.0, 1.0)
 
-        log_dict = {
+        images_dict = {
             "inputs": inputs,
             "recons": recons,
             "diff": 2.0 * diff - 1.0,
@@ -243,7 +243,11 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         }
 
         if hasattr(self.loss, "log_images"):
-            loss_log = self.loss.log_images(inputs, recons, split=split, **kwargs)
-            log_dict.update(loss_log)
+            loss_images = self.loss.log_images(inputs, recons, split=split, **kwargs)
+            images_dict.update(loss_images)
 
-        return log_dict
+        if hasattr(self.loss, "log_loss"):
+            loss_log = self.loss.log_loss(inputs, recons, split=split, **kwargs)
+            images_dict.update(loss_log)
+
+        return images_dict
