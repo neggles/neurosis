@@ -168,6 +168,6 @@ class AutoencoderDreamsim(nn.Module):
     ) -> dict[str, Tensor]:
         _, log_dict = self.forward(inputs=inputs, recons=recons, split=split, **kwargs)
 
-        log_dict = {k.replace("loss/", "loss_", 1): v for k, v in log_dict.items()}
+        log_dict = {k.replace("loss/", "loss_", 1).split("/")[-1]: v for k, v in log_dict.items()}
 
         return log_dict
