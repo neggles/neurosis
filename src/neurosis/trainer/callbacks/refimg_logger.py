@@ -180,6 +180,7 @@ class ReferenceModelImageLogger(ImageLogger):
             batch={pl_module.input_key: inputs.detach().to(pl_module.device, pl_module.dtype)},
             split="static",
             num_img=len(inputs),
+            log_loss=True,
         )
 
         recons: Tensor = log_dict.get("recons").cpu()
@@ -205,9 +206,10 @@ class ReferenceModelImageLogger(ImageLogger):
             "static/mse_flt": vae_mse.item(),
             "static/mse_pct": pct_decrease.item(),
         }
-        images_dict.update(
-            {f"static/{k.rsplit('/', 1)[-1]}": v.cpu() for k, v in log_dict.items() if "/loss" in k}
-        )
+        loss_dict = {
+            k.replace("loss/", "loss_"): v for k, v in log_dict.items() if k.startswith("static/loss")
+        }
+        images_dict.update(loss_dict)
         images.update(images_dict)
         return images
 

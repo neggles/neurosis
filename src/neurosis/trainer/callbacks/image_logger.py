@@ -148,9 +148,10 @@ class ImageLogger(Callback):
         batch_idx: int = -1,
         split: str = "train",
         num_img: int = 4,
+        log_loss: bool = False,
     ) -> LogDictType:
         images: LogDictType = pl_module.log_images(
-            batch, num_img=num_img, split=split, **self.log_func_kwargs
+            batch, num_img=num_img, split=split, log_loss=log_loss, **self.log_func_kwargs
         )
         return images
 
@@ -304,7 +305,9 @@ class ImageLogger(Callback):
                 batch[k] = [np_text_decode(x) for x in batch[k]]
 
         # do the actual log image generation
-        images = self.call_log_images(pl_module, batch, batch_idx, split=split, num_img=self.max_images)
+        images = self.call_log_images(
+            pl_module, batch, batch_idx, split=split, num_img=self.max_images, log_loss=False
+        )
         # if the model returned None, warn and return early
         if images is None:
             warn(f"{pl_module.__class__.__name__} returned None from log_images")
