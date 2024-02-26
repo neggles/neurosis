@@ -11,16 +11,11 @@ from lightning.pytorch.callbacks import (  # noqa: F401
     LearningRateMonitor,
     ModelCheckpoint,
     ModelSummary,
-    OnExceptionCheckpoint,
 )
 from lightning.pytorch.cli import ArgsType, LightningArgumentParser, LightningCLI
-from lightning.pytorch.loggers.tensorboard import TensorBoardLogger  # noqa: F401
-from lightning.pytorch.loggers.wandb import WandbLogger  # noqa: F401
 from rich.traceback import install as install_traceback
 
 from neurosis import __version__, console, is_debug
-from neurosis.models.diffusion import DiffusionEngine  # noqa: F401
-from neurosis.trainer.callbacks.exception import ExceptionHandlerCallback  # noqa: F401
 from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
 
@@ -56,11 +51,6 @@ class DiffusionTrainerCli(LightningCLI):
             nested_key="image_logger",
             required=False,
         )
-        # parser.add_instantiator(
-        #     instantiate_compile_class,
-        #     class_type=lightning.LightningModule,
-        #     subclasses=True,
-        # )
 
 
 @train_app.command(add_help_option=False)
