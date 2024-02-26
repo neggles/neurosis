@@ -209,6 +209,8 @@ class ImageLogger(Callback):
                     wandb_dict[f"{split}/{k}"] = val
                     continue
                 if isinstance(val, Tensor) and val.ndim == 0:
+                    if k.startswith(split + "/"):
+                        continue
                     wandb_dict[f"{split}/{k}"] = val.item()
                     continue
 
