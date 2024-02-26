@@ -13,14 +13,24 @@ services:
     environment:
       # make python print immediately instead of buffering
       PYTHONUNBUFFERED: "1"
+      PYTHONIOENCODING: "UTF-8"
       # saves ~1GB of VRAM and speeds up startup, has to be uppercase
       CUDA_MODULE_LOADING: "LAZY"
       # fix annoying tcmalloc problem
       TCMALLOC_AGGRESSIVE_DECOMMIT: "t"
       # volta turing ampereDC ampere ada hopper (sorry pascal users)
       TORCH_CUDA_ARCH_LIST: "7.0;7.5;8.0;8.6;8.9;9.0"
+      # enable hf_transfer module for faster data transfer to/from hub
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+      # shut up bitsandbytes
+      BITSANDBYTES_NOWELCOME: "1"
+      # enable numpy type promotions
+      NPY_PROMOTION_STATE: "weak"
     volumes:
       - type: bind
         source: ./
-        target: /workspace
+        target: /workspace/neurosis
         consistency: "cached"
+      - type: bind
+        source: ${HOME}/.cache
+        target: /workspace/.cache
