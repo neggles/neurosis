@@ -529,17 +529,20 @@ class AutoencoderKLInferenceWrapper(AutoencoderKL):
 
 
 class IdentityFirstStage(AbstractAutoencoder):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, input_key: str = "jpg", *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.input_key = input_key
+        self.encoder = nn.Identity()
+        self.decoder = nn.Identity()
 
     def get_input(self, x: Any) -> Any:
-        return x
+        return x[self.input_key]
 
     def encode(self, x: Any, *_, **__) -> Any:
-        return x
+        return self.encoder(x)
 
     def decode(self, x: Any, *_, **__) -> Any:
-        return x
+        return self.decoder(x)
 
 
 class AEIntegerWrapper(nn.Module):
