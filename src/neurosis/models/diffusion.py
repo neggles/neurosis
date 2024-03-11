@@ -275,7 +275,7 @@ class DiffusionEngine(L.LightningModule):
         return samples
 
     @torch.no_grad()
-    def log_conditionings(self, batch: dict[str, Tensor], n: int) -> dict:
+    def log_conditionings(self, batch: dict[str, Tensor], num_img: int) -> dict:
         """
         Defines heuristics to log different conditionings.
         These can be lists of strings (text-to-image), tensors, ints, ...
@@ -289,76 +289,87 @@ class DiffusionEngine(L.LightningModule):
         embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
             if (self.log_keys is None) or (embedder.input_key in self.log_keys):
-                x = batch[embedder.input_key][:n]
-                if isinstance(x, Tensor):
-                    if x.dim() == 1:
+                inputs = batch[embedder.input_key][:num_img]
+                if isinstance(inputs, Tensor):
+                    if inputs.dim() == 1:
                         # class-conditional, convert integer to string
-                        x = [str(x[i].item()) for i in range(x.shape[0])]
-                        xc = log_txt_as_img(wh, x, size=min(wh[0] // 4, 96))
-                    elif x.dim() == 2:
+                        inputs = [str(inputs[i].item()) for i in range(inputs.shape[0])]
+                        value = log_txt_as_img(wh, inputs, size=min(wh[0] // 4, 96))
+                    elif inputs.dim() == 2:
                         # size and crop cond and the like
-                        x = ["x".join([str(xx) for xx in x[i].tolist()]) for i in range(x.shape[0])]
-                        xc = log_txt_as_img(wh, x, size=min(wh[0] // 20, 24))
+                        log_strings = [
+                            "x".join(str(x) for x in inputs[i].tolist()) for i in range(inputs.shape[0])
+                        ]
+                        value = log_txt_as_img(wh, log_strings, size=min(wh[0] // 4, 96))
                     else:
                         raise NotImplementedError("Tensor conditioning with dim > 2 not implemented")
 
-                elif isinstance(x, list):
-                    if isinstance(x[0], np.bytes_):
-                        x = np_text_decode(x)
-                    if isinstance(x[0], str):
+                elif isinstance(inputs, list):
+                    if isinstance(inputs[0], (bytes, np.bytes_)):
+                        inputs = np_text_decode(inputs, aslist=True)
+                    if isinstance(inputs[0], str):
                         # strings
-                        xc = log_txt_as_img(wh, x, size=min(wh[0] // 20, 24))
+                        value = log_txt_as_img(wh, inputs, size=min(wh[0] // 20, 24))
                     else:
-                        raise NotImplementedError(f"Conditioning log for list[{type(x[0])}] not implemented")
+                        raise NotImplementedError(f"Can't log conditioning for list[{type(inputs[0])}]")
 
                 else:
-                    raise NotImplementedError(f"Conditioning log for input of {type(x)} not implemented")
-                log_dict[embedder.input_key] = xc
-
+                    raise NotImplementedError(f"Can't log conditioning for {type(inputs)}")
+                log_dict[embedder.input_key] = value
         return log_dict
 
     @torch.no_grad()
     def log_images(
         self,
         batch: dict,
-        num_img: int = 8,
+        num_img: int = 4,
+        split: str = "train",
         sample: bool = True,
         ucg_keys: list[str] = None,
         **kwargs,
     ) -> dict:
-        conditioner_input_keys = [e.input_key for e in self.conditioner.embedders]
-        if ucg_keys:
-            assert all(map(lambda x: x in conditioner_input_keys, ucg_keys)), (
-                "Each defined ucg key for sampling must be in the provided conditioner input keys,"
-                f"but we have {ucg_keys} vs. {conditioner_input_keys}"
-            )
+        inputs: Tensor = self.get_input(batch)[:num_img]
+        num_img = len(inputs)
+
+        input_keys = [e.input_key for e in self.conditioner.embedders]
+        if ucg_keys is None or len(ucg_keys) == 0:
+            ucg_keys = input_keys
+
         else:
-            ucg_keys = conditioner_input_keys
+            if any(x not in input_keys for x in ucg_keys):
+                raise ValueError(
+                    "Each defined ucg key for sampling must be in the provided conditioner input keys!"
+                    f"\nRequested UCG keys: {ucg_keys}" + f"\nAvailable input keys: {input_keys}"
+                )
 
-        log_dict = dict()
-        x: Tensor = self.get_input(batch)
-        c, uc = self.conditioner.get_unconditional_conditioning(
-            batch,
-            force_uc_zero_embeddings=ucg_keys if len(self.conditioner.embedders) > 0 else [],
+        # log inputs and VAE reconstructions
+        latents: Tensor = self.encode_first_stage(inputs)
+        recons = self.decode_first_stage(latents)
+
+        images_dict = {
+            "inputs": inputs,
+            "recons": recons,
+        }
+
+        # log conditioning
+        cond_dict = self.log_conditionings(batch, num_img)
+        images_dict.update(cond_dict)
+
+        force_uc_zero = ucg_keys if len(self.conditioner.embedders) > 0 else []
+        cond, uncond = self.conditioner.get_unconditional_conditioning(
+            batch, force_uc_zero_embeddings=force_uc_zero
         )
-
-        num_img = min(x.shape[0], num_img)
-
-        x = x.to(self.device)[:num_img]
-        log_dict["inputs"] = x
-
-        z: Tensor = self.encode_first_stage(x)
-        log_dict["reconstructions"] = self.decode_first_stage(z)
-        log_dict.update(self.log_conditionings(batch, num_img))
-
-        for k in c:
-            if isinstance(c[k], Tensor):
-                c[k], uc[k] = map(lambda y: y[k][:num_img].to(self.device), (c, uc))
+        for key in cond:
+            if isinstance(cond[key], Tensor):
+                cond[key] = cond[key][:num_img].to(self.device)
+                uncond[key] = uncond[key][:num_img].to(self.device)
 
         if sample:
             with self.ema_scope("Plotting"):
-                samples = self.sample(c, shape=z.shape[1:], uc=uc, batch_size=num_img, **kwargs)
+                samples = self.sample(
+                    cond=cond, shape=latents.shape[1:], uc=uncond, batch_size=num_img, **kwargs
+                )
             samples = self.decode_first_stage(samples)
-            log_dict["samples"] = samples
+            images_dict["samples"] = samples
 
-        return log_dict, batch
+        return images_dict
