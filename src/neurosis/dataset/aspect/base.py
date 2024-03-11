@@ -24,7 +24,7 @@ class AspectBucketDataset(Dataset):
         **kwargs,
     ):
         self.buckets = buckets
-        self.samples: pd.DataFrame
+        self.samples: pd.DataFrame = None
 
         # be quiet, PIL
         Image.MAX_IMAGE_PIXELS = pil_max_image_pixels
