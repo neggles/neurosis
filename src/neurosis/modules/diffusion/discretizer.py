@@ -1,5 +1,5 @@
+import math
 from abc import ABC, abstractmethod
-from functools import partial
 
 import numpy as np
 import torch
@@ -22,12 +22,32 @@ class Discretization(ABC):
         flip: bool = False,
     ):
         sigmas = self.get_sigmas(n, device=device)
-        sigmas = append_zero(sigmas) if do_append_zero else sigmas
-        return sigmas if not flip else torch.flip(sigmas, (0,))
+
+        if do_append_zero:
+            sigmas = append_zero(sigmas)
+        if flip:
+            sigmas = torch.flip(sigmas, (0,))
+
+        return sigmas
 
     @abstractmethod
     def get_sigmas(self, n: int, device: str | torch.device) -> Tensor:
         raise NotImplementedError("Abstract base class was called ;_;")
+
+
+class EDMcDiscretization(Discretization):
+    def __init__(
+        self,
+        sigma_min: float = 0.001,
+        sigma_max: float = 120,
+    ):
+        super().__init__()
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+
+    def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
+        sigmas = torch.linspace(math.log(self.sigma_min), math.log(self.sigma_max), n).exp()
+        return sigmas.flip(0).to(device, dtype=torch.float32)
 
 
 class EDMDiscretization(Discretization):
@@ -58,20 +78,17 @@ class LegacyDDPMDiscretization(Discretization):
     ):
         super().__init__()
         self.num_timesteps = num_timesteps
-        betas = make_beta_schedule("linear", num_timesteps, linear_start=linear_start, linear_end=linear_end)
-        alphas = 1.0 - betas
-        self.alphas_cumprod = np.cumprod(alphas, axis=0)
-        self.to_torch = partial(torch.tensor, dtype=torch.float32)
+        alphas = 1.0 - make_beta_schedule("linear", num_timesteps, linear_start, linear_end)
+        self.alphas_cumprod = torch.cumprod(alphas, dim=0)
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
         if n < self.num_timesteps:
             timesteps = generate_roughly_equally_spaced_steps(n, self.num_timesteps)
-            alphas_cumprod = self.alphas_cumprod[timesteps]
+            alphas_cumprod = self.alphas_cumprod[timesteps].clone().detach().requires_grad_(True)
         elif n == self.num_timesteps:
-            alphas_cumprod = self.alphas_cumprod
+            alphas_cumprod = self.alphas_cumprod.clone().detach().requires_grad_(True)
         else:
-            raise ValueError
+            raise ValueError(f"n ({n}) must be less than or equal to num_timesteps ({self.num_timesteps})")
 
-        to_torch = partial(torch.tensor, dtype=torch.float32, device=device)
-        sigmas = to_torch((1 - alphas_cumprod) / alphas_cumprod) ** 0.5
-        return torch.flip(sigmas, (0,))
+        sigmas = ((1 - alphas_cumprod) / alphas_cumprod) ** 0.5
+        return sigmas.flip(0).to(device, dtype=torch.float32)

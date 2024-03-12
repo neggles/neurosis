@@ -1,8 +1,25 @@
 from .denoiser import Denoiser, DiscreteDenoiser
-from .denoiser_scaling import DenoiserScaling, EDMScaling, EpsScaling, VScaling, VScalingWithEDMcNoise
-from .denoiser_weighting import DenoiserWeighting, EDMWeighting, EpsWeighting, UnitWeighting, VWeighting
-from .discretizer import Discretization, EDMDiscretization, LegacyDDPMDiscretization
-from .loss import StandardDiffusionLoss
+from .denoiser_scaling import (
+    DenoiserScaling,
+    EDMScaling,
+    EpsScaling,
+    VScaling,
+    VScalingWithEDMcNoise,
+)
+from .denoiser_weighting import (
+    DenoiserWeighting,
+    EDMWeighting,
+    EpsWeighting,
+    UnitWeighting,
+    VWeighting,
+)
+from .discretizer import (
+    Discretization,
+    EDMcDiscretization,
+    EDMDiscretization,
+    LegacyDDPMDiscretization,
+)
+from .loss import DiffusionLoss, StandardDiffusionLoss
 from .model import Decoder, Encoder, Model
 from .openaimodel import Timestep, UNetModel
 from .sampling import BaseDiffusionSampler
@@ -14,8 +31,10 @@ __all__ = [
     "Denoiser",
     "DenoiserScaling",
     "DenoiserWeighting",
+    "DiffusionLoss",
     "DiscreteDenoiser",
     "Discretization",
+    "EDMcDiscretization",
     "EDMDiscretization",
     "EDMSampler",
     "EDMScaling",
