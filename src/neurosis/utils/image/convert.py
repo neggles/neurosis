@@ -23,10 +23,8 @@ def numpy_to_pil(images: np.ndarray | list[np.ndarray], aslist: bool = False) ->
         images = np.stack([x.squeeze(0) for x in images], axis=0)
 
     if np.isnan(images).any():
-        np.save("./temp/nan_image.npy", images)
         raise ValueError("Images must not contain NaNs")
     if np.isinf(images).any():
-        np.save("./temp/inf_image.npy", images)
         raise ValueError("Images must be finite")
 
     if images.dtype != np.float32:
