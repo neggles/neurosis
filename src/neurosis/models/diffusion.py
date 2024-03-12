@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from math import ceil
 from os import PathLike
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import lightning.pytorch as L
 import numpy as np
@@ -187,9 +187,10 @@ class DiffusionEngine(L.LightningModule):
             loss, loss_dict = hook(self, batch, loss, loss_dict)
 
         # log the adjusted loss
-
         self.loss_ema.update(loss.mean().item())
-        loss_dict.update({"train/loss": loss.mean(), "train/loss_ema": self.loss_ema.value})
+        loss_dict.update(
+            {"train/loss": loss.mean().detach().cpu(), "train/loss_ema": self.loss_ema.value},
+        )
 
         self.log_dict(
             loss_dict,
@@ -204,9 +205,6 @@ class DiffusionEngine(L.LightningModule):
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
             raise ValueError("Sampler and loss function need to be set for training.")
-
-    def on_train_batch_start(self, batch: Any, batch_idx: int) -> int | None:
-        return super().on_train_batch_start(batch, batch_idx)
 
     def on_train_batch_end(self, *args, **kwargs):
         if self.use_ema:
