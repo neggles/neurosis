@@ -10,25 +10,42 @@ thanks!
 """
 
 import math
-from typing import Optional
+from typing import Any, Callable, Optional, Sequence
 
+import numpy as np
 import torch
 from einops import rearrange, repeat
 from torch import Tensor, nn
 
 
 def make_beta_schedule(
-    schedule,
-    n_timestep,
-    linear_start=1e-4,
-    linear_end=2e-2,
-):
-    if schedule == "linear":
-        betas = torch.linspace(linear_start**0.5, linear_end**0.5, n_timestep, dtype=torch.float64) ** 2
-    return betas.numpy()
+    schedule: str,
+    n_timestep: int,
+    linear_start: float = 1e-4,
+    linear_end: float = 2e-2,
+    cosine_s: float = 8e-3,
+) -> Tensor:
+    match schedule:
+        case "linear":
+            betas = torch.linspace(linear_start**0.5, linear_end**0.5, n_timestep, dtype=torch.float64) ** 2
+        case "cosine":
+            timesteps = torch.arange(n_timestep + 1, dtype=torch.float64) / n_timestep + cosine_s
+            alphas = timesteps / (1 + cosine_s) * np.pi / 2
+            alphas = torch.cos(alphas).pow(2)
+            alphas = alphas / alphas[0]
+            betas = 1 - alphas[1:] / alphas[:-1]
+            betas = torch.clamp(betas, min=0, max=0.999)
+        case "sqrt_linear":
+            betas = torch.linspace(linear_start, linear_end, n_timestep, dtype=torch.float64)
+        case "sqrt":
+            betas = torch.linspace(linear_start, linear_end, n_timestep, dtype=torch.float64) ** 0.5
+        case _:
+            raise ValueError(f"unknown schedule: {schedule}")
+
+    return betas
 
 
-def extract_into_tensor(a: Tensor, t: Tensor, x_shape) -> Tensor:
+def extract_into_tensor(a: Tensor, t: Tensor, x_shape: torch.Size) -> Tensor:
     b, *_ = t.shape
     out = a.gather(-1, t)
     return out.reshape(b, *((1,) * (len(x_shape) - 1)))
@@ -67,12 +84,12 @@ def mixed_checkpoint(func, inputs: dict, params, flag):
 class MixedCheckpointFunction(torch.autograd.Function):
     @staticmethod
     def forward(
-        ctx,
-        run_function,
-        length_tensors,
-        length_non_tensors,
-        tensor_keys,
-        non_tensor_keys,
+        ctx: Any,
+        run_function: Callable,
+        length_tensors: int,
+        length_non_tensors: int,
+        tensor_keys: Sequence[str],
+        non_tensor_keys: Sequence[str],
         *args,
     ):
         ctx.end_tensors = length_tensors
@@ -82,7 +99,10 @@ class MixedCheckpointFunction(torch.autograd.Function):
             "dtype": torch.get_autocast_gpu_dtype(),
             "cache_enabled": torch.is_autocast_cache_enabled(),
         }
-        assert len(tensor_keys) == length_tensors and len(non_tensor_keys) == length_non_tensors
+        if len(tensor_keys) != length_tensors:
+            raise ValueError("MixedCheckpointFunction: incorrect number of tensor keys")
+        if len(non_tensor_keys) != length_non_tensors:
+            raise ValueError("MixedCheckpointFunction: incorrect number of non-tensor keys")
 
         ctx.input_tensors = {key: val for (key, val) in zip(tensor_keys, list(args[: ctx.end_tensors]))}
         ctx.input_non_tensors = {
@@ -128,7 +148,12 @@ class MixedCheckpointFunction(torch.autograd.Function):
         )
 
 
-def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
+def timestep_embedding(
+    timesteps: Tensor,
+    dim: int,
+    max_period: int = 10000,
+    repeat_only: bool = False,
+) -> Tensor:
     """
     Create sinusoidal timestep embeddings.
     :param timesteps: a 1-D Tensor of N indices, one per batch element.
@@ -151,7 +176,7 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     return embedding
 
 
-def zero_module(module):
+def zero_module(module: nn.Module) -> nn.Module:
     """
     Zero out the parameters of a module and return it.
     """
@@ -160,7 +185,7 @@ def zero_module(module):
     return module
 
 
-def scale_module(module, scale):
+def scale_module(module: nn.Module, scale) -> nn.Module:
     """
     Scale the parameters of a module and return it.
     """
@@ -176,7 +201,12 @@ def mean_flat(tensor):
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
 
-def normalization(channels):
+class GroupNorm32(nn.GroupNorm):
+    def forward(self, x: Tensor) -> Tensor:
+        return super().forward(x.float()).type(x.dtype)
+
+
+def normalization(channels: int) -> GroupNorm32:
     """
     Make a standard normalization layer.
     :param channels: number of input channels.
@@ -185,12 +215,7 @@ def normalization(channels):
     return GroupNorm32(32, channels)
 
 
-class GroupNorm32(nn.GroupNorm):
-    def forward(self, x: Tensor) -> Tensor:
-        return super().forward(x.float()).type(x.dtype)
-
-
-def conv_nd(dims: int, *args, **kwargs):
+def conv_nd(dims, *args, **kwargs) -> nn.Conv1d | nn.Conv2d | nn.Conv3d:
     """
     Create a 1D, 2D, or 3D convolution module.
     """
@@ -200,17 +225,10 @@ def conv_nd(dims: int, *args, **kwargs):
         return nn.Conv2d(*args, **kwargs)
     elif dims == 3:
         return nn.Conv3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimension: {dims}")
+    raise ValueError(f"unsupported dimensions: {dims}")
 
 
-def linear(*args, **kwargs):
-    """
-    Create a linear module.
-    """
-    return nn.Linear(*args, **kwargs)
-
-
-def avg_pool_nd(dims, *args, **kwargs):
+def avg_pool_nd(dims: int, *args, **kwargs) -> nn.AvgPool1d | nn.AvgPool2d | nn.AvgPool3d:
     """
     Create a 1D, 2D, or 3D average pooling module.
     """
@@ -220,7 +238,8 @@ def avg_pool_nd(dims, *args, **kwargs):
         return nn.AvgPool2d(*args, **kwargs)
     elif dims == 3:
         return nn.AvgPool3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
+    else:
+        raise ValueError(f"unsupported dimensions: {dims}")
 
 
 class AlphaBlender(nn.Module):

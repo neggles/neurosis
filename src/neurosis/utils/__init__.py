@@ -5,19 +5,6 @@ from .misc import (
     ndimage_to_u8_norm,
     silence_hf_load_warnings,
 )
-from .module import (
-    CheckpointFunction,
-    MixedCheckpointFunction,
-    avg_pool_nd,
-    checkpoint,
-    conv_nd,
-    extract_into_tensor,
-    make_beta_schedule,
-    mixed_checkpoint,
-    scale_module,
-    timestep_embedding,
-    zero_module,
-)
 from .sgm import (
     append_dims,
     append_zero,

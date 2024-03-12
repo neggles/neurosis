@@ -7,8 +7,8 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from neurosis.modules.diffusion.model import Encoder
+from neurosis.modules.diffusion.util import extract_into_tensor, make_beta_schedule
 from neurosis.modules.regularizers import DiagonalGaussianDistribution
-from neurosis.utils.module import extract_into_tensor, make_beta_schedule
 
 
 class LowScaleEncoder(nn.Module):
