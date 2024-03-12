@@ -201,12 +201,14 @@ def append_zero(x: Tensor) -> Tensor:
     return torch.cat([x, x.new_zeros([1])])
 
 
-def append_dims(x: Tensor, target_dims: int) -> Tensor:
-    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
-    dims_to_append = target_dims - x.ndim
-    if dims_to_append < 0:
-        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
-    return x[(...,) + (None,) * dims_to_append]
+def append_dims(x: Tensor, ndim: int) -> Tensor:
+    """Appends dimensions to the end of a tensor until it has ndim dimensions."""
+    add_dims = ndim - x.ndim
+    if add_dims < 0:
+        raise ValueError(f"can't extend tensor from {x.ndim} to {ndim} dimensions!")
+    for _ in range(add_dims):
+        x = x.unsqueeze(-1)
+    return x
 
 
 def load_model_from_config(config, ckpt: PathLike, verbose=True, freeze=True) -> Module:
