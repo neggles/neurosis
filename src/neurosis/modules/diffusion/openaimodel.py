@@ -13,7 +13,6 @@ from neurosis.modules.attention import SpatialTransformer
 from neurosis.modules.diffusion.util import (
     avg_pool_nd,
     conv_nd,
-    linear,
     normalization,
     timestep_embedding,
     zero_module,
@@ -269,7 +268,7 @@ class ResBlock(TimestepBlock):
         else:
             self.emb_layers = nn.Sequential(
                 nn.SiLU(),
-                linear(
+                nn.Linear(
                     emb_channels,
                     self.emb_out_channels,
                 ),
@@ -568,33 +567,33 @@ class UNetModel(nn.Module):
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
-            linear(model_channels, time_embed_dim),
+            nn.Linear(model_channels, time_embed_dim),
             nn.SiLU(),
-            linear(time_embed_dim, time_embed_dim),
+            nn.Linear(time_embed_dim, time_embed_dim),
         )
 
         if self.num_classes is not None:
             if isinstance(self.num_classes, int):
                 self.label_emb = nn.Embedding(num_classes, time_embed_dim)
             elif self.num_classes == "continuous":
-                logger.info("setting up linear c_adm embedding layer")
+                logger.info("setting up nn.Linear c_adm embedding layer")
                 self.label_emb = nn.Linear(1, time_embed_dim)
             elif self.num_classes == "timestep":
                 self.label_emb = nn.Sequential(
                     Timestep(model_channels),
                     nn.Sequential(
-                        linear(model_channels, time_embed_dim),
+                        nn.Linear(model_channels, time_embed_dim),
                         nn.SiLU(),
-                        linear(time_embed_dim, time_embed_dim),
+                        nn.Linear(time_embed_dim, time_embed_dim),
                     ),
                 )
             elif self.num_classes == "sequential":
                 assert adm_in_channels is not None
                 self.label_emb = nn.Sequential(
                     nn.Sequential(
-                        linear(adm_in_channels, time_embed_dim),
+                        nn.Linear(adm_in_channels, time_embed_dim),
                         nn.SiLU(),
-                        linear(time_embed_dim, time_embed_dim),
+                        nn.Linear(time_embed_dim, time_embed_dim),
                     )
                 )
             else:
