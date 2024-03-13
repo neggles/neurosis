@@ -14,14 +14,13 @@ from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
 from packaging import version
 from safetensors.torch import load_file as load_safetensors
 from torch import Tensor, nn
-from torch.optim import Optimizer
 
 from neurosis.constants import CHECKPOINT_EXTNS
 from neurosis.modules.autoencoding import AbstractRegularizer
 from neurosis.modules.diffusion import Decoder, Encoder
 from neurosis.modules.ema import LitEma
 from neurosis.modules.regularizers import DiagonalGaussianRegularizer
-from neurosis.utils import get_nested_attribute, get_obj_from_str
+from neurosis.utils import get_nested_attribute
 
 logger = logging.getLogger(__name__)
 
@@ -126,12 +125,6 @@ class AbstractAutoencoder(L.LightningModule):
     @abstractmethod
     def decode(self, *args, **kwargs) -> Tensor:
         raise NotImplementedError("Abstract base class was called ;_;")
-
-    def instantiate_optimizer_from_config(self, params, lr: float, cfg: dict) -> Optimizer:
-        logger.info(f"loading >>> {cfg['target']} <<< optimizer from config")
-
-        opt_class = get_obj_from_str(cfg["target"])
-        return opt_class(params, lr=lr, **cfg.get("init_args", dict()))
 
     @abstractmethod
     def configure_optimizers(self) -> Any:

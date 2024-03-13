@@ -1,16 +1,10 @@
-import importlib
 import logging
-from functools import partial
-from os import PathLike
-from pathlib import Path
 from textwrap import wrap as text_wrap
 from typing import Any, Callable, TypeVar
 
-import fsspec
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
-from safetensors.torch import load_file as load_safetensors
 from torch import Tensor
 from torch.nn import Module
 
@@ -62,17 +56,6 @@ def autocast(f: Callable, enabled=True):
     return do_autocast
 
 
-def load_partial_from_config(config) -> partial[Any]:
-    if "class_path" in config:
-        # PyTorch Lightning syntax
-        target = config["class_path"]
-        params = config.get("init_args", dict())
-    elif "target" in config:
-        target = config["target"]
-        params = config.get("params", dict())
-    return partial(get_obj_from_str(target), **params)
-
-
 def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor:
     # wh a tuple of (width, height)
     # xc a list of captions to plot
@@ -115,13 +98,6 @@ def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor
 
     txts = torch.tensor(np.stack(txts))
     return txts
-
-
-def make_path_absolute(path):
-    fs, p = fsspec.core.url_to_fs(path)
-    if fs.protocol == "file":
-        return str(Path(p).absolute())
-    return path
 
 
 def ismap(x: Any) -> bool:
@@ -170,33 +146,6 @@ def count_params(model: Module, verbose: bool = False) -> int:
     return total_params
 
 
-def instantiate_from_config(config):
-    if "class_path" in config:
-        # PyTorch Lightning syntax
-        target = config["class_path"]
-        params = config.get("init_args", dict())
-    elif "target" in config:
-        target = config["target"]
-        params = config.get("params", dict())
-    else:
-        if config == "__is_first_stage__":
-            return None
-        elif config == "__is_unconditional__":
-            return None
-        raise KeyError("Expected key `target` to instantiate.")
-    return get_obj_from_str(target)(**params)
-
-
-def get_obj_from_str(string: str, reload: bool = False, invalidate_cache: bool = True):
-    module, cls = string.rsplit(".", 1)
-    if invalidate_cache:
-        importlib.invalidate_caches()
-    if reload:
-        module_imp = importlib.import_module(module)
-        importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
-
-
 def append_zero(x: Tensor) -> Tensor:
     return torch.cat([x, x.new_zeros([1])])
 
@@ -207,39 +156,6 @@ def append_dims(x: Tensor, ndim: int) -> Tensor:
     if add_dims < 0:
         raise ValueError(f"can't extend tensor from {x.ndim} to {ndim} dimensions!")
     return x[(...,) + (None,) * add_dims]
-
-
-def load_model_from_config(config, ckpt: PathLike, verbose=True, freeze=True) -> Module:
-    logger.info(f"Loading model from {ckpt}")
-    ckpt = Path(ckpt)
-
-    if ckpt.suffix == ".ckpt":
-        lightning_state = torch.load(ckpt, map_location="cpu")
-        if "global_step" in lightning_state:
-            logger.info(f"Global Step for {ckpt.name}: {lightning_state['global_step']}")
-        state_dict = lightning_state["state_dict"]
-    elif ckpt.suffix == ".safetensors":
-        state_dict = load_safetensors(ckpt)
-    else:
-        raise ValueError(f"Unknown file extension {ckpt.suffix}")
-
-    model: Module = instantiate_from_config(config.model)
-
-    m, u = model.load_state_dict(state_dict, strict=False)
-
-    if len(m) > 0 and verbose:
-        logger.info("missing keys:")
-        logger.info(m)
-    if len(u) > 0 and verbose:
-        logger.info("unexpected keys:")
-        logger.info(u)
-
-    model.eval()
-    if freeze:
-        for param in model.parameters():
-            param.requires_grad_(False)
-
-    return model
 
 
 def get_nested_attribute(obj, attribute_path, depth=None, return_key=False):
