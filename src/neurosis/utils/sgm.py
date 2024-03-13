@@ -206,9 +206,7 @@ def append_dims(x: Tensor, ndim: int) -> Tensor:
     add_dims = ndim - x.ndim
     if add_dims < 0:
         raise ValueError(f"can't extend tensor from {x.ndim} to {ndim} dimensions!")
-    for _ in range(add_dims):
-        x = x.unsqueeze(-1)
-    return x
+    return x[(...,) + (None,) * add_dims]
 
 
 def load_model_from_config(config, ckpt: PathLike, verbose=True, freeze=True) -> Module:
