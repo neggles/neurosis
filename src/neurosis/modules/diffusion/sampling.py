@@ -34,7 +34,7 @@ class BaseDiffusionSampler:
         device: str | torch.device = "cuda",
     ):
         self.discretization = discretization
-        self.guider = guider or IdentityGuider
+        self.guider = guider if guider is not None else IdentityGuider()
         self.num_steps = num_steps
         self.verbose = verbose
         self.device = device if isinstance(device, torch.device) else torch.device(device)
@@ -46,11 +46,10 @@ class BaseDiffusionSampler:
         uc: Optional[Tensor] = None,
         num_steps: Optional[int] = None,
     ):
-        num_steps = num_steps or self.num_steps
+        num_steps = num_steps if num_steps is not None else self.num_steps
         if num_steps is None:
             raise ValueError(f"Step count must be set at init or call time! {self.num_steps=}")
-
-        sigmas = self.discretization(n=num_steps, device=self.device)
+        sigmas = self.discretization(num_steps)
         uc = uc if uc is not None else cond
 
         x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
@@ -61,11 +60,12 @@ class BaseDiffusionSampler:
         return x, s_in, sigmas, num_sigmas, cond, uc
 
     def denoise(self, x: Tensor, denoiser, sigma, cond, uc):
-        denoised = denoiser(*self.guider.prepare_inputs(x, sigma, cond, uc))
+        inputs = self.guider.prepare_inputs(x, sigma, cond, uc)
+        denoised = denoiser(*inputs)
         denoised = self.guider(denoised, sigma)
         return denoised
 
-    def get_sigma_gen(self, num_sigmas):
+    def get_sigma_gen(self, num_sigmas: int):
         sigma_generator = range(num_sigmas - 1)
         if self.verbose:
             logger.info("#" * 30, " Sampling setting ", "#" * 30)
