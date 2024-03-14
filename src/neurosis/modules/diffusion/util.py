@@ -194,7 +194,7 @@ def scale_module(module: nn.Module, scale) -> nn.Module:
     return module
 
 
-def mean_flat(tensor):
+def mean_flat(tensor: Tensor) -> Tensor:
     """
     Take the mean over all non-batch dimensions.
     """
