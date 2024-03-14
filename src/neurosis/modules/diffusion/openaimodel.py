@@ -79,11 +79,9 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         num_video_frames: Optional[int] = None,
     ):
         for layer in self:
-            module = layer
-
-            if isinstance(module, TimestepBlock):
+            if isinstance(layer, TimestepBlock):
                 x = layer(x, emb)
-            elif isinstance(module, SpatialTransformer):
+            elif isinstance(layer, SpatialTransformer):
                 x = layer(x, context)
             else:
                 x = layer(x)
@@ -309,6 +307,7 @@ class ResBlock(TimestepBlock):
             return self._forward(x, emb)
 
     def _forward(self, x: Tensor, emb: Tensor) -> Tensor:
+        h: Tensor
         if self.updown:
             in_rest, in_conv = self.in_layers[:-1], self.in_layers[-1]
             h = in_rest(x)
@@ -539,15 +538,27 @@ class UNetModel(nn.Module):
             self.num_res_blocks = num_res_blocks
 
         if disable_self_attentions is not None:
-            assert len(disable_self_attentions) == len(channel_mult)
+            if len(disable_self_attentions) != len(channel_mult):
+                raise ValueError(
+                    "disable_self_attentions should be a list/tuple with the same length as channel_mult"
+                )
+
         if num_attention_blocks is not None:
-            assert len(num_attention_blocks) == len(self.num_res_blocks)
-            assert all(
+            if len(num_attention_blocks) != len(self.num_res_blocks):
+                raise ValueError(
+                    "provide num_attention_blocks either as an int (globally constant) or "
+                    "as a list/tuple (per-level) with the same length as num_res_blocks"
+                )
+
+            if not all(
                 map(
                     lambda i: self.num_res_blocks[i] >= num_attention_blocks[i],
                     range(len(num_attention_blocks)),
                 )
-            )
+            ):
+                raise ValueError(
+                    "num_attention_blocks should be greater than or equal to num_res_blocks at each level"
+                )
             logger.warn(
                 f"Constructor of UNetModel received num_attention_blocks={num_attention_blocks}. "
                 f"This option has LESS priority than attention_resolutions {attention_resolutions}, "
@@ -588,7 +599,10 @@ class UNetModel(nn.Module):
                     ),
                 )
             elif self.num_classes == "sequential":
-                assert adm_in_channels is not None
+                if adm_in_channels is None:
+                    raise ValueError(
+                        "adm_in_channels should be provided when num_classes is set to 'sequential'"
+                    )
                 self.label_emb = nn.Sequential(
                     nn.Sequential(
                         nn.Linear(adm_in_channels, time_embed_dim),
