@@ -80,7 +80,7 @@ class FolderSquareDataset(NoBucketDataset):
         image_files = [x for x in file_iter if x.is_file() and x.suffix.lower() in IMAGE_EXTNS]
         # build dataframe
         self.samples = pd.DataFrame([self.__load_meta(x) for x in image_files]).astype(
-            {"image_path": np.string_, "caption": np.string_, "aspect": np.float32, "resolution": np.int32}
+            {"image_path": np.bytes_, "caption": np.bytes_, "aspect": np.float32}
         )
 
     def _get_osize(self, resolution: tuple[int, int]) -> tuple[int, int]:
