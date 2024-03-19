@@ -228,7 +228,7 @@ class ResBlock(TimestepBlock):
         self.channels = channels
         self.emb_channels = emb_channels
         self.dropout = dropout
-        self.out_channels = out_channels or channels
+        self.out_channels = out_channels if out_channels is not None else channels
         self.use_conv = use_conv
         self.use_checkpoint = use_checkpoint
         self.use_scale_shift_norm = use_scale_shift_norm
@@ -260,14 +260,15 @@ class ResBlock(TimestepBlock):
         self.emb_out_channels = 2 * self.out_channels if use_scale_shift_norm else self.out_channels
         if self.skip_t_emb:
             logger.debug(f"Skipping timestep embedding in {self.__class__.__name__}")
-            assert not self.use_scale_shift_norm
+            if self.use_scale_shift_norm:
+                raise ValueError("skip_t_emb and use_scale_shift_norm are mutually exclusive")
             self.emb_layers = None
             self.exchange_temb_dims = False
         else:
             self.emb_layers = nn.Sequential(
                 nn.SiLU(),
                 nn.Linear(
-                    emb_channels,
+                    self.emb_channels,
                     self.emb_out_channels,
                 ),
             )
