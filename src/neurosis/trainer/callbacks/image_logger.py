@@ -183,7 +183,8 @@ class ImageLogger(Callback):
             table_dict[k] = v
 
         if "samples" in images:
-            samples = pt_to_pil(images.pop("samples"), aslist=True)
+            samples = images.pop("samples")
+            samples = pt_to_pil(samples, aslist=True)
             if self.label_img:
                 samples = label_batch(samples, step, copy=True)
 
@@ -209,18 +210,26 @@ class ImageLogger(Callback):
                 if isinstance(val, (int, float)):
                     wandb_dict[f"{split}/{k}"] = val
                     continue
-                if isinstance(val, Tensor) and val.ndim == 0:
-                    if k.startswith(split + "/"):
+                if isinstance(val, Tensor):
+                    if val.ndim == 0:
+                        if k.startswith(split + "/"):
+                            # I forgot why this is here. I think it's to avoid logging the same thing twice
+                            continue
+                        wandb_dict[f"{split}/{k}"] = val.cpu().item()
                         continue
-                    wandb_dict[f"{split}/{k}"] = val.item()
-                    continue
+                    elif val.ndim == 1:
+                        val = val.cpu().tolist()
+                        wandb_dict[f"{split}/{k}"] = val.cpu().item()
+                        continue
 
                 # cast images to PIL if they're not already
                 if isinstance(val[0], Tensor):
                     if is_image_tensor(val[0]):
                         val = pt_to_pil(val, aslist=True)
+
                 if isinstance(val[0], np.ndarray):
-                    val = numpy_to_pil(val, aslist=True)
+                    if is_image_tensor(val[0]):
+                        val = numpy_to_pil(val, aslist=True)
 
                 # we should now have a list of PIL images, so save them
                 if isinstance(val[0], Image.Image):
@@ -260,7 +269,10 @@ class ImageLogger(Callback):
                 continue
 
         if len(table_dict) > 0:
-            table = wandb.Table(columns=[str(x) for x in table_dict.keys()], allow_mixed_types=True)
+            table = wandb.Table(
+                columns=[str(x) for x in table_dict.keys()],
+                allow_mixed_types=True,
+            )
             for data in zip(*table_dict.values()):
                 table.add_data(*data)
             wandb_dict.update({f"{split}/table": table})
