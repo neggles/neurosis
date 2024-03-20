@@ -319,7 +319,7 @@ class DiffusionEngine(L.LightningModule):
         inputs: Tensor = self.get_input(batch)[:num_img]
         num_img = len(inputs)
 
-        input_keys = [e.input_key for e in self.conditioner.embedders]
+        input_keys = list({e.input_key for e in self.conditioner.embedders})
         if ucg_keys is None or len(ucg_keys) == 0:
             ucg_keys = input_keys
 
@@ -335,8 +335,8 @@ class DiffusionEngine(L.LightningModule):
         recons = self.decode_first_stage(latents)
 
         images_dict = {
-            "inputs": inputs.cpu(),
-            "recons": recons.cpu(),
+            f"{split}/inputs": inputs.cpu(),
+            f"{split}/recons": recons.cpu(),
         }
 
         # log conditioning

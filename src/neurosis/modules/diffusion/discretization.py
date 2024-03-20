@@ -47,11 +47,7 @@ class EDMcDiscretization(Discretization):
         self.sigma_max = sigma_max
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
-        sigmas = torch.linspace(0, 1, n, device=device)
-
-        alphas = torch.cos(0.5 * torch.pi * sigmas)
-
-        sigmas = torch.linspace(log(self.sigma_min), log(self.sigma_max), 1000, dtype=torch.float32).exp()
+        sigmas = torch.linspace(log(self.sigma_min), log(self.sigma_max), n, dtype=torch.float32).exp()
         return sigmas.flip((0,)).to(device, dtype=torch.float32)
 
 
