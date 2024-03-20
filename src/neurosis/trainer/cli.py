@@ -2,6 +2,7 @@ import logging
 from os import getenv, isatty
 from pathlib import Path
 from typing import Annotated, List, Optional
+from warnings import filterwarnings
 
 import jsonargparse
 import lightning
@@ -77,6 +78,9 @@ def main(
     if hasattr(torch, "cuda") and torch.cuda.is_available():
         logger.info("Enabling TensorFloat32 in CUDA library")
         torch.backends.cuda.matmul.allow_tf32 = True
+
+    # temporary since Diffusers triggers this warning on Torch 2.2.1 atm
+    filterwarnings("ignore", category=UserWarning, message=r"torch\.utils\._pytree\._register_pytree_node.*")
 
     torch.set_float32_matmul_precision("high")  # enables tf32 stuff
 
