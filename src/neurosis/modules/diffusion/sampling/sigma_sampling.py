@@ -2,14 +2,14 @@ from abc import ABC
 
 import torch
 
-from neurosis.modules.diffusion.discretizer import Discretization
+from neurosis.modules.diffusion.discretization import Discretization
 
 
-class DiffusionSampler(ABC):
+class SigmaSampler(ABC):
     pass
 
 
-class EDMSampling(DiffusionSampler):
+class EDMSampling(SigmaSampler):
     def __init__(self, p_mean=-1.2, p_std=1.2):
         self.p_mean = p_mean
         self.p_std = p_std
@@ -19,7 +19,7 @@ class EDMSampling(DiffusionSampler):
         return log_sigma.exp()
 
 
-class DiscreteSampling(DiffusionSampler):
+class DiscreteSampling(SigmaSampler):
     def __init__(
         self,
         discretization: Discretization,

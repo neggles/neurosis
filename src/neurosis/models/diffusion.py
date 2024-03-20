@@ -18,7 +18,7 @@ from neurosis.models.autoencoder import AutoencodingEngine
 from neurosis.modules.diffusion import (
     BaseDiffusionSampler,
     Denoiser,
-    StandardDiffusionLoss,
+    DiffusionLoss,
     UNetModel,
 )
 from neurosis.modules.diffusion.hooks import LossHook
@@ -26,7 +26,6 @@ from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
-from neurosis.trainer.util import EMATracker
 from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
 
 logger = logging.getLogger(__name__)
@@ -42,7 +41,7 @@ class DiffusionEngine(L.LightningModule):
         sampler: Optional[BaseDiffusionSampler],
         optimizer: OptimizerCallable,
         scheduler: LRSchedulerCallable,
-        loss_fn: Optional[StandardDiffusionLoss],
+        loss_fn: Optional[DiffusionLoss],
         ckpt_path: Optional[PathLike] = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
@@ -88,7 +87,6 @@ class DiffusionEngine(L.LightningModule):
         self.first_stage_autocast: bool = not disable_first_stage_autocast
         self.no_cond_log: bool = no_cond_log
         self.vae_batch_size = vae_batch_size
-        self.loss_ema = EMATracker(alpha=0.02)
 
         if ckpt_path is not None:
             self.init_from_ckpt(Path(ckpt_path))
@@ -125,15 +123,18 @@ class DiffusionEngine(L.LightningModule):
             logger.info(f"Unexpected Keys: {unexpected}")
 
     def _init_first_stage(self, model: AutoencodingEngine):
-        model.eval()
+        model = model.eval()
         model.freeze()
         model.train = disabled_train
         self.first_stage_model = model
 
-    def get_input(self, batch):
+    def get_input(self, batch: dict[str, Tensor]) -> Tensor:
         # assuming unified data format, dataloader returns a dict.
         # image tensors should be scaled to -1 ... 1 and in bchw format
-        return batch[self.input_key]
+        inputs: Tensor = batch[self.input_key]
+        if inputs.ndim == 3:
+            inputs = inputs.unsqueeze(0)
+        return inputs
 
     @torch.no_grad()
     def decode_first_stage(self, z: Tensor) -> Tensor:
@@ -162,15 +163,8 @@ class DiffusionEngine(L.LightningModule):
         z = self.scale_factor * z
         return z
 
-    def forward(self, x, batch) -> tuple[Tensor, dict[str, Tensor]]:
+    def forward(self, x: Tensor, batch: dict[str, Tensor]) -> Tensor:
         loss = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
-        return loss
-
-    def shared_step(self, batch: dict[str, Tensor]) -> tuple[Tensor, dict[str, Tensor]]:
-        x = self.get_input(batch)
-        x = self.encode_first_stage(x)
-        batch["global_step"] = self.global_step
-        loss = self(x, batch)
         return loss
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int):
@@ -178,8 +172,14 @@ class DiffusionEngine(L.LightningModule):
         for hook in self.forward_hooks:
             hook.pre_hook(self.trainer, self, batch, batch_idx)
 
+        # get inputs and encode them
+        inputs = self.get_input(batch)
+        latents = self.encode_first_stage(inputs)
+
+        # add global step to batch
+        batch["global_step"] = self.global_step
         # run the actual step
-        loss = self.shared_step(batch)
+        loss = self(latents, batch)
 
         # run any post-step hooks
         loss_dict = {}
@@ -187,19 +187,9 @@ class DiffusionEngine(L.LightningModule):
             loss, loss_dict = hook(self, batch, loss, loss_dict)
 
         # log the adjusted loss
-        self.loss_ema.update(loss.mean().item())
-        loss_dict.update(
-            {"train/loss": loss.mean().detach().cpu(), "train/loss_ema": self.loss_ema.value},
-        )
+        loss_dict.update({"train/loss": loss.detach().clone().mean()})
 
-        self.log_dict(
-            loss_dict,
-            prog_bar=True,
-            logger=True,
-            on_step=True,
-            batch_size=batch[self.input_key].shape[0],
-        )
-
+        self.log_dict(loss_dict, prog_bar=True, on_step=True, on_epoch=False)
         return loss.mean()
 
     def on_train_start(self, *args, **kwargs):
@@ -260,20 +250,20 @@ class DiffusionEngine(L.LightningModule):
         self,
         cond: dict,
         uc: Optional[dict] = None,
-        batch_size: int = 16,
+        batch_size: int = 4,
         shape: Optional[tuple | list] = None,
-        **kwargs,
+        **model_kwargs,
     ):
         randn = torch.randn(batch_size, *shape).to(self.device)
 
-        def denoiser(input, sigma, c):
-            return self.denoiser(self.model, input, sigma, c, **kwargs)
+        def denoiser_cb(inputs: Tensor, sigma: Tensor, c: dict) -> Tensor:
+            return self.denoiser(self.model, inputs, sigma, c, **model_kwargs)
 
-        samples = self.sampler(denoiser, randn, cond, uc=uc)
+        samples = self.sampler(denoiser_cb, randn, cond, uc=uc)
         return samples
 
     @torch.no_grad()
-    def log_conditionings(self, batch: dict[str, Tensor], num_img: int) -> dict:
+    def log_conditionings(self, batch: dict[str, Tensor], num_img: int, split: str = "train") -> dict:
         """
         Defines heuristics to log different conditionings.
         These can be lists of strings (text-to-image), tensors, ints, ...
@@ -345,12 +335,12 @@ class DiffusionEngine(L.LightningModule):
         recons = self.decode_first_stage(latents)
 
         images_dict = {
-            "inputs": inputs,
-            "recons": recons,
+            "inputs": inputs.cpu(),
+            "recons": recons.cpu(),
         }
 
         # log conditioning
-        cond_dict = self.log_conditionings(batch, num_img)
+        cond_dict = self.log_conditionings(batch, num_img, split)
         images_dict.update(cond_dict)
 
         force_uc_zero = ucg_keys if len(self.conditioner.embedders) > 0 else []
@@ -368,6 +358,6 @@ class DiffusionEngine(L.LightningModule):
                     cond=cond, shape=latents.shape[1:], uc=uncond, batch_size=num_img, **kwargs
                 )
             samples = self.decode_first_stage(samples)
-            images_dict["samples"] = samples
+            images_dict["samples"] = samples.cpu()
 
         return images_dict

@@ -126,7 +126,7 @@ class GeneralConditioner(nn.Module):
         if len(embedders) == 0:
             raise ValueError("no embedders were added! what is my purpose? why am I here? check your config!")
 
-        self.embedders: nn.ModuleList[AbstractEmbModel] = nn.ModuleList(embedders)
+        self.embedders: list[AbstractEmbModel] = nn.ModuleList(embedders)
 
     def possibly_get_ucg_val(self, embedder: AbstractEmbModel, batch: dict) -> tuple[dict]:
         if embedder.legacy_ucg_val is None:
@@ -151,11 +151,11 @@ class GeneralConditioner(nn.Module):
         for embedder in self.embedders:
             embedding_context = nullcontext if embedder.is_trainable else torch.no_grad
             with embedding_context():
-                if hasattr(embedder, "input_key") and (embedder.input_key is not None):
+                if getattr(embedder, "input_key", None) is not None:
                     if embedder.legacy_ucg_val is not None:
                         batch = self.possibly_get_ucg_val(embedder, batch)
                     emb_out = embedder(batch[embedder.input_key])
-                elif hasattr(embedder, "input_keys"):
+                elif getattr(embedder, "input_keys", None) is not None:
                     emb_out = embedder(*[batch[k] for k in embedder.input_keys])
 
             if not isinstance(emb_out, (Tensor, list, tuple)):
@@ -163,18 +163,14 @@ class GeneralConditioner(nn.Module):
 
             if not isinstance(emb_out, (list, tuple)):
                 emb_out = [emb_out]
+
             for emb in emb_out:
                 out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
                 if embedder.ucg_rate > 0.0 and embedder.legacy_ucg_val is None:
-                    emb = (
-                        expand_dims_like(
-                            torch.bernoulli(
-                                (1.0 - embedder.ucg_rate) * torch.ones(emb.shape[0], device=emb.device)
-                            ),
-                            emb,
-                        )
-                        * emb
+                    uncond = torch.bernoulli(
+                        (1.0 - embedder.ucg_rate) * torch.ones(emb.shape[0], device=emb.device)
                     )
+                    emb = expand_dims_like(uncond, emb) * emb
                 if hasattr(embedder, "input_key") and embedder.input_key in force_zero_embeddings:
                     emb = torch.zeros_like(emb)
                 if out_key in output:
@@ -192,10 +188,11 @@ class GeneralConditioner(nn.Module):
     ):
         if force_uc_zero_embeddings is None:
             force_uc_zero_embeddings = []
-        ucg_rates = list()
+
+        ucg_rates = [x.ucg_rate for x in self.embedders]
         for embedder in self.embedders:
-            ucg_rates.append(embedder.ucg_rate)
             embedder.ucg_rate = 0.0
+
         c = self(batch_c, force_cond_zero_embeddings)
         uc = self(batch_c if batch_uc is None else batch_uc, force_uc_zero_embeddings)
 

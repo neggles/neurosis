@@ -9,17 +9,18 @@ import torch
 from torch import Tensor
 from tqdm import tqdm
 
-from neurosis.modules.diffusion.denoiser import Denoiser
-from neurosis.modules.diffusion.discretizer import Discretization
-from neurosis.modules.diffusion.sampling_utils import (
+from neurosis.modules.guidance import Guider, IdentityGuider
+from neurosis.utils import append_dims
+
+from ..denoiser import Denoiser
+from ..discretization import Discretization
+from .utils import (
     get_ancestral_step,
     linear_multistep_coeff,
     to_d,
     to_neg_log_sigma,
     to_sigma,
 )
-from neurosis.modules.guidance import Guider, IdentityGuider
-from neurosis.utils import append_dims
 
 logger = logging.getLogger(__name__)
 
