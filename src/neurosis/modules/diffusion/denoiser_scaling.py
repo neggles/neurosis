@@ -48,7 +48,7 @@ class VScaling(EpsScaling):
         return self.sigma_data**2.0 / (sigma**2.0 + self.sigma_data)
 
     def get_c_out(self, sigma: Tensor) -> Tensor:
-        return -sigma / (sigma**2.0 + 1.0) ** 0.5
+        return -sigma / ((sigma**2.0 + 1.0) ** 0.5)
 
 
 class EDMScaling(VScaling):
