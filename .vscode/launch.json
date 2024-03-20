@@ -5,23 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "neurosis wdxl test",
-            "type": "python",
+            "name": "neurosis test",
+            "type": "debugpy",
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "module": "neurosis.trainer.cli",
-            "args": ["fit", "--config", "./configs/sdxl/wdxl-test.yml"],
-            "justMyCode": true,
-            "subProcess": true
-        },
-        {
-            "name": "neurosis VAE test",
-            "type": "python",
-            "request": "launch",
-            "cwd": "${workspaceFolder}",
-            "module": "neurosis.trainer.cli",
-            "args": ["fit", "--config", "configs/wdxl-vae-test.yaml"],
-            "justMyCode": true,
+            "args": ["fit", "--config", "configs/neurosis-test.yaml"],
+            "justMyCode": false,
             "subProcess": true
         }
     ]
