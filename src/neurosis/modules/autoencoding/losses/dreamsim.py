@@ -9,7 +9,6 @@ from torch.nn import functional as F
 from neurosis.modules.losses.dreamsim.model import DreamsimBackbone, DreamsimEnsemble, DreamsimModel
 from neurosis.modules.losses.functions import BatchL1Loss, BatchMSELoss
 from neurosis.modules.losses.types import GenericLoss
-from neurosis.trainer.util import EMATracker
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,6 @@ class AutoencoderDreamsim(nn.Module):
         recon_weight: float = 1.0,
         resize_input: bool = False,
         resize_target: bool = False,
-        loss_ema_steps: int = 64,
         extra_log_keys: list[str] = [],
         rescale_input: bool = True,
         delay_setup: bool = False,
@@ -55,11 +53,6 @@ class AutoencoderDreamsim(nn.Module):
         self._dreamsim_name = dreamsim_name_or_path
         self.dreamsim_loss: DreamsimBackbone = None
         self.dreamsim_weight = dreamsim_weight
-
-        # set up EMA loss tracking if desired
-        self.t_ema = EMATracker(steps=loss_ema_steps)
-        self.ds_ema = EMATracker(steps=loss_ema_steps)
-        self.r_ema = EMATracker(steps=loss_ema_steps)
 
         # keys to be used in the forward method
         self.forward_keys = ["split"]
@@ -143,18 +136,6 @@ class AutoencoderDreamsim(nn.Module):
             f"{split}/loss/rec": log_rec_loss,
             f"{split}/loss/p": log_ds_loss,
         }
-
-        if split == "train":
-            self.t_ema.update(log_loss.item())
-            self.r_ema.update(log_rec_loss.item())
-            self.ds_ema.update(log_ds_loss.item())
-            log_dict.update(
-                {
-                    f"{split}/loss/total_ema": self.t_ema.value,
-                    f"{split}/loss/rec_ema": self.r_ema.value,
-                    f"{split}/loss/p_ema": self.ds_ema.value,
-                }
-            )
 
         return loss, log_dict
 
