@@ -36,7 +36,7 @@ class Denoiser(nn.Module):
         sigma = self.possibly_quantize_sigma(sigma)
         sigma_shape = sigma.shape
 
-        sigma = append_dims(sigma, input.ndim)
+        sigma = append_dims(sigma, inputs.ndim)
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
 
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
