@@ -6,15 +6,17 @@ from torch import Tensor, nn
 from neurosis.utils import append_dims
 
 from .denoiser_scaling import DenoiserScaling
-from .discretizer import Discretization
+from .discretization import Discretization
 
 logger = logging.getLogger(__name__)
 
 
 class Denoiser(nn.Module):
-    def __init__(self, scaling: DenoiserScaling):
+    def __init__(
+        self,
+        scaling: DenoiserScaling,
+    ):
         super().__init__()
-
         self.scaling: DenoiserScaling = scaling
 
     def possibly_quantize_sigma(self, sigma: Tensor) -> Tensor:
@@ -26,21 +28,23 @@ class Denoiser(nn.Module):
     def forward(
         self,
         network: nn.Module,
-        input: Tensor,
+        inputs: Tensor,
         sigma: Tensor,
         cond: dict,
         **additional_model_inputs,
     ) -> Tensor:
         sigma = self.possibly_quantize_sigma(sigma)
         sigma_shape = sigma.shape
+
         sigma = append_dims(sigma, input.ndim)
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
+
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
 
-        net_input = input * c_in
-        net_output = network(net_input, c_noise, cond, **additional_model_inputs)
+        net_inputs = inputs * c_in
+        net_outputs = network(net_inputs, c_noise, cond, **additional_model_inputs)
 
-        return net_output * c_out + input * c_skip
+        return net_outputs * c_out + net_inputs * c_skip
 
 
 class DiscreteDenoiser(Denoiser):

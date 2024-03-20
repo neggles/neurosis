@@ -1,12 +1,13 @@
-import math
 from abc import ABC, abstractmethod
+from math import log
 
 import numpy as np
 import torch
 from torch import Tensor
 
-from neurosis.modules.diffusion.util import make_beta_schedule
 from neurosis.utils import append_zero
+
+from .util import make_beta_schedule
 
 
 def generate_roughly_equally_spaced_steps(num_substeps: int, max_step: int) -> np.ndarray:
@@ -21,12 +22,12 @@ class Discretization(ABC):
         device: str | torch.device = "cpu",
         flip: bool = False,
     ):
-        sigmas = self.get_sigmas(n, device=device)
+        sigmas: Tensor = self.get_sigmas(n, device=device)
 
         if do_append_zero:
             sigmas = append_zero(sigmas)
         if flip:
-            sigmas = torch.flip(sigmas, (0,))
+            sigmas = sigmas.flip((0,))
 
         return sigmas
 
@@ -39,15 +40,19 @@ class EDMcDiscretization(Discretization):
     def __init__(
         self,
         sigma_min: float = 0.001,
-        sigma_max: float = 120,
+        sigma_max: float = 1000.0,
     ):
         super().__init__()
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
-        sigmas = torch.linspace(math.log(self.sigma_min), math.log(self.sigma_max), n).exp()
-        return sigmas.flip(0).to(device, dtype=torch.float32)
+        sigmas = torch.linspace(0, 1, n, device=device)
+
+        alphas = torch.cos(0.5 * torch.pi * sigmas)
+
+        sigmas = torch.linspace(log(self.sigma_min), log(self.sigma_max), 1000, dtype=torch.float32).exp()
+        return sigmas.flip((0,)).to(device, dtype=torch.float32)
 
 
 class EDMDiscretization(Discretization):
@@ -91,4 +96,4 @@ class LegacyDDPMDiscretization(Discretization):
             raise ValueError(f"n ({n}) must be less than or equal to num_timesteps ({self.num_timesteps})")
 
         sigmas = ((1 - alphas_cumprod) / alphas_cumprod) ** 0.5
-        return sigmas.flip(0).to(device, dtype=torch.float32)
+        return sigmas.flip((0,)).to(device, dtype=torch.float32)

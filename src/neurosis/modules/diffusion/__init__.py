@@ -13,7 +13,7 @@ from .denoiser_weighting import (
     UnitWeighting,
     VWeighting,
 )
-from .discretizer import (
+from .discretization import (
     Discretization,
     EDMcDiscretization,
     EDMDiscretization,
@@ -22,7 +22,19 @@ from .discretizer import (
 from .loss import DiffusionLoss, StandardDiffusionLoss
 from .model import Decoder, Encoder, Model
 from .openaimodel import Timestep, UNetModel
-from .sampling import BaseDiffusionSampler
+from .sampling import (
+    BaseDiffusionSampler,
+    DiscreteSampling,
+    DPMPP2MSampler,
+    DPMPP2SAncestralSampler,
+    EDMSampler,
+    EDMSampling,
+    EulerAncestralSampler,
+    EulerEDMSampler,
+    HeunEDMSampler,
+    LinearMultistepSampler,
+    SigmaSampler,
+)
 from .wrappers import IdentityWrapper, OpenAIWrapper
 
 __all__ = [
@@ -33,10 +45,14 @@ __all__ = [
     "DenoiserWeighting",
     "DiffusionLoss",
     "DiscreteDenoiser",
+    "DiscreteSampling",
     "Discretization",
+    "DPMPP2MSampler",
+    "DPMPP2SAncestralSampler",
     "EDMcDiscretization",
     "EDMDiscretization",
     "EDMSampler",
+    "EDMSampling",
     "EDMScaling",
     "EDMWeighting",
     "Encoder",
@@ -47,8 +63,10 @@ __all__ = [
     "HeunEDMSampler",
     "IdentityWrapper",
     "LegacyDDPMDiscretization",
+    "LinearMultistepSampler",
     "Model",
     "OpenAIWrapper",
+    "SigmaSampler",
     "StandardDiffusionLoss",
     "Timestep",
     "UNetModel",

@@ -16,7 +16,7 @@ def denormalize(images: np.ndarray | Tensor) -> np.ndarray | Tensor:
     return images + 1.0 / 2.0
 
 
-def is_image_tensor(x: Tensor) -> bool:
+def is_image_tensor(x: np.ndarray | Tensor) -> bool:
     if x.ndim == 3 and x.shape[0] == 3:
         return True
     if x.ndim == 4 and x.shape[1] == 3:
