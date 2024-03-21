@@ -277,6 +277,11 @@ class ImageLogger(Callback):
                 table.add_data(*data)
             wandb_dict.update({f"{split}/table": table})
 
+        # clean up any double-prefixed keys in the wandb_dict
+        for k in list(wandb_dict):
+            if k.startswith(f"{split}/{split}"):
+                wandb_dict[k.replace(f"{split}/", "", 1)] = wandb_dict.pop(k)
+
         if pl_module is not None:
             for pl_logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
                 pl_logger.log_metrics(wandb_dict)
