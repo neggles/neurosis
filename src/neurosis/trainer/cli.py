@@ -62,7 +62,6 @@ class DiffusionTrainerCli(LightningCLI):
                 default_root_dir.mkdir(exist_ok=True, parents=True)
 
             if train_loggers := trainer_args.get("logger"):
-                logger.info(f"Got loggers: {train_loggers}")
                 for lobj in [
                     x
                     for x in train_loggers
