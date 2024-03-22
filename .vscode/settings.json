@@ -28,6 +28,7 @@
     "[python]": {
         "editor.wordBasedSuggestions": "off",
         "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "file",
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {
             "source.organizeImports": "always"
