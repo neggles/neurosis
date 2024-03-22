@@ -128,10 +128,11 @@ class StandardDiffusionLoss(DiffusionLoss):
         outputs = denoiser(network, noised_input, sigmas, cond, **extra_inputs)
 
         # get loss weighting, expand to broadcast over batch
-        weight = append_dims(self.loss_weighting(sigmas), inputs.ndim)
+        weight = self.loss_weighting(sigmas)
+        weight_bc = append_dims(weight, inputs.ndim)
 
         # get loss and return
-        loss = self.get_loss(outputs, inputs, weight)
+        loss = self.get_loss(outputs, inputs, weight_bc)
         return loss.mean()
 
     def get_loss(self, outputs: Tensor, target: Tensor, weight: Tensor):
