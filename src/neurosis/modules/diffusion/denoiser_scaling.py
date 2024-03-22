@@ -59,7 +59,7 @@ class EDMScaling(VScaling):
         return self.sigma_data**2.0 / (sigma**2.0 + self.sigma_data**2.0)
 
     def get_c_out(self, sigma: Tensor) -> Tensor:
-        return sigma * self.sigma_data / (sigma**2.0 + self.sigma_data**2.0) ** 0.5
+        return sigma * (self.sigma_data / torch.sqrt(sigma**2.0 + self.sigma_data**2.0))
 
     def get_c_in(self, sigma: Tensor) -> Tensor:
         return 1 / (sigma**2.0 + self.sigma_data**2.0) ** 0.5
