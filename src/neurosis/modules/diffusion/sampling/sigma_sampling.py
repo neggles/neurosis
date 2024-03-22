@@ -10,12 +10,13 @@ class SigmaSampler(ABC):
 
 
 class EDMSampling(SigmaSampler):
-    def __init__(self, p_mean=-1.2, p_std=1.2):
+    def __init__(self, p_mean=-1.0, p_std=1.2):
         self.p_mean = p_mean
         self.p_std = p_std
 
     def __call__(self, n_samples, rand=None):
-        log_sigma = self.p_mean + self.p_std * (rand or torch.randn((n_samples,)))
+        rand = rand if rand is not None else torch.randn((n_samples,))
+        log_sigma = self.p_mean + self.p_std * (rand)
         return log_sigma.exp()
 
 
@@ -24,7 +25,7 @@ class DiscreteSampling(SigmaSampler):
         self,
         discretization: Discretization,
         num_idx: int,
-        do_append_zero: bool = False,
+        do_append_zero: bool = True,
         flip: bool = True,
     ):
         self.num_idx = num_idx
