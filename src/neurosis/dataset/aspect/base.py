@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class AspectBucketDataset(Dataset):
+    batch_size: int  # added by classes this is mixed into
+
     def __init__(
         self,
         buckets: AspectBucketList,
