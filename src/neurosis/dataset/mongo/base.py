@@ -159,4 +159,7 @@ class BaseMongoDataset(Dataset):
         # load image and ensure RGB colorspace
         image = Image.open(BytesIO(image))
         image = pil_ensure_rgb(image)
+        # consider garbage collection
+        maybe_collect()
+        # return image
         return image
