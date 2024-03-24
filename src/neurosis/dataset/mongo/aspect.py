@@ -1,6 +1,6 @@
 import logging
 from os import PathLike, getpid
-from typing import Literal, Optional
+from typing import Generator, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -13,10 +13,10 @@ from torch import Tensor
 from torch.utils.data import BatchSampler, DataLoader
 
 from neurosis.dataset.aspect import (
+    AspectBatchSampler,
     AspectBucket,
     AspectBucketDataset,
     AspectBucketList,
-    AspectBucketSampler,
     SDXLBucketList,
 )
 from neurosis.dataset.utils import clean_word, clear_fsspec, pil_crop_bucket, set_s3fs_opts
@@ -181,7 +181,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
                 return self.tag_sep.join(caption).strip()
             return caption.strip()
 
-    def get_batch_iterator(self, return_bucket: bool = False):
+    def get_batch_iterator(self) -> Generator[list[int], None, None]:
         logger.info("Creating batch iterator")
         max_bucket_len = self.samples.groupby("bucket_idx").size().max()
         index_sched = np.array(range(max_bucket_len), np.int32)
@@ -209,7 +209,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
                 b_offs += 1
 
             bucket_dict[idx] = (indices, b_len, b_offs)
-            yield (batch, self.buckets[idx]) if return_bucket else batch
+            yield batch
 
 
 class MongoAspectModule(LightningDataModule):
@@ -269,7 +269,7 @@ class MongoAspectModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.drop_last = drop_last
-        self.sampler: AspectBucketSampler = None
+        self.sampler: AspectBatchSampler = None
 
     def prepare_data(self) -> None:
         pass
@@ -277,7 +277,7 @@ class MongoAspectModule(LightningDataModule):
     def setup(self, stage: str):
         if self.sampler is None:
             logger.info("Generating sampler")
-            self.sampler = AspectBucketSampler(self.dataset)
+            self.sampler = AspectBatchSampler(self.dataset)
 
         logger.info(f"Refreshing dataset clients for {stage}")
         self.dataset.refresh_clients()

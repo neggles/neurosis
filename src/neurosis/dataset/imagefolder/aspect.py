@@ -1,6 +1,7 @@
 import logging
 from os import PathLike
 from pathlib import Path
+from typing import Generator
 
 import numpy as np
 import pandas as pd
@@ -11,10 +12,10 @@ from torch.utils.data import BatchSampler, DataLoader
 
 from neurosis.constants import IMAGE_EXTNS
 from neurosis.dataset.aspect import (
+    AspectBatchSampler,
     AspectBucket,
     AspectBucketDataset,
     AspectBucketList,
-    AspectBucketSampler,
     SDXLBucketList,
 )
 from neurosis.dataset.utils import clean_word, load_bucket_image_file
@@ -140,7 +141,7 @@ class ImageFolderDataset(AspectBucketDataset):
             index=["image_path", "caption", "aspect", "resolution", "bucket_idx"],
         )
 
-    def get_batch_iterator(self, return_bucket: bool = False):
+    def get_batch_iterator(self) -> Generator[list[int], None, None]:
         max_bucket_len = self.samples.groupby("bucket_idx").size().max()
         index_sched = np.array(range(max_bucket_len), np.int32)
         np.random.shuffle(index_sched)
@@ -167,7 +168,7 @@ class ImageFolderDataset(AspectBucketDataset):
                 b_offs += 1
 
             bucket_dict[idx] = (indices, b_len, b_offs)
-            yield (batch, self.buckets[idx]) if return_bucket else batch
+            yield batch
 
 
 class ImageFolderModule(LightningDataModule):
@@ -222,7 +223,7 @@ class ImageFolderModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.drop_last = drop_last
-        self.sampler: AspectBucketSampler = None
+        self.sampler: AspectBatchSampler = None
 
     def prepare_data(self) -> None:
         pass
@@ -230,7 +231,7 @@ class ImageFolderModule(LightningDataModule):
     def setup(self, stage: str):
         if self.sampler is None:
             logger.info("Generating sampler")
-            self.sampler = AspectBucketSampler(self.dataset)
+            self.sampler = AspectBatchSampler(self.dataset)
 
     def train_dataloader(self):
         batch_sampler = BatchSampler(self.sampler, self.dataset.batch_size, self.drop_last)
