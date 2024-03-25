@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Convert neurosis (Lightning) VAE checkpoint into HF model and ldm checkpoint"""
+
 from collections import OrderedDict
 from enum import Enum
 from os import PathLike

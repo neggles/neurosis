@@ -1,4 +1,5 @@
 """Stripped and reworked version of https://github.com/richzhang/PerceptualSimilarity/tree/master/models"""
+
 import logging
 import warnings
 from typing import NamedTuple
