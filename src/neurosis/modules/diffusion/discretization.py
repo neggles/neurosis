@@ -15,6 +15,9 @@ def generate_roughly_equally_spaced_steps(num_substeps: int, max_step: int) -> n
 
 
 class Discretization(ABC):
+    def __init__(self):
+        super().__init__()
+
     def __call__(
         self,
         n: int,
@@ -44,11 +47,31 @@ class EDMcDiscretization(Discretization):
     ):
         super().__init__()
         self.sigma_min = sigma_min
+        self.log_sigma_min = log(sigma_min)
+        self.sigma_max = sigma_max
+        self.log_sigma_max = log(sigma_max)
+
+    def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
+        sigmas = torch.linspace(self.log_sigma_min, self.log_sigma_max, n, dtype=torch.float32).exp()
+
+        # return flipped so largest sigma is first
+        return sigmas.flip(0).to(device)
+
+
+class TanZeroSNRDiscretization(Discretization):
+    def __init__(self, sigma_max: float = 9e4):
+        super().__init__()
         self.sigma_max = sigma_max
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
-        sigmas = torch.linspace(log(self.sigma_min), log(self.sigma_max), n, dtype=torch.float32).exp()
-        return sigmas.flip((0,)).to(device, dtype=torch.float32)
+        # these calcs need to be float64 or they'll overflow in intermediate steps
+        half_pi_t = torch.acos(torch.zeros(1, dtype=torch.float64))[0]
+        sigmas = torch.tan(torch.linspace(0.0, half_pi_t, n, dtype=torch.float64))
+        # manually override the last value to be sigma_max to avoid overflow issues in fp16 nets
+        # (and because ~1.6e16 is unnecessarily high for any practical purpose)
+        sigmas[-1] = self.sigma_max
+        # return flipped so largest sigma is first and cast to float32
+        return sigmas.flip(0).to(device, dtype=torch.float32)
 
 
 class EDMDiscretization(Discretization):
@@ -58,15 +81,18 @@ class EDMDiscretization(Discretization):
         sigma_max: float = 80.0,
         rho: float = 7.0,
     ):
+        super().__init__()
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.rho = rho
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
-        ramp = torch.linspace(0, 1, n, device=device)
+        ramp = torch.linspace(0, 1, n, device=device, dtype=torch.float32)
         min_inv_rho = self.sigma_min ** (1 / self.rho)
         max_inv_rho = self.sigma_max ** (1 / self.rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** self.rho
+
+        # largest sigma is already first here
         return sigmas
 
 
@@ -79,8 +105,8 @@ class LegacyDDPMDiscretization(Discretization):
     ):
         super().__init__()
         self.num_timesteps = num_timesteps
-        alphas = 1.0 - make_beta_schedule("linear", num_timesteps, linear_start, linear_end)
-        self.alphas_cumprod = torch.cumprod(alphas, dim=0)
+        self.alphas = 1.0 - make_beta_schedule("linear", num_timesteps, linear_start, linear_end)
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0, dtype=torch.float32)
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
         if n < self.num_timesteps:
@@ -92,4 +118,4 @@ class LegacyDDPMDiscretization(Discretization):
             raise ValueError(f"n ({n}) must be less than or equal to num_timesteps ({self.num_timesteps})")
 
         sigmas = ((1 - alphas_cumprod) / alphas_cumprod) ** 0.5
-        return sigmas.flip((0,)).to(device, dtype=torch.float32)
+        return sigmas.flip(0).to(device, dtype=torch.float32)
