@@ -5,7 +5,7 @@ from torch import Tensor, nn
 
 from neurosis.utils import append_dims
 
-from .denoiser_scaling import DenoiserScaling
+from .denoiser_preconditioning import DenoiserPreconditioning
 from .discretization import Discretization
 
 logger = logging.getLogger(__name__)
@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 class Denoiser(nn.Module):
     def __init__(
         self,
-        scaling: DenoiserScaling,
+        scaling: DenoiserPreconditioning,
     ):
         super().__init__()
-        self.scaling: DenoiserScaling = scaling
+        self.scaling: DenoiserPreconditioning = scaling
 
     def possibly_quantize_sigma(self, sigma: Tensor) -> Tensor:
         return sigma
@@ -53,7 +53,7 @@ class DiscreteDenoiser(Denoiser):
 
     def __init__(
         self,
-        scaling: DenoiserScaling,
+        scaling: DenoiserPreconditioning,
         num_idx: int,
         discretization: Discretization,
         do_append_zero: bool = False,
