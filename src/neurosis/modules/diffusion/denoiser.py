@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 class Denoiser(nn.Module):
     def __init__(
         self,
-        scaling: DenoiserPreconditioning,
+        preconditioning: DenoiserPreconditioning,
     ):
         super().__init__()
-        self.scaling: DenoiserPreconditioning = scaling
+        self.preconditioning: DenoiserPreconditioning = preconditioning
 
     def possibly_quantize_sigma(self, sigma: Tensor) -> Tensor:
         return sigma
@@ -37,7 +37,7 @@ class Denoiser(nn.Module):
         sigma_shape = sigma.shape
 
         sigma = append_dims(sigma, inputs.ndim)
-        c_skip, c_out, c_in, c_noise = self.scaling(sigma)
+        c_skip, c_out, c_in, c_noise = self.preconditioning(sigma)
 
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
 
@@ -53,14 +53,14 @@ class DiscreteDenoiser(Denoiser):
 
     def __init__(
         self,
-        scaling: DenoiserPreconditioning,
+        preconditioning: DenoiserPreconditioning,
         num_idx: int,
         discretization: Discretization,
         do_append_zero: bool = False,
         quantize_c_noise: bool = True,
         flip: bool = False,
     ):
-        super().__init__(scaling)
+        super().__init__(preconditioning)
         self.num_idx = num_idx
         self.quantize_c_noise = quantize_c_noise
         self.do_append_zero = do_append_zero
