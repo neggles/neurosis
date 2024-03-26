@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "tamasfe.even-better-toml",
+        "charliermarsh.ruff",
+        "redhat.vscode-yaml",
+        "ms-python.python"
+    ]
+}
