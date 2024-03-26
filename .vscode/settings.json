@@ -60,6 +60,10 @@
         "editor.rulers": [80, 100]
     },
     "evenBetterToml.formatter.columnWidth": 88,
+    "evenBetterToml.formatter.allowedBlankLines": 2,
+    "evenBetterToml.formatter.arrayAutoCollapse": false,
+    "evenBetterToml.formatter.arrayAutoExpand": true,
+    "evenBetterToml.formatter.arrayTrailingComma": true,
 
     "[yaml]": {
         "editor.detectIndentation": false,
