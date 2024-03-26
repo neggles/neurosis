@@ -84,8 +84,8 @@ model:
       class_path: neurosis.modules.diffusion.DiscreteDenoiser
       init_args:
         num_idx: 1000
-        scaling:
-          class_path: neurosis.modules.diffusion.EpsScaling
+        preconditioning:
+          class_path: neurosis.modules.diffusion.EpsPreconditioning
         discretization:
           class_path: neurosis.modules.diffusion.LegacyDDPMDiscretization
 
