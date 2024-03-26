@@ -5,7 +5,7 @@ import torch
 from torch import Tensor
 
 
-class DenoiserScaling(ABC):
+class DenoiserPreconditioning(ABC):
     def __call__(self, sigma: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         return self.get_c_skip(sigma), self.get_c_out(sigma), self.get_c_in(sigma), self.get_c_noise(sigma)
 
@@ -30,7 +30,7 @@ class DenoiserScaling(ABC):
         return 1 / sigma**2.0
 
 
-class EpsScaling(DenoiserScaling):
+class EpsPreconditioning(DenoiserPreconditioning):
     def get_c_skip(self, sigma: Tensor) -> Tensor:
         return torch.ones_like(sigma, device=sigma.device)
 
@@ -44,7 +44,7 @@ class EpsScaling(DenoiserScaling):
         return sigma.clone()
 
 
-class VScaling(EpsScaling):
+class VPreconditioning(EpsPreconditioning):
     def __init__(self, sigma_data: float = 1.0):
         self.sigma_data = sigma_data
 
@@ -55,13 +55,13 @@ class VScaling(EpsScaling):
         return -sigma / (sigma**2 + self.sigma_data) ** 0.5
 
 
-class VScalingWithEDMcNoise(VScaling):
+class VPreconditioningWithEDMcNoise(VPreconditioning):
     def get_c_noise(self, sigma: Tensor) -> Tensor:
         return 0.25 * sigma.log()
 
 
-class EDMScaling(VScaling):
-    def __init__(self, sigma_data: float = 0.5):
+class EDMPreconditioning(DenoiserPreconditioning):
+    def __init__(self, sigma_data: float = 1.0):
         self.sigma_data = sigma_data
 
     def get_c_skip(self, sigma: Tensor) -> Tensor:

@@ -8,16 +8,16 @@ from .sampling import (
     HeunEDMSampler,
     LinearMultistepSampler,
 )
-from .sigma_sampling import (
-    CosineSchedule,
-    DiscreteSampling,
-    EDMSampling,
-    SigmaSampler,
+from .sigma_generators import (
+    CosineScheduleSigmaGenerator,
+    DiscreteSigmaGenerator,
+    EDMSigmaGenerator,
+    SigmaGenerator,
 )
 
 __all__ = [
     "BaseDiffusionSampler",
-    "CosineSchedule",
+    "CosineScheduleSigmaGenerator",
     "DPMPP2MSampler",
     "DPMPP2SAncestralSampler",
     "EDMSampler",
@@ -25,7 +25,7 @@ __all__ = [
     "EulerEDMSampler",
     "HeunEDMSampler",
     "LinearMultistepSampler",
-    "SigmaSampler",
-    "DiscreteSampling",
-    "EDMSampling",
+    "SigmaGenerator",
+    "DiscreteSigmaGenerator",
+    "EDMSigmaGenerator",
 ]

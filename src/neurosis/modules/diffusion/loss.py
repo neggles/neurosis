@@ -11,7 +11,7 @@ from neurosis.utils import append_dims
 from ..encoders import GeneralConditioner
 from .denoiser import Denoiser
 from .denoiser_weighting import DenoiserWeighting, VWeighting
-from .sampling.sigma_sampling import SigmaSampler
+from .sampling.sigma_generators import SigmaGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class DiffusionLoss(ABC, nn.Module):
 class StandardDiffusionLoss(DiffusionLoss):
     def __init__(
         self,
-        sigma_sampler: SigmaSampler,
+        sigma_generator: SigmaGenerator,
         loss_weighting: DenoiserWeighting,
         loss_type: str = "l2",
         snr_gamma: float = 0.0,
@@ -81,7 +81,7 @@ class StandardDiffusionLoss(DiffusionLoss):
         input_keys: str | list[str] = [],
     ):
         super().__init__(noise_offset, noise_offset_chance)
-        self.sigma_sampler = sigma_sampler
+        self.sigma_generator = sigma_generator
         self.loss_weighting = loss_weighting
         self.snr_gamma = snr_gamma
         self.v_prediction = issubclass(self.loss_weighting.__class__, VWeighting)
@@ -113,7 +113,7 @@ class StandardDiffusionLoss(DiffusionLoss):
         # get extra inputs keys
         extra_inputs = {k: batch[k] for k in batch if k in self.input_keys}
         # get sigmas
-        sigmas = self.sigma_sampler(inputs.shape[0]).to(inputs)
+        sigmas = self.sigma_generator(inputs.shape[0]).to(inputs)
 
         # get noise
         noise = torch.randn_like(inputs)
