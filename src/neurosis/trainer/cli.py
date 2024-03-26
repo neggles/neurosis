@@ -72,7 +72,7 @@ class DiffusionTrainerCli(LightningCLI):
                     )
                 ]:
                     if save_dir := lobj.init_args.get("save_dir"):
-                        save_dir = Path(save_dir).resolve()
+                        save_dir = Path(save_dir).resolve().joinpath("wandb")
                         logger.info(f"Making sure wandb save_dir {save_dir} exists")
                         save_dir.mkdir(exist_ok=True, parents=True)
 
