@@ -8,13 +8,13 @@ from torch import Tensor
 from neurosis.modules.diffusion.discretization import Discretization
 
 
-class SigmaSampler(ABC):
+class SigmaGenerator(ABC):
     @abstractmethod
     def __call__(self, n_samples: int, rand: Optional[Tensor] = None):
         raise NotImplementedError("Abstract base class was called ;_;")
 
 
-class EDMSampling(SigmaSampler):
+class EDMSigmaGenerator(SigmaGenerator):
     def __init__(
         self,
         p_mean: float = -1.0,
@@ -33,7 +33,7 @@ class EDMSampling(SigmaSampler):
         return log_sigma.exp()
 
 
-class DiscreteSampling(SigmaSampler):
+class DiscreteSigmaGenerator(SigmaGenerator):
     def __init__(
         self,
         discretization: Discretization,
@@ -55,7 +55,7 @@ class DiscreteSampling(SigmaSampler):
         return self.idx_to_sigma(idx)
 
 
-class CosineSchedule(SigmaSampler):
+class CosineScheduleSigmaGenerator(SigmaGenerator):
     def __init__(
         self,
         s: float = 0.008,

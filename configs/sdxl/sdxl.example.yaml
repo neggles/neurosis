@@ -173,7 +173,7 @@ model:
       init_args:
         loss_weighting:
           class_path: neurosis.modules.diffusion.EpsWeighting
-        sigma_sampler:
+        sigma_generator:
           class_path: neurosis.modules.diffusion.sigma_sampling.DiscreteSampling
           init_args:
             num_idx: 1000
