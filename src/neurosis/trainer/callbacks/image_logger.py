@@ -4,6 +4,7 @@ from typing import Optional, Union
 from warnings import warn
 
 import numpy as np
+import pandas as pd
 import torch
 import wandb
 from lightning.pytorch import Callback, LightningModule, Trainer
@@ -268,23 +269,28 @@ class ImageLogger(Callback):
                 logger.exception(f"Failed to log {k}, continuing")
                 continue
 
-        if len(table_dict) > 0:
-            table = wandb.Table(
-                columns=[str(x) for x in table_dict.keys()],
-                allow_mixed_types=True,
-            )
-            for data in zip(*table_dict.values()):
-                table.add_data(*data)
-            wandb_dict.update({f"{split}/table": table})
+        # no module = no loggers, so return early
+        if pl_module is None:
+            return
 
-        # clean up any double-prefixed keys in the wandb_dict
+        # clean up any double-prefixed keys in the wandb_dict and table_dict
         for k in list(wandb_dict):
             if k.startswith(f"{split}/{split}"):
                 wandb_dict[k.replace(f"{split}/", "", 1)] = wandb_dict.pop(k)
 
-        if pl_module is not None:
-            for pl_logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
-                pl_logger.log_metrics(wandb_dict)
+        for k in list(table_dict):
+            if k.startswith(f"{split}/{split}"):
+                table_dict[k.replace(f"{split}/", "", 1)] = table_dict.pop(k)
+
+        # log to wandb
+        for pl_logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
+            pl_logger.log_metrics(wandb_dict)
+            if len(table_dict) > 0:
+                try:
+                    table_df = pd.DataFrame(table_dict)
+                    pl_logger.log_table(f"{split}/table", data=table_df, step=step)
+                except Exception as e:
+                    logger.exception("Failed to log table to WandB", e)
 
     @rank_zero_only
     def maybe_log_images(
