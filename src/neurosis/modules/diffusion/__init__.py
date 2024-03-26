@@ -1,10 +1,8 @@
 from .denoiser import Denoiser, DiscreteDenoiser
-from .denoiser_scaling import (
-    DenoiserScaling,
-    EDMScaling,
-    EpsScaling,
-    VScaling,
-    VScalingWithEDMcNoise,
+from .denoiser_preconditioning import (
+    DenoiserPreconditioning,
+    EDMPreconditioning,
+    EpsPreconditioning,
 )
 from .denoiser_weighting import (
     DenoiserWeighting,
@@ -40,7 +38,7 @@ __all__ = [
     "BaseDiffusionSampler",
     "Decoder",
     "Denoiser",
-    "DenoiserScaling",
+    "DenoiserPreconditioning",
     "DenoiserWeighting",
     "DiffusionLoss",
     "DiscreteDenoiser",
@@ -52,10 +50,10 @@ __all__ = [
     "EDMDiscretization",
     "EDMSampler",
     "EDMSigmaGenerator",
-    "EDMScaling",
+    "EDMPreconditioning",
     "EDMWeighting",
     "Encoder",
-    "EpsScaling",
+    "EpsPreconditioning",
     "EpsWeighting",
     "EulerAncestralSampler",
     "EulerEDMSampler",
@@ -70,7 +68,5 @@ __all__ = [
     "Timestep",
     "UNetModel",
     "UnitWeighting",
-    "VScaling",
-    "VScalingWithEDMcNoise",
     "VWeighting",
 ]
