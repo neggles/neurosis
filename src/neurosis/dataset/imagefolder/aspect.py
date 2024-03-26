@@ -137,7 +137,7 @@ class ImageFolderDataset(AspectBucketDataset):
         aspect = np.float32(resolution[0] / resolution[1])
         bucket_idx = self.buckets.bucket_idx(aspect)
         return pd.Series(
-            data=[image_path, caption, aspect, resolution, bucket_idx],
+            data=[str(image_path).encode("utf-8"), caption, aspect, resolution, bucket_idx],
             index=["image_path", "caption", "aspect", "resolution", "bucket_idx"],
         )
 
