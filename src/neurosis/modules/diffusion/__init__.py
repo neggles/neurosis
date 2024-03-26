@@ -68,5 +68,4 @@ __all__ = [
     "Timestep",
     "UNetModel",
     "UnitWeighting",
-    "VWeighting",
 ]
