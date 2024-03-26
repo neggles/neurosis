@@ -146,7 +146,8 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
     def assign_aspect(self) -> pd.DataFrame:
         def get_bucket_indices(df: pd.DataFrame):
             aspects: pd.Series = df["aspect"]
-            return aspects.apply(self.buckets.bucket_idx)
+            indices: pd.Series = aspects.apply(self.buckets.bucket_idx)
+            return indices
 
         if "bucket_idx" not in self.samples.columns:
             logger.info("Mapping aspect ratios to buckets...")
@@ -184,7 +185,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
     def get_batch_iterator(self) -> Generator[list[int], None, None]:
         logger.info("Creating batch iterator")
         max_bucket_len = self.samples.groupby("bucket_idx").size().max()
-        index_sched = np.array(range(max_bucket_len), np.int32)
+        index_sched = np.arange(max_bucket_len, dtype=np.int64)
         np.random.shuffle(index_sched)
 
         bucket_dict = {

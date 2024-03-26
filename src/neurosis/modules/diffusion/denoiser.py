@@ -49,6 +49,7 @@ class Denoiser(nn.Module):
 
 class DiscreteDenoiser(Denoiser):
     sigmas: Tensor
+    log_sigmas: Tensor
 
     def __init__(
         self,
@@ -57,13 +58,17 @@ class DiscreteDenoiser(Denoiser):
         discretization: Discretization,
         do_append_zero: bool = False,
         quantize_c_noise: bool = True,
-        flip: bool = True,
+        flip: bool = False,
     ):
         super().__init__(scaling)
-        sigmas = discretization(num_idx, do_append_zero=do_append_zero, flip=flip)
-        self.register_buffer("sigmas", sigmas, persistent=False)
-        self.quantize_c_noise = quantize_c_noise
         self.num_idx = num_idx
+        self.quantize_c_noise = quantize_c_noise
+        self.do_append_zero = do_append_zero
+        self.flip = flip
+
+        sigmas = discretization(self.num_idx, do_append_zero=self.do_append_zero, flip=self.flip)
+        self.register_buffer("sigmas", sigmas, persistent=False)
+        self.register_buffer("log_sigmas", sigmas.log(), persistent=False)
 
     def sigma_to_idx(self, sigma: Tensor) -> Tensor:
         dists = sigma - self.sigmas[:, None]

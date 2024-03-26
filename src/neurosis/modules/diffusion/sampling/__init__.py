@@ -9,6 +9,7 @@ from .sampling import (
     LinearMultistepSampler,
 )
 from .sigma_sampling import (
+    CosineSchedule,
     DiscreteSampling,
     EDMSampling,
     SigmaSampler,
@@ -16,6 +17,7 @@ from .sigma_sampling import (
 
 __all__ = [
     "BaseDiffusionSampler",
+    "CosineSchedule",
     "DPMPP2MSampler",
     "DPMPP2SAncestralSampler",
     "EDMSampler",

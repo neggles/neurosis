@@ -5,12 +5,12 @@ from abc import ABC, abstractmethod
 import torch
 from torch import Tensor, nn
 
-from neurosis.modules.losses.perceptual import LPIPS
+from neurosis.modules.losses.functions import BatchL1Loss, BatchMSELoss
 from neurosis.utils import append_dims
 
 from ..encoders import GeneralConditioner
 from .denoiser import Denoiser
-from .denoiser_weighting import DenoiserWeighting
+from .denoiser_weighting import DenoiserWeighting, VWeighting
 from .sampling.sigma_sampling import SigmaSampler
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,7 @@ class StandardDiffusionLoss(DiffusionLoss):
         sigma_sampler: SigmaSampler,
         loss_weighting: DenoiserWeighting,
         loss_type: str = "l2",
+        snr_gamma: float = 0.0,
         noise_offset: float = 0.0,
         noise_offset_chance: float = 0.0,
         input_keys: str | list[str] = [],
@@ -82,18 +83,18 @@ class StandardDiffusionLoss(DiffusionLoss):
         super().__init__(noise_offset, noise_offset_chance)
         self.sigma_sampler = sigma_sampler
         self.loss_weighting = loss_weighting
+        self.snr_gamma = snr_gamma
+        self.v_prediction = issubclass(self.loss_weighting.__class__, VWeighting)
 
         match loss_type.lower():
             case "l1":
                 logger.debug("Using L1 loss")
                 self.loss_type = "l1"
+                self.loss = BatchL1Loss(reduction="mean")
             case "l2" | "mse":
                 logger.debug("Using L2 loss")
                 self.loss_type = "l2"
-            case "lpips":
-                logger.debug("Using LPIPS perceptual loss")
-                self.loss_type = "lpips"
-                self.lpips = LPIPS().eval()
+                self.loss = BatchMSELoss(reduction="mean")
             case _:
                 raise ValueError(f"Unknown loss type: '{loss_type}'")
 
@@ -127,21 +128,26 @@ class StandardDiffusionLoss(DiffusionLoss):
         # get model output
         outputs = denoiser(network, noised_input, sigmas, cond, **extra_inputs)
 
-        # get loss weighting, expand to broadcast over batch
+        # get loss weighting
         weight = self.loss_weighting(sigmas)
-        weight_bc = append_dims(weight, inputs.ndim)
 
-        # get loss and return
-        loss = self.get_loss(outputs, inputs, weight_bc)
-        return loss.mean()
+        # get loss
+        loss = self.get_loss(outputs, inputs, weight)
+
+        # if we're doing min-snr weighting, do that
+        if self.snr_gamma > 0:
+            snr = 1 / sigmas**2
+            min_snr_gamma = torch.min(snr, torch.full_like(snr, self.snr_gamma))
+            if self.v_prediction:
+                snr_weight = min_snr_gamma.div(snr + 1)
+            else:
+                snr_weight = min_snr_gamma.div(snr)
+            loss *= snr_weight
+
+        return loss
 
     def get_loss(self, outputs: Tensor, target: Tensor, weight: Tensor):
-        if self.loss_type == "l2":
-            return torch.mean((weight * (outputs - target) ** 2).reshape(target.shape[0], -1), 1)
-        elif self.loss_type == "l1":
-            return torch.mean((weight * (outputs - target).abs()).reshape(target.shape[0], -1), 1)
-        elif self.loss_type == "lpips":
-            loss = self.lpips(outputs, target).reshape(-1)
-            return loss
+        if self.loss_type in ["l1", "l2"]:
+            return self.loss(outputs.float(), target.float()) * weight.float()
         else:
             raise ValueError(f"Unknown loss type {self.loss_type}")
