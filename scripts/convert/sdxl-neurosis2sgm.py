@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Convert PyTorch Lightning full-state checkpoint to a SafeTensors state dict."""
+
+import gc
+import json
 from collections import OrderedDict
 from os import PathLike
 from pathlib import Path
@@ -15,7 +18,7 @@ try:
     from rich.pretty import print
     from rich.traceback import install as install_traceback
 
-    _ = install_traceback(show_locals=True, locals_max_length=0)
+    _ = install_traceback(show_locals=True, locals_max_length=1)
 except ImportError:
     pass
 
@@ -35,7 +38,7 @@ def load_pl(path: PathLike) -> tuple[OrderedDict, dict]:
         pl_sd = torch.load(str(path), map_location="cpu")
 
     metadata = {
-        k: v
+        k: json.dumps(v, default=str, ensure_ascii=False)
         for k, v in pl_sd.items()
         if k in ["epoch", "global_step", "pytorch-lightning_version", "hyper_parameters"]
     }
@@ -52,7 +55,9 @@ def save_safetensors(
     try:
         save_file(state_dict, path, metadata)
     except Exception as e:
-        print(f"Failed to save SafeTensors checkpoint to {path}, trying without metadata")
+        print(f"Failed to save SafeTensors checkpoint with metadata to {path}: {e}")
+        print(f"Metadata was: {metadata}")
+        print("Trying without metadata...")
         save_file(state_dict, path)
         raise RuntimeError("Failed to save SafeTensors checkpoint metadata!") from e
 
@@ -126,9 +131,12 @@ def main(
     # cast weights to desired dtype if requested
     if fp16 or fp32:
         torch_dtype = torch.float16 if fp16 else torch.float16
-        for k in tqdm(state_dict, desc=f"Casting weights to {torch_dtype}", unit="param"):
+        for idx, k in enumerate(tqdm(state_dict, desc=f"Casting weights to {torch_dtype}", unit="param")):
             if isinstance(state_dict[k], torch.Tensor):
                 state_dict[k] = state_dict[k].to(torch_dtype)
+            if idx % 100 == 0:
+                gc.collect()
+        gc.collect()
 
     # save the SafeTensors checkpoint
     typer.echo("Saving SafeTensors checkpoint...")
@@ -139,4 +147,7 @@ def main(
 
 
 if __name__ == "__main__":
+    # disable gradients and set default device to CPU
+    _ = torch.set_grad_enabled(False)
+    torch.set_default_device("cpu")
     app()
