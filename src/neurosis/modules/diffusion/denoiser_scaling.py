@@ -25,16 +25,20 @@ class DenoiserScaling(ABC):
     def get_c_noise(self, sigma: Tensor) -> Tensor:
         raise NotImplementedError("Abstract base class was called ;_;")
 
+    def get_snr(self, sigma: Tensor) -> Tensor:
+        # this assumes unit variance for the data
+        return 1 / sigma**2.0
+
 
 class EpsScaling(DenoiserScaling):
     def get_c_skip(self, sigma: Tensor) -> Tensor:
         return torch.ones_like(sigma, device=sigma.device)
 
     def get_c_out(self, sigma: Tensor) -> Tensor:
-        return (-sigma).clone()
+        return -sigma
 
     def get_c_in(self, sigma: Tensor) -> Tensor:
-        return 1 / (sigma**2.0 + 1.0) ** 0.5
+        return 1.0 / (sigma**2.0 + 1.0) ** 0.5
 
     def get_c_noise(self, sigma: Tensor) -> Tensor:
         return sigma.clone()
@@ -45,10 +49,15 @@ class VScaling(EpsScaling):
         self.sigma_data = sigma_data
 
     def get_c_skip(self, sigma: Tensor) -> Tensor:
-        return self.sigma_data**2.0 / (sigma**2.0 + self.sigma_data)
+        return self.sigma_data / (sigma**2 + self.sigma_data)
 
     def get_c_out(self, sigma: Tensor) -> Tensor:
-        return -sigma / ((sigma**2.0 + 1.0) ** 0.5)
+        return -sigma / (sigma**2 + self.sigma_data) ** 0.5
+
+
+class VScalingWithEDMcNoise(VScaling):
+    def get_c_noise(self, sigma: Tensor) -> Tensor:
+        return 0.25 * sigma.log()
 
 
 class EDMScaling(VScaling):
@@ -56,18 +65,13 @@ class EDMScaling(VScaling):
         self.sigma_data = sigma_data
 
     def get_c_skip(self, sigma: Tensor) -> Tensor:
-        return self.sigma_data**2.0 / (sigma**2.0 + self.sigma_data**2.0)
+        return self.sigma_data**2 / (sigma**2 + self.sigma_data**2)
 
     def get_c_out(self, sigma: Tensor) -> Tensor:
-        return sigma * (self.sigma_data / torch.sqrt(sigma**2.0 + self.sigma_data**2.0))
+        return sigma * self.sigma_data / (sigma**2 + self.sigma_data**2) ** 0.5
 
     def get_c_in(self, sigma: Tensor) -> Tensor:
-        return 1 / (sigma**2.0 + self.sigma_data**2.0) ** 0.5
+        return 1 / (sigma**2 + self.sigma_data**2) ** 0.5
 
-    def get_c_noise(self, sigma: Tensor) -> Tensor:
-        return 0.25 * sigma.log()
-
-
-class VScalingWithEDMcNoise(VScaling):
     def get_c_noise(self, sigma: Tensor) -> Tensor:
         return 0.25 * sigma.log()
