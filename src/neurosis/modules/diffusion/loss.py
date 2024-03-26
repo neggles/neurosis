@@ -84,7 +84,6 @@ class StandardDiffusionLoss(DiffusionLoss):
         self.sigma_generator = sigma_generator
         self.loss_weighting = loss_weighting
         self.snr_gamma = snr_gamma
-        # self.v_prediction = issubclass(self.loss_weighting.__class__, VWeighting)
 
         match loss_type.lower():
             case "l1":
@@ -133,16 +132,6 @@ class StandardDiffusionLoss(DiffusionLoss):
 
         # get loss
         loss = self.get_loss(outputs, inputs, weight)
-
-        # # if we're doing min-snr weighting, do that
-        # if self.snr_gamma > 0:
-        #     snr = 1 / sigmas**2
-        #     min_snr_gamma = torch.min(snr, torch.full_like(snr, self.snr_gamma))
-        #     if self.v_prediction:
-        #         snr_weight = min_snr_gamma.div(snr + 1)
-        #     else:
-        #         snr_weight = min_snr_gamma.div(snr)
-        #     loss *= snr_weight
 
         return loss
 
