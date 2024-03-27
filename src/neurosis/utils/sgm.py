@@ -45,15 +45,23 @@ def is_power_of_two(n) -> bool:
 
 
 def autocast(f: Callable, enabled=True):
-    def do_autocast(*args, **kwargs):
-        with torch.cuda.amp.autocast(
-            enabled=enabled,
-            dtype=torch.get_autocast_gpu_dtype(),
-            cache_enabled=torch.is_autocast_cache_enabled(),
-        ):
-            return f(*args, **kwargs)
+    def wrapper(*args, **kwargs):
+        # Placeholder code
+        pass
 
-    return do_autocast
+        # Call the original function
+        return f(*args, **kwargs)
+
+    return wrapper
+    # def do_autocast(*args, **kwargs):
+    #     with torch.cuda.amp.autocast(
+    #         enabled=enabled,
+    #         dtype=torch.get_autocast_gpu_dtype(),
+    #         cache_enabled=torch.is_autocast_cache_enabled(),
+    #     ):
+    #         return f(*args, **kwargs)
+
+    # return do_autocast
 
 
 def log_txt_as_img(wh: tuple[int, int], xc: list[str], size: int = 10) -> Tensor:

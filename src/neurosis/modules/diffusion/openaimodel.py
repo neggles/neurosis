@@ -79,9 +79,15 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         num_video_frames: Optional[int] = None,
     ):
         for layer in self:
-            if isinstance(layer, TimestepBlock):
+            if isinstance(layer, TimestepBlock) or (
+                hasattr(layer, "_fsdp_wrapped_module")
+                and isinstance(layer._fsdp_wrapped_module, TimestepBlock)
+            ):
                 x = layer(x, emb)
-            elif isinstance(layer, SpatialTransformer):
+            elif isinstance(layer, SpatialTransformer) or (
+                hasattr(layer, "_fsdp_wrapped_module")
+                and isinstance(layer._fsdp_wrapped_module, SpatialTransformer)
+            ):
                 x = layer(x, context)
             else:
                 x = layer(x)
