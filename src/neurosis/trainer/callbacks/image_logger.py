@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class ImageLogger(Callback):
     def __init__(
         self,
-        disabled: bool = True,
+        enabled: bool = False,
         every_n_train_steps: int = 100,
         max_images: int = 4,
         clamp: bool = True,
@@ -45,7 +45,7 @@ class ImageLogger(Callback):
         self.rescale = rescale
         self.clamp = clamp
         self.enable_autocast = enable_autocast
-        self.enabled = not disabled
+        self.enabled = enabled
         self.label_img = label_img
 
         if self.max_images < 1 and self.enabled:
