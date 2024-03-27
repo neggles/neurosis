@@ -381,10 +381,62 @@ class MemoryEfficientCrossAttention(nn.Module):
         return self.to_out(out)
 
 
+class TorchSDPCrossAttention(MemoryEfficientCrossAttention):
+    def forward(
+        self,
+        x: Tensor,
+        context: Optional[Tensor] = None,
+        mask: Optional[Tensor] = None,
+        additional_tokens: Optional[Tensor] = None,
+        n_times_crossframe_attn_in_self: int = 0,
+    ):
+        if additional_tokens is not None:
+            # get the number of masked tokens at the beginning of the output sequence
+            n_tokens_to_mask = additional_tokens.shape[1]
+            # add additional token
+            x = torch.cat([additional_tokens, x], dim=1)
+        q = self.to_q(x)
+        context = context if context is not None else x
+        k = self.to_k(context)
+        v = self.to_v(context)
+
+        if n_times_crossframe_attn_in_self:
+            # reprogramming cross-frame attention as in https://arxiv.org/abs/2303.13439
+            assert x.shape[0] % n_times_crossframe_attn_in_self == 0
+            # n_cp = x.shape[0]//n_times_crossframe_attn_in_self
+            k = repeat(
+                k[::n_times_crossframe_attn_in_self],
+                "b ... -> (b n) ...",
+                n=n_times_crossframe_attn_in_self,
+            )
+            v = repeat(
+                v[::n_times_crossframe_attn_in_self],
+                "b ... -> (b n) ...",
+                n=n_times_crossframe_attn_in_self,
+            )
+        heads = self.heads
+        b, _, dim_head = q.shape
+        dim_head //= heads
+        q, k, v = map(
+            lambda t: t.view(b, -1, heads, dim_head).transpose(1, 2),
+            (q, k, v),
+        )
+
+        out = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False
+        )
+        out = out.transpose(1, 2).reshape(b, -1, heads * dim_head)
+        if additional_tokens is not None:
+            # remove additional token
+            out = out[:, n_tokens_to_mask:]
+        return self.to_out(out)
+
+
 class BasicTransformerBlock(nn.Module):
     ATTENTION_MODES = {
         "softmax": CrossAttention,  # vanilla attention
         "softmax-xformers": MemoryEfficientCrossAttention,  # ampere
+        "torch-sdp": TorchSDPCrossAttention,
     }
 
     def __init__(
@@ -475,6 +527,7 @@ class BasicTransformerSingleLayerBlock(nn.Module):
         "softmax": CrossAttention,  # vanilla attention
         "softmax-xformers": MemoryEfficientCrossAttention,  # on the A100s not quite as fast as the above version
         # (todo might depend on head_dim, check, falls back to semi-optimized kernels for dim!=[16,32,64,128])
+        "torch-sdp": TorchSDPCrossAttention,
     }
 
     def __init__(

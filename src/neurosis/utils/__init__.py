@@ -28,6 +28,7 @@ from .system import (
 from .text import (
     np_text_decode,
 )
+from .fsdp_custom_policy import diffusion_fsdp_policy
 
 __all__ = [
     "append_dims",
@@ -63,4 +64,5 @@ __all__ = [
     "silence_hf_load_warnings",
     "timestep_embedding",
     "zero_module",
+    "diffusion_fsdp_policy",
 ]

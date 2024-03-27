@@ -222,6 +222,28 @@ class MemoryEfficientAttnBlock(nn.Module):
         return x + h_
 
 
+class TorchSDPAttnBlock(MemoryEfficientAttnBlock):
+    def attention(self, h_: Tensor, mask: Tensor = None) -> Tensor:
+        h_: Tensor = self.norm(h_)
+        q: Tensor = self.q(h_)
+        k: Tensor = self.k(h_)
+        v: Tensor = self.v(h_)
+        # single head
+        B, C, H, W = q.shape
+        heads = 1
+        dim_head = C
+        q, k, v = map(
+            lambda t: t.view(B, -1, 1, C).transpose(1, 2),
+            (q, k, v),
+        )
+
+        out = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False
+        )
+        out = out.transpose(1, 2).reshape(B, -1, C)
+        return rearrange(out, "b (h w) c -> b c h w", b=B, h=H, w=W, c=C)
+
+
 class MemoryEfficientCrossAttentionWrapper(MemoryEfficientCrossAttention):
     def forward(self, x: Tensor, context=None, mask=None, **kwargs) -> Tensor:
         b, c, h, w = x.shape
@@ -232,7 +254,14 @@ class MemoryEfficientCrossAttentionWrapper(MemoryEfficientCrossAttention):
 
 
 def make_attn(in_channels: int, attn_type="vanilla", attn_kwargs=None) -> nn.Module:
-    if attn_type not in ["vanilla", "vanilla-xformers", "memory-efficient-cross-attn", "linear", "none"]:
+    if attn_type not in [
+        "vanilla",
+        "vanilla-xformers",
+        "memory-efficient-cross-attn",
+        "torch-sdp",
+        "linear",
+        "none",
+    ]:
         raise ValueError(f"attn_type {attn_type} unknown")
 
     logger.debug(f"making attention of type '{attn_type}' with {in_channels} in_channels")
@@ -242,9 +271,11 @@ def make_attn(in_channels: int, attn_type="vanilla", attn_kwargs=None) -> nn.Mod
     elif attn_type == "vanilla-xformers":
         logger.debug(f"building MemoryEfficientAttnBlock with {in_channels} in_channels...")
         return MemoryEfficientAttnBlock(in_channels)
-    elif type == "memory-efficient-cross-attn":
+    elif attn_type == "memory-efficient-cross-attn":
         attn_kwargs["query_dim"] = in_channels
         return MemoryEfficientCrossAttentionWrapper(**attn_kwargs)
+    elif attn_type == "torch-sdp":
+        return TorchSDPAttnBlock(in_channels)
     elif attn_type == "none":
         return nn.Identity(in_channels)
     else:
