@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 class ImageLogger(Callback):
     def __init__(
         self,
+        disabled: bool = True,
         every_n_train_steps: int = 100,
         max_images: int = 4,
         clamp: bool = True,
@@ -32,7 +33,6 @@ class ImageLogger(Callback):
         log_first_step: bool = False,
         log_func_kwargs: dict = {},
         extra_log_keys: list[str] = [],
-        disabled: bool = False,
         enable_autocast: bool = True,
         batch_size: int = 1,
         accumulate_grad_batches: int = 1,
