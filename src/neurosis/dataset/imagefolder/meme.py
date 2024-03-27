@@ -12,7 +12,7 @@ from torch.utils.data import BatchSampler, DataLoader
 
 from neurosis.constants import IMAGE_EXTNS
 from neurosis.dataset.aspect import (
-    AspectBatchSampler,
+    AspectDistributedSampler,
     AspectBucket,
     AspectBucketDataset,
     AspectBucketList,
@@ -254,7 +254,7 @@ class MemeAspectModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.drop_last = drop_last
-        self.sampler: AspectBatchSampler = None
+        self.sampler: AspectDistributedSampler = None
 
     def prepare_data(self) -> None:
         pass
@@ -262,7 +262,7 @@ class MemeAspectModule(LightningDataModule):
     def setup(self, stage: str):
         if self.sampler is None:
             logger.info("Generating sampler")
-            self.sampler = AspectBatchSampler(self.dataset)
+            self.sampler = AspectDistributedSampler(self.dataset)
 
     def train_dataloader(self):
         batch_sampler = BatchSampler(self.sampler, self.dataset.batch_size, self.drop_last)

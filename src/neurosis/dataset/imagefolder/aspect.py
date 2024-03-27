@@ -1,18 +1,18 @@
 import logging
 from os import PathLike
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Sequence
 
 import numpy as np
 import pandas as pd
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from torch import Tensor
-from torch.utils.data import BatchSampler, DataLoader
+from torch.utils.data import DataLoader
 
 from neurosis.constants import IMAGE_EXTNS
 from neurosis.dataset.aspect import (
-    AspectBatchSampler,
+    AspectDistributedSampler,
     AspectBucket,
     AspectBucketDataset,
     AspectBucketList,
@@ -64,6 +64,9 @@ class ImageFolderDataset(AspectBucketDataset):
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
         self.preload()
+        self.batch_to_idx = None
+        if batch_size > 1:
+            self.batch_to_idx = list(self.get_batch_iterator())
 
     def __len__(self):
         return len(self.samples)
@@ -80,6 +83,17 @@ class ImageFolderDataset(AspectBucketDataset):
             "crop_coords_top_left": crop_coords,
             "target_size_as_tuple": bucket.size,
         }
+
+    def __getitems__(self, indices: int | Sequence[int]) -> dict[str, Tensor]:
+        if isinstance(indices, int):
+            if self.batch_to_idx is not None:
+                indices = self.batch_to_idx[indices]
+            else:
+                indices = [indices]
+
+        samples = [self.__getitem__(idx) for idx in indices]
+        # collate function will handle the rest
+        return samples
 
     def preload(self):
         # get paths
@@ -157,18 +171,22 @@ class ImageFolderDataset(AspectBucketDataset):
             bucket_sched.extend([idx] * (len(bucket) // self.batch_size))
         np.random.shuffle(bucket_sched)
 
-        for idx in bucket_sched:
-            indices, b_len, b_offs = bucket_dict[idx]
+        def batch_iterator():
+            buckets = bucket_dict.copy()
+            for idx in bucket_sched:
+                indices, b_len, b_offs = buckets[idx]
 
-            batch = []
-            while len(batch) < self.batch_size:
-                k = index_sched[b_offs]
-                if k < b_len:
-                    batch.append(indices[k].item())
-                b_offs += 1
+                batch = []
+                while len(batch) < self.batch_size:
+                    k = index_sched[b_offs]
+                    if k < b_len:
+                        batch.append(indices[k].item())
+                    b_offs += 1
 
-            bucket_dict[idx] = (indices, b_len, b_offs)
-            yield batch
+                buckets[idx] = (indices, b_len, b_offs)
+                yield batch
+
+        return batch_iterator()
 
 
 class ImageFolderModule(LightningDataModule):
@@ -223,7 +241,7 @@ class ImageFolderModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.drop_last = drop_last
-        self.sampler: AspectBatchSampler = None
+        self.sampler: AspectDistributedSampler = None
 
     def prepare_data(self) -> None:
         pass
@@ -231,13 +249,12 @@ class ImageFolderModule(LightningDataModule):
     def setup(self, stage: str):
         if self.sampler is None:
             logger.info("Generating sampler")
-            self.sampler = AspectBatchSampler(self.dataset)
+            self.sampler = AspectDistributedSampler(self.dataset)
 
     def train_dataloader(self):
-        batch_sampler = BatchSampler(self.sampler, self.dataset.batch_size, self.drop_last)
         return DataLoader(
             self.dataset,
-            batch_sampler=batch_sampler,
+            batch_sampler=self.sampler,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
