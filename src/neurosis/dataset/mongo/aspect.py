@@ -1,6 +1,6 @@
 import logging
 from os import PathLike, getpid
-from typing import Generator, Literal, Optional
+from typing import Generator, Literal, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -10,15 +10,16 @@ from PIL import Image
 from pymongoarrow.schema import Schema
 from s3fs import S3FileSystem
 from torch import Tensor
-from torch.utils.data import BatchSampler, DataLoader
+from torch.utils.data import DataLoader
 
 from neurosis.dataset.aspect import (
-    AspectBatchSampler,
     AspectBucket,
     AspectBucketDataset,
     AspectBucketList,
+    AspectDistributedSampler,
     SDXLBucketList,
 )
+from neurosis.dataset.aspect.sampler import AspectBucketSampler
 from neurosis.dataset.utils import clean_word, clear_fsspec, pil_crop_bucket, set_s3fs_opts
 from neurosis.utils import maybe_collect
 
@@ -87,6 +88,9 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
         )
 
         self.preload()
+        self.batch_to_idx = None
+        if batch_size > 1:
+            self.batch_to_idx = list(self.get_batch_iterator())
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         if self._first_getitem:
@@ -106,6 +110,17 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             "target_size_as_tuple": torch.tensor(bucket.size, dtype=torch.int32),
             **{k: torch.tensor(sample.get(k)) for k in self.extra_keys if k in sample},
         }
+
+    def __getitems__(self, indices: int | Sequence[int]) -> dict[str, Tensor]:
+        if isinstance(indices, int):
+            if self.batch_to_idx is not None:
+                indices = self.batch_to_idx[indices]
+            else:
+                indices = [indices]
+
+        samples = [self.__getitem__(idx) for idx in indices]
+        # collate function will handle the rest
+        return samples
 
     def refresh_clients(self):
         """Helper func to replace the current clients with new ones post-fork etc."""
@@ -199,18 +214,22 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             bucket_sched.extend([idx] * (len(bucket) // self.batch_size))
         np.random.shuffle(bucket_sched)
 
-        for idx in bucket_sched:
-            indices, b_len, b_offs = bucket_dict[idx]
+        def batch_iterator():
+            buckets = bucket_dict.copy()
+            for idx in bucket_sched:
+                indices, b_len, b_offs = buckets[idx]
 
-            batch = []
-            while len(batch) < self.batch_size:
-                k = index_sched[b_offs]
-                if k < b_len:
-                    batch.append(indices[k].item())
-                b_offs += 1
+                batch = []
+                while len(batch) < self.batch_size:
+                    k = index_sched[b_offs]
+                    if k < b_len:
+                        batch.append(indices[k].item())
+                    b_offs += 1
 
-            bucket_dict[idx] = (indices, b_len, b_offs)
-            yield batch
+                buckets[idx] = (indices, b_len, b_offs)
+                yield batch
+
+        return batch_iterator()
 
 
 class MongoAspectModule(LightningDataModule):
@@ -238,8 +257,9 @@ class MongoAspectModule(LightningDataModule):
         retry_delay: int = 5,
         num_workers: int = 0,
         prefetch_factor: int = 2,
-        pin_memory: bool = True,
+        pin_memory: bool = False,
         drop_last: bool = True,
+        extra_loader_kwargs: dict = {},
     ):
         super().__init__()
         self.mongo_settings = get_mongo_settings(config_path)
@@ -270,7 +290,13 @@ class MongoAspectModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.drop_last = drop_last
-        self.sampler: AspectBatchSampler = None
+        self.extra_loader_kwargs = extra_loader_kwargs
+
+        self.sampler: AspectBucketSampler = None
+
+    @property
+    def batch_size(self):
+        return self.dataset.batch_size
 
     def prepare_data(self) -> None:
         pass
@@ -278,22 +304,29 @@ class MongoAspectModule(LightningDataModule):
     def setup(self, stage: str):
         if self.sampler is None:
             logger.info("Generating sampler")
-            self.sampler = AspectBatchSampler(self.dataset)
+            self.sampler = AspectDistributedSampler(self.dataset)
 
         logger.info(f"Refreshing dataset clients for {stage}")
         self.dataset.refresh_clients()
 
     def train_dataloader(self):
-        batch_sampler = BatchSampler(self.sampler, self.dataset.batch_size, self.drop_last)
-        return DataLoader(
-            self.dataset,
-            batch_sampler=batch_sampler,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            prefetch_factor=self.prefetch_factor,
-            persistent_workers=True,
-            worker_init_fn=mongo_worker_init,
-        )
+        if self.num_workers > 0:
+            return DataLoader(
+                self.dataset,
+                batch_sampler=self.sampler,
+                num_workers=self.num_workers,
+                pin_memory=self.pin_memory,
+                prefetch_factor=self.prefetch_factor,
+                worker_init_fn=mongo_worker_init,
+                **self.extra_loader_kwargs,
+            )
+        else:
+            return DataLoader(
+                self.dataset,
+                batch_sampler=self.sampler,
+                pin_memory=self.pin_memory,
+                **self.extra_loader_kwargs,
+            )
 
 
 def mongo_worker_init(worker_id: int = -1):
