@@ -3,6 +3,8 @@ from .denoiser_preconditioning import (
     DenoiserPreconditioning,
     EDMPreconditioning,
     EpsPreconditioning,
+    VPreconditioning,
+    VPreconditioningWithEDMcNoise,
 )
 from .denoiser_weighting import (
     DenoiserWeighting,
@@ -48,9 +50,9 @@ __all__ = [
     "DPMPP2SAncestralSampler",
     "EDMcDiscretization",
     "EDMDiscretization",
+    "EDMPreconditioning",
     "EDMSampler",
     "EDMSigmaGenerator",
-    "EDMPreconditioning",
     "EDMWeighting",
     "Encoder",
     "EpsPreconditioning",
@@ -68,4 +70,6 @@ __all__ = [
     "Timestep",
     "UNetModel",
     "UnitWeighting",
+    "VPreconditioning",
+    "VPreconditioningWithEDMcNoise",
 ]
