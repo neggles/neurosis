@@ -1,14 +1,14 @@
 from .base import AspectBucketDataset
 from .bucket import AspectBucket, AspectBucketList
 from .lists import SDXLBucketList, WDXLBucketList
-from .sampler import AspectBatchSampler, AspectBucketSampler
+from .sampler import AspectBucketSampler, AspectDistributedSampler
 
 __all__ = [
-    "AspectBatchSampler",
     "AspectBucket",
     "AspectBucketDataset",
     "AspectBucketList",
     "AspectBucketSampler",
+    "AspectDistributedSampler",
     "SDXLBucketList",
     "WDXLBucketList",
 ]
