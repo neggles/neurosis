@@ -2,6 +2,7 @@ from os import PathLike
 from pathlib import Path
 
 import numpy as np
+import torch
 from PIL import Image, ImageOps
 from torch import Tensor, nn
 
@@ -140,3 +141,19 @@ def clean_word(word_sep: str, word: str | bytes) -> str:
     word = word.replace("_", word_sep)
     word = word.replace(" ", word_sep)
     return word.strip()
+
+
+def collate_dict_lists(batch: list[dict]) -> dict[str, Tensor | np.ndarray]:
+    # input will be a list of dicts, output should be a dict of lists
+    batch_dict = {}
+    for key in batch[0].keys():
+        batch_dict[key] = [item[key] for item in batch]
+
+    # now we do a torch.stack on any lists of tensors we have
+    for k in batch_dict:
+        if isinstance(batch_dict[k][0], Tensor):
+            batch_dict[k] = torch.stack(batch_dict[k], dim=0)
+        elif isinstance(batch_dict[k][0], np.ndarray):
+            batch_dict[key] = np.stack(batch_dict[k], axis=0)
+
+    return batch_dict
