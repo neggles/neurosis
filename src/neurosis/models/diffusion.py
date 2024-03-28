@@ -22,12 +22,12 @@ from neurosis.modules.diffusion import (
     UNetModel,
 )
 from neurosis.modules.diffusion.hooks import LossHook
+from neurosis.modules.diffusion.model import Decoder, Encoder
 from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
 from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
-
 
 logger = logging.getLogger(__name__)
 
@@ -92,10 +92,10 @@ class DiffusionEngine(L.LightningModule):
         if ckpt_path is not None:
             self.init_from_ckpt(Path(ckpt_path))
 
-        self.vae_encoder = self.first_stage_model.encoder
-        self.vae_decoder = self.first_stage_model.decoder
-        self.vae_encoder.quant_conv.weight.data = self.first_stage_model.quant_conv.weight.data
-        self.vae_decoder.post_quant_conv.weight.data = self.first_stage_model.post_quant_conv.weight.data
+        self.vae_encoder: Encoder = self.first_stage_model.encoder
+        self.vae_decoder: Decoder = self.first_stage_model.decoder
+        self.vae_encoder.quant_conv.load_state_dict(self.first_stage_model.quant_conv.state_dict())
+        self.vae_decoder.post_quant_conv.load_state_dict(self.first_stage_model.post_quant_conv.state_dict())
         del self.first_stage_model
 
         self.save_hyperparameters(
