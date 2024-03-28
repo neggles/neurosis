@@ -240,7 +240,14 @@ class DiffusionEngine(L.LightningModule):
         embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
             if embedder.is_trainable:
-                embedder_name = getattr(embedder, "name", embedder.__class__.__name__)
+                if hasattr(embedder, "_fsdp_wrapped_module"):
+                    embedder_name = getattr(
+                        embedder._fsdp_wrapped_module,
+                        "name",
+                        embedder._fsdp_wrapped_module.__class__.__name__,
+                    )
+                else:
+                    embedder_name = getattr(embedder, "name", embedder.__class__.__name__)
                 logger.info(f"Adding {embedder_name} to trainable parameter groups")
 
                 embedder_params = {"name": embedder_name, "params": list(embedder.parameters())}
