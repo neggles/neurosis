@@ -45,14 +45,11 @@ class EpsPreconditioning(DenoiserPreconditioning):
 
 
 class VPreconditioning(EpsPreconditioning):
-    def __init__(self, sigma_data: float = 1.0):
-        self.sigma_data = sigma_data
-
     def get_c_skip(self, sigma: Tensor) -> Tensor:
-        return self.sigma_data / (sigma**2 + self.sigma_data)
+        return 1.0 / (sigma**2 + 1.0)
 
     def get_c_out(self, sigma: Tensor) -> Tensor:
-        return -sigma / (sigma**2 + self.sigma_data) ** 0.5
+        return -sigma / (sigma**2 + 1.0) ** 0.5
 
 
 class VPreconditioningWithEDMcNoise(VPreconditioning):
