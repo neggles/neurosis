@@ -443,6 +443,7 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
 
         ckpt_path = kwargs.pop("ckpt_path", None)
         ignore_keys = kwargs.pop("ignore_keys", tuple())
+        ddconfig["embed_dim"] = embed_dim
         super().__init__(
             encoder=Encoder(**ddconfig),
             decoder=Decoder(**ddconfig),
@@ -460,6 +461,9 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
 
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys)
+
+        self.encoder.max_batch_size = self.max_batch_size
+        self.decoder.max_batch_size = self.max_batch_size
 
     def encode(self, x: Tensor, return_reg_log: bool = False) -> Union[Tensor, tuple[Tensor, dict]]:
         if self.max_batch_size is None:

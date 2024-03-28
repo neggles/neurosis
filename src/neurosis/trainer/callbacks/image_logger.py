@@ -9,13 +9,13 @@ import torch
 import wandb
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.utilities import rank_zero_only
 from PIL import Image
 from torch import Tensor
 
 from neurosis.trainer.common import BatchDictType, LogDictType, StepType
 from neurosis.utils.image import CaptionGrid, is_image_tensor, label_batch, numpy_to_pil, pt_to_pil
 from neurosis.utils.text import np_text_decode
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +63,12 @@ class ImageLogger(Callback):
         self.__last_logged_step: int = -1
         self.__trainer: Trainer = None
 
-    @rank_zero_only
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.__trainer = trainer
 
-    @property
-    def local_dir(self) -> Optional[Path]:
+    def local_dir(self, trainer) -> Optional[Path]:
         tgt_dir = None
-        for pl_logger in self.__trainer.loggers:
+        for pl_logger in trainer.loggers:
             if pl_logger.save_dir is not None:
                 logger.debug(f"using {pl_logger.__class__.__name__} save_dir")
                 tgt_dir = Path(pl_logger.save_dir).resolve()
@@ -92,7 +90,7 @@ class ImageLogger(Callback):
     def get_step_idx(self, global_step: int, batch_idx: int) -> int:
         match self.log_step_type:
             case StepType.global_step:
-                return self.__trainer.global_step
+                return global_step
             case StepType.batch_idx:
                 return batch_idx
             case StepType.global_batch:
@@ -102,13 +100,17 @@ class ImageLogger(Callback):
             case _:
                 raise ValueError(f"invalid log_step_type: {self.log_step_type}")
 
-    def check_step_idx(self, global_step: int, batch_idx: int) -> bool:
+    def check_step_idx(self, global_step: int, batch_idx: int, before_start: bool = False) -> bool:
         step_idx = self.get_step_idx(global_step, batch_idx)
         # don't log the same step twice
         if step_idx <= self.__last_logged_step:
             return False
         # log the first step if log_first_step is True
         if step_idx == 0:
+            if before_start:
+                return self.log_before_start
+
+        if step_idx == 1:
             return self.log_first_step
         # check if step_idx is a multiple of every_n_train_steps
         if (step_idx % self.every_n_train_steps) == 0:
@@ -140,7 +142,6 @@ class ImageLogger(Callback):
                         images[k] = images[k].add(1.0).div(2.0)
         return images
 
-    @rank_zero_only
     @torch.no_grad()
     def call_log_images(
         self,
@@ -151,12 +152,13 @@ class ImageLogger(Callback):
         num_img: int = 4,
         log_loss: bool = False,
     ) -> LogDictType:
+        images = None
         images: LogDictType = pl_module.log_images(
             batch, num_img=num_img, split=split, log_loss=log_loss, **self.log_func_kwargs
         )
+
         return images
 
-    @rank_zero_only
     def log_local(
         self,
         split: str,
@@ -166,8 +168,9 @@ class ImageLogger(Callback):
         epoch: int = ...,
         batch_idx: int = ...,
         pl_module: Optional[LightningModule] = None,
+        trainer: Optional[Trainer] = None,
     ):
-        save_dir = self.local_dir.joinpath("images", split)
+        save_dir = self.local_dir(trainer).joinpath("images", split)
         save_dir.mkdir(exist_ok=True, parents=True)
 
         fstem = f"gs{step:06d}_e{epoch:06d}_b{batch_idx:06d}"
@@ -292,7 +295,6 @@ class ImageLogger(Callback):
                 except Exception as e:
                     logger.exception("Failed to log table to WandB", e)
 
-    @rank_zero_only
     def maybe_log_images(
         self,
         trainer: Trainer,
@@ -300,13 +302,14 @@ class ImageLogger(Callback):
         batch: Union[Tensor, dict[str, Tensor]],
         batch_idx: int,
         split: str = "train",
+        before_start: bool = False,
     ):
         # if max_images is 0 or we're disabled, do nothing
         if self.enabled is False or self.max_images < 1:
             return
 
         # check if we should log this step and return early if not
-        if self.check_step_idx(trainer.global_step, batch_idx) is False:
+        if self.check_step_idx(trainer.global_step, batch_idx, before_start) is False:
             return
 
         # now make sure the module has a log_images method that we can call
@@ -321,8 +324,11 @@ class ImageLogger(Callback):
         if split == "train":
             self.__last_logged_step = self.get_step_idx(trainer.global_step, batch_idx)
 
+        excluded_keys = ["original_size_as_tuple", "crop_coords_top_left", "target_size_as_tuple"]
         # trim the batch to max_images and decode any text
         for k in batch:
+            if k in excluded_keys:
+                continue
             batch[k] = batch[k][: self.max_images]
             if isinstance(batch[k][0], (str, np.bytes_)):
                 batch[k] = [np_text_decode(x) for x in batch[k]]
@@ -338,26 +344,24 @@ class ImageLogger(Callback):
 
         # log the images
         self.log_local(
-            split, images, batch, trainer.global_step, pl_module.current_epoch, batch_idx, pl_module=pl_module
+            split,
+            images,
+            batch,
+            trainer.global_step,
+            pl_module.current_epoch,
+            batch_idx,
+            pl_module=pl_module,
+            trainer=trainer,
         )
 
-    @rank_zero_only
-    def on_train_batch_start(
-        self,
-        trainer: Trainer,
-        pl_module: LightningModule,
-        batch: logging.Any,
-        batch_idx: int,
-    ) -> None:
+    def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx):
         self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train")
 
-    @rank_zero_only
-    def on_validation_batch_start(
-        self,
-        trainer: Trainer,
-        pl_module: LightningModule,
-        batch: logging.Any,
-        batch_idx: int,
-        dataloader_idx: int = 0,
-    ) -> None:
+    def on_validation_batch_end(
+        self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, *args, **kwargs
+    ):
         self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="val")
+
+    def on_train_batch_start(self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx):
+        if self.log_before_start and trainer.global_step == 0:
+            self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train", before_start=True)
