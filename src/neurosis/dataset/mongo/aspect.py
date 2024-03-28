@@ -20,7 +20,13 @@ from neurosis.dataset.aspect import (
     SDXLBucketList,
 )
 from neurosis.dataset.aspect.sampler import AspectBucketSampler
-from neurosis.dataset.utils import clean_word, clear_fsspec, pil_crop_bucket, set_s3fs_opts
+from neurosis.dataset.utils import (
+    clean_word,
+    clear_fsspec,
+    collate_dict_lists,
+    pil_crop_bucket,
+    set_s3fs_opts,
+)
 from neurosis.utils import maybe_collect
 
 from .base import BaseMongoDataset
@@ -315,6 +321,7 @@ class MongoAspectModule(LightningDataModule):
                 self.dataset,
                 batch_sampler=self.sampler,
                 num_workers=self.num_workers,
+                collate_fn=collate_dict_lists,
                 pin_memory=self.pin_memory,
                 prefetch_factor=self.prefetch_factor,
                 worker_init_fn=mongo_worker_init,
@@ -324,12 +331,13 @@ class MongoAspectModule(LightningDataModule):
             return DataLoader(
                 self.dataset,
                 batch_sampler=self.sampler,
+                collate_fn=collate_dict_lists,
                 pin_memory=self.pin_memory,
                 **self.extra_loader_kwargs,
             )
 
 
 def mongo_worker_init(worker_id: int = -1):
-    logger.debug(f"Worker {worker_id} initializing")
+    logger.debug(f"Worker {worker_id} initialiszing")
     clear_fsspec()
     set_s3fs_opts()
