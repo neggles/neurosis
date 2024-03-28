@@ -19,7 +19,15 @@ from .discretization import (
     LegacyDDPMDiscretization,
 )
 from .loss import DiffusionLoss, StandardDiffusionLoss
-from .model import Decoder, Encoder, Model
+from .model import (
+    AttnBlock,
+    Decoder,
+    Encoder,
+    MemoryEfficientAttnBlock,
+    Model,
+    ResnetBlock,
+    TorchSDPAttnBlock,
+)
 from .openaimodel import Timestep, UNetModel
 from .sampling import (
     BaseDiffusionSampler,
@@ -37,6 +45,7 @@ from .sampling import (
 from .wrappers import IdentityWrapper, OpenAIWrapper
 
 __all__ = [
+    "AttnBlock",
     "BaseDiffusionSampler",
     "Decoder",
     "Denoiser",
@@ -63,11 +72,14 @@ __all__ = [
     "IdentityWrapper",
     "LegacyDDPMDiscretization",
     "LinearMultistepSampler",
+    "MemoryEfficientAttnBlock",
     "Model",
     "OpenAIWrapper",
+    "ResnetBlock",
     "SigmaGenerator",
     "StandardDiffusionLoss",
     "Timestep",
+    "TorchSDPAttnBlock",
     "UNetModel",
     "UnitWeighting",
     "VPreconditioning",
