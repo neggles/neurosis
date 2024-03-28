@@ -342,11 +342,22 @@ class ImageLogger(Callback):
         )
 
     @rank_zero_only
-    def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx):
+    def on_train_batch_start(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        batch: logging.Any,
+        batch_idx: int,
+    ) -> None:
         self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="train")
 
     @rank_zero_only
-    def on_validation_batch_end(
-        self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, *args, **kwargs
-    ):
+    def on_validation_batch_start(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        batch: logging.Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
         self.maybe_log_images(trainer, pl_module, batch, batch_idx, split="val")
