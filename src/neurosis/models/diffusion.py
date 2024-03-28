@@ -28,6 +28,7 @@ from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
 from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -91,11 +92,19 @@ class DiffusionEngine(L.LightningModule):
         if ckpt_path is not None:
             self.init_from_ckpt(Path(ckpt_path))
 
+        self.vae_encoder = self.first_stage_model.encoder
+        self.vae_decoder = self.first_stage_model.decoder
+        self.vae_encoder.quant_conv.weight.data = self.first_stage_model.quant_conv.weight.data
+        self.vae_decoder.post_quant_conv.weight.data = self.first_stage_model.post_quant_conv.weight.data
+        del self.first_stage_model
+
         self.save_hyperparameters(
             ignore=[
                 "model",
                 "denoiser",
                 "first_stage_model",
+                "vae_encoder",
+                "vae_decoder",
                 "conditioner",
                 "sampler",
                 "loss_fn",
@@ -143,10 +152,12 @@ class DiffusionEngine(L.LightningModule):
 
         n_rounds = ceil(z.shape[0] / n_samples)
         all_out = []
-        with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
-            for n in range(n_rounds):
-                out = self.first_stage_model.decode(z[n * n_samples : (n + 1) * n_samples])
-                all_out.append(out)
+        # with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
+        for n in range(n_rounds):
+            out = self.vae_decoder(
+                z[n * n_samples : (n + 1) * n_samples], post_quant_conv=True, cat_zero=True, standalone=True
+            )
+            all_out.append(out)
         out = torch.cat(all_out, dim=0)
         return out
 
@@ -155,10 +166,12 @@ class DiffusionEngine(L.LightningModule):
         n_samples = self.vae_batch_size or x.shape[0]
         n_rounds = ceil(x.shape[0] / n_samples)
         all_out = []
-        with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
-            for n in range(n_rounds):
-                out = self.first_stage_model.encode(x[n * n_samples : (n + 1) * n_samples])
-                all_out.append(out)
+        # with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
+        for n in range(n_rounds):
+            out = self.vae_encoder(
+                x[n * n_samples : (n + 1) * n_samples], quant_conv=True, regularize=True, standalone=True
+            )
+            all_out.append(out)
         z = torch.cat(all_out, dim=0)
         z = self.scale_factor * z
         return z
@@ -277,7 +290,11 @@ class DiffusionEngine(L.LightningModule):
         embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
             if (self.log_keys is None) or (embedder.input_key in self.log_keys):
-                inputs = batch[embedder.input_key][:num_img]
+                excluded_keys = ["original_size_as_tuple", "crop_coords_top_left", "target_size_as_tuple"]
+                if embedder.input_key not in excluded_keys:
+                    inputs = batch[embedder.input_key][:num_img]
+                else:
+                    inputs = batch[embedder.input_key]
                 if isinstance(inputs, Tensor):
                     if inputs.dim() == 1:
                         # class-conditional, convert integer to string
@@ -295,6 +312,8 @@ class DiffusionEngine(L.LightningModule):
                 elif isinstance(inputs, list):
                     if isinstance(inputs[0], (bytes, np.bytes_)):
                         inputs = np_text_decode(inputs, aslist=True)
+                    if isinstance(inputs[0], Tensor):
+                        inputs = [str(x.item()) for x in inputs]
                     if isinstance(inputs[0], str):
                         # strings
                         value = log_txt_as_img(wh, inputs, size=min(wh[0] // 20, 24))
@@ -344,8 +363,8 @@ class DiffusionEngine(L.LightningModule):
         images_dict.update(cond_dict)
 
         force_uc_zero = ucg_keys if len(self.conditioner.embedders) > 0 else []
-        cond, uncond = self.conditioner.get_unconditional_conditioning(
-            batch, force_uc_zero_embeddings=force_uc_zero
+        cond, uncond = get_unconditional_conditioning(
+            self.conditioner, batch, force_uc_zero_embeddings=force_uc_zero
         )
         for key in cond:
             if isinstance(cond[key], Tensor):
@@ -361,3 +380,25 @@ class DiffusionEngine(L.LightningModule):
             images_dict["samples"] = samples.cpu()
 
         return images_dict
+
+
+def get_unconditional_conditioning(
+    conditioner,
+    batch_c: dict,
+    batch_uc: Optional[dict] = None,
+    force_uc_zero_embeddings: Optional[list[str]] = None,
+    force_cond_zero_embeddings: Optional[list[str]] = None,
+):
+    if force_uc_zero_embeddings is None:
+        force_uc_zero_embeddings = []
+
+    ucg_rates = [x.ucg_rate for x in conditioner.embedders]
+    for embedder in conditioner.embedders:
+        embedder.ucg_rate = 0.0
+
+    c = conditioner(batch_c, force_cond_zero_embeddings)
+    uc = conditioner(batch_c if batch_uc is None else batch_uc, force_uc_zero_embeddings)
+
+    for embedder, rate in zip(conditioner.embedders, ucg_rates):
+        embedder.ucg_rate = rate
+    return c, uc

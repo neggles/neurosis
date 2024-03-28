@@ -11,6 +11,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from neurosis.modules.attention import LinearAttention, MemoryEfficientCrossAttention
+from neurosis.modules.regularizers import DiagonalGaussianRegularizer
 
 logger = logging.getLogger(__name__)
 
@@ -468,6 +469,7 @@ class Encoder(nn.Module):
         double_z: bool = True,
         use_linear_attn: bool = False,
         attn_type: str = "vanilla",
+        embed_dim: int = 256,
         **ignore_kwargs,
     ):
         super().__init__()
@@ -538,7 +540,14 @@ class Encoder(nn.Module):
             padding=1,
         )
 
-    def forward(self, x):
+        self.regularizer = DiagonalGaussianRegularizer(sample=False)
+        self.max_batch_size = None
+
+        quant_conv_in_ch = (1 + double_z) * z_channels
+        quant_conv_out_ch = (1 + double_z) * embed_dim
+        self.quant_conv = nn.Conv2d(quant_conv_in_ch, quant_conv_out_ch, 1)
+
+    def encode(self, x):
         # timestep embedding
         temb = None
 
@@ -565,6 +574,27 @@ class Encoder(nn.Module):
         h = self.conv_out(h)
         return h
 
+    def forward(self, x, quant_conv=False, regularize=False, standalone=False):
+        if self.max_batch_size is None or not standalone:
+            z = self.encode(x)
+            if quant_conv:
+                z = self.quant_conv(z)
+        else:
+            N = x.shape[0]
+            bs = self.max_batch_size
+            n_batches = int(math.ceil(N / bs))
+            z = list()
+            for i_batch in range(n_batches):
+                z_batch = self.encode(x[i_batch * bs : (i_batch + 1) * bs])
+                if quant_conv:
+                    z_batch = self.quant_conv(z_batch)
+                z.append(z_batch)
+            z = torch.cat(z, 0)
+        if regularize:
+            z, reg_log = self.regularizer(z)
+
+        return z
+
 
 class Decoder(nn.Module):
     def __init__(
@@ -584,6 +614,7 @@ class Decoder(nn.Module):
         tanh_out: bool = False,
         use_linear_attn: bool = False,
         attn_type: str = "vanilla",
+        embed_dim: int = 256,
         **kwargs,
     ):
         super().__init__()
@@ -656,6 +687,8 @@ class Decoder(nn.Module):
         # end
         self.norm_out = get_norm_layer(block_in)
         self.conv_out = make_conv_cls(block_in, out_ch, kernel_size=3, stride=1, padding=1)
+        self.max_batch_size = None
+        self.post_quant_conv = nn.Conv2d(embed_dim, z_channels, 1)
 
     def _make_attn(self) -> nn.Module:
         return make_attn
@@ -669,7 +702,7 @@ class Decoder(nn.Module):
     def get_last_layer(self, **kwargs):
         return self.conv_out.weight
 
-    def forward(self, z, **kwargs):
+    def decode(self, z, **kwargs):
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 
@@ -703,3 +736,27 @@ class Decoder(nn.Module):
         if self.tanh_out:
             h = torch.tanh(h)
         return h
+
+    def forward(self, z, **kwargs):
+        post_quant_conv, cat_zero, standalone = (
+            kwargs.pop("post_quant_conv", False),
+            kwargs.pop("cat_zero", False),
+            kwargs.pop("standalone", False),
+        )
+        if self.max_batch_size is None or not standalone:
+            if post_quant_conv:
+                dec = self.post_quant_conv(z)
+            dec = self.decode(dec, **kwargs)
+        else:
+            N = z.shape[0]
+            bs = self.max_batch_size
+            n_batches = int(math.ceil(N / bs))
+            dec = list()
+            for i_batch in range(n_batches):
+                if post_quant_conv:
+                    dec_batch = self.post_quant_conv(z[i_batch * bs : (i_batch + 1) * bs])
+                dec_batch = self.decode(dec_batch, **kwargs)
+                dec.append(dec_batch)
+            if cat_zero:
+                dec = torch.cat(dec, 0)
+        return dec
