@@ -195,6 +195,7 @@ class ImageLogger(Callback):
                 img.save(save_dir / f"{fstem}_samples_{idx:02d}.png")
 
             if "caption" in batch:
+                batch["caption"] = np_text_decode(batch["caption"], aslist=True)
                 wandb_samples = [wandb.Image(img, caption=cap) for img, cap in zip(samples, batch["caption"])]
                 try:
                     grid = self.make_caption_grid(samples, batch["caption"], title=title + " samples")
