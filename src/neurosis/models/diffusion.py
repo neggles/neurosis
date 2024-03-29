@@ -297,11 +297,7 @@ class DiffusionEngine(L.LightningModule):
         embedder: AbstractEmbModel
         for embedder in self.conditioner.embedders:
             if (self.log_keys is None) or (embedder.input_key in self.log_keys):
-                excluded_keys = ["original_size_as_tuple", "crop_coords_top_left", "target_size_as_tuple"]
-                if embedder.input_key not in excluded_keys:
-                    inputs = batch[embedder.input_key][:num_img]
-                else:
-                    inputs = batch[embedder.input_key]
+                inputs = batch[embedder.input_key]
                 if isinstance(inputs, Tensor):
                     if inputs.dim() == 1:
                         # class-conditional, convert integer to string

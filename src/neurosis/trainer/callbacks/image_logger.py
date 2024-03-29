@@ -331,11 +331,8 @@ class ImageLogger(Callback):
         if split == "train":
             self.__last_logged_step = self.get_step_idx(trainer.global_step, batch_idx)
 
-        excluded_keys = ["original_size_as_tuple", "crop_coords_top_left", "target_size_as_tuple"]
         # trim the batch to max_images and decode any text
         for k in batch:
-            if k in excluded_keys:
-                continue
             batch[k] = batch[k][: self.max_images]
             if isinstance(batch[k][0], (str, np.bytes_)):
                 batch[k] = [np_text_decode(x) for x in batch[k]]
