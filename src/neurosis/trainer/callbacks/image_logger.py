@@ -16,7 +16,6 @@ from neurosis.trainer.common import BatchDictType, LogDictType, StepType
 from neurosis.utils.image import CaptionGrid, is_image_tensor, label_batch, numpy_to_pil, pt_to_pil
 from neurosis.utils.text import np_text_decode
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -282,6 +281,8 @@ class ImageLogger(Callback):
                 wandb_dict[k.replace(f"{split}/", "", 1)] = wandb_dict.pop(k)
 
         for k in list(table_dict):
+            if isinstance(table_dict[k], list) and isinstance(table_dict[k][0], np.ndarray):
+                table_dict[k] = [x.tolist() for x in table_dict[k]]
             if k.startswith(f"{split}/{split}"):
                 table_dict[k.replace(f"{split}/", "", 1)] = table_dict.pop(k)
 
