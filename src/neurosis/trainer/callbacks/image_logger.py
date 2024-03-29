@@ -263,10 +263,13 @@ class ImageLogger(Callback):
                         img.save(save_dir / f"{fstem}_{k.replace('/', '_')}_{idx:02d}.png")
                     val = [wandb.Image(x) for x in val]
 
+                if isinstance(val, np.ndarray):
+                    val = [str(x) for x in val]
+
                 if isinstance(val, list):
                     table_dict[k] = val
                 else:
-                    warn(f"batch[{k}] is not a list, not logging this key to table_dict")
+                    warn(f"batch[{k}] is not a list (is {type(val)}), not logging to table")
 
             except Exception:
                 logger.exception(f"Failed to log {k}, continuing")
