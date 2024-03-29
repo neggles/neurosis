@@ -255,6 +255,8 @@ class ImageLogger(Callback):
                         val = pt_to_pil(val, aslist=True)
                     elif val[0].ndim in [1, 2]:
                         val = [tuple(x.cpu().tolist()) for x in val]
+                    elif val[0].ndim == 0:
+                        val = [x.cpu().item() for x in val]
 
                 if isinstance(val[0], Image.Image):
                     if self.label_img:
