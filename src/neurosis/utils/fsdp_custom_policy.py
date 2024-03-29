@@ -10,6 +10,10 @@ from neurosis.models.text_encoder import (
     FrozenOpenCLIPEmbedder2,
     FrozenT5Embedder,
 )
+from neurosis.modules.attention import (
+    FeedForward,
+    TorchSDPCrossAttention,
+)
 from neurosis.modules.diffusion.model import (
     AttnBlock,
     Decoder,
@@ -39,15 +43,21 @@ def diffusion_fsdp_policy(
         nonwrapped_numel,
         transformer_layer_cls={
             # AutoencodingEngine,
+            CLIPEncoderLayer,
             Decoder,
             Encoder,
+            FeedForward,
             FrozenCLIPEmbedder,
             FrozenOpenCLIPEmbedder,
             FrozenOpenCLIPEmbedder2,
             FrozenT5Embedder,
             GeneralConditioner,
+            ResBlock,
+            ResidualAttentionBlock,
+            ResnetBlock,
             SpatialTransformer,
             TimestepEmbedSequential,
+            TorchSDPCrossAttention,
             UNetModel,
         },
     )
@@ -68,6 +78,7 @@ def diffusion_fsdp_lowmem_policy(
             CLIPEncoderLayer,
             Decoder,
             Encoder,
+            FeedForward,
             FrozenCLIPEmbedder,
             FrozenOpenCLIPEmbedder,
             FrozenOpenCLIPEmbedder2,
@@ -82,6 +93,7 @@ def diffusion_fsdp_lowmem_policy(
             SpatialTransformer,
             TimestepEmbedSequential,
             TorchSDPAttnBlock,
+            TorchSDPCrossAttention,
             UNetModel,
         },
     )
