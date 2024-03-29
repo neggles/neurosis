@@ -39,7 +39,6 @@ def diffusion_fsdp_policy(
         nonwrapped_numel,
         transformer_layer_cls={
             # AutoencodingEngine,
-            CLIPEncoderLayer,
             Decoder,
             Encoder,
             FrozenCLIPEmbedder,
@@ -47,7 +46,6 @@ def diffusion_fsdp_policy(
             FrozenOpenCLIPEmbedder2,
             FrozenT5Embedder,
             GeneralConditioner,
-            ResidualAttentionBlock,
             SpatialTransformer,
             TimestepEmbedSequential,
             UNetModel,
