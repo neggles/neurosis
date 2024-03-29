@@ -29,6 +29,7 @@ from neurosis.dataset.utils import (
 )
 from neurosis.utils import maybe_collect
 
+from ..base import FilesystemType
 from .base import BaseMongoDataset
 from .settings import MongoSettings, get_mongo_settings
 
@@ -55,8 +56,9 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
         path_key: str = "s3_path",
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
-        s3_bucket: Optional[str] = None,
-        s3fs_kwargs: dict = {},
+        fs_type: str | FilesystemType = "s3",
+        path_prefix: Optional[str] = None,
+        fsspec_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
@@ -80,8 +82,9 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             path_key=path_key,
             extra_keys=extra_keys,
             resampling=resampling,
-            s3_bucket=s3_bucket,
-            s3fs_kwargs=s3fs_kwargs,
+            fs_type=fs_type,
+            path_prefix=path_prefix,
+            fsspec_kwargs=fsspec_kwargs,
             pma_schema=pma_schema,
             retries=retries,
             retry_delay=retry_delay,
@@ -140,7 +143,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             import fsspec
 
             fsspec.asyn.reset_lock()
-            self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
+            self.fs = S3FileSystem(**self.fsspec_kwargs, skip_instance_cache=True)
 
     def preload(self):
         # call the superclasses' preload method
@@ -256,8 +259,9 @@ class MongoAspectModule(LightningDataModule):
         process_tags: bool = True,
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
-        s3_bucket: Optional[str] = None,
-        s3fs_kwargs: dict = {},
+        fs_type: str | FilesystemType = "s3",
+        path_prefix: Optional[str] = None,
+        fsspec_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
@@ -285,8 +289,9 @@ class MongoAspectModule(LightningDataModule):
             process_tags=process_tags,
             shuffle_tags=shuffle_tags,
             shuffle_keep=shuffle_keep,
-            s3_bucket=s3_bucket,
-            s3fs_kwargs=s3fs_kwargs,
+            fs_type=fs_type,
+            path_prefix=path_prefix,
+            fsspec_kwargs=fsspec_kwargs,
             pma_schema=pma_schema,
             retries=retries,
             retry_delay=retry_delay,

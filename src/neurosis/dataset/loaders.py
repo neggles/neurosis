@@ -12,8 +12,9 @@ from torch import Tensor
 
 from neurosis.constants import MBYTE
 from neurosis.dataset.aspect.bucket import AspectBucket
-from neurosis.dataset.utils import pil_crop_bucket, pil_ensure_rgb
 from neurosis.utils import maybe_collect
+
+from .utils import pil_crop_bucket, pil_ensure_rgb
 
 logger = logging.getLogger(__name__)
 

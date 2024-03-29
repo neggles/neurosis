@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from neurosis.dataset.base import NoBucketDataset
 from neurosis.dataset.utils import pil_crop_random, pil_crop_square
 
+from ..base import FilesystemType
 from .base import BaseMongoDataset, mongo_worker_init
 from .settings import MongoSettings, get_mongo_settings
 
@@ -33,8 +34,9 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         no_resize: bool = False,
-        s3_bucket: Optional[str] = None,
-        s3fs_kwargs: dict = {},
+        fs_type: str | FilesystemType = "s3",
+        path_prefix: Optional[str] = None,
+        fsspec_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
@@ -51,8 +53,9 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
             extra_keys=extra_keys,
             resampling=resampling,
             no_resize=no_resize,
-            s3_bucket=s3_bucket,
-            s3fs_kwargs=s3fs_kwargs,
+            fs_type=fs_type,
+            path_prefix=path_prefix,
+            fsspec_kwargs=fsspec_kwargs,
             pma_schema=pma_schema,
             retries=retries,
             retry_delay=retry_delay,
@@ -100,8 +103,9 @@ class MongoVAEModule(LightningDataModule):
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         no_resize: bool = False,
-        s3_bucket: Optional[str] = None,
-        s3fs_kwargs: dict = {},
+        fs_type: str | FilesystemType = "s3",
+        path_prefix: Optional[str] = None,
+        fsspec_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
@@ -122,8 +126,9 @@ class MongoVAEModule(LightningDataModule):
             extra_keys=extra_keys,
             resampling=resampling,
             no_resize=no_resize,
-            s3_bucket=s3_bucket,
-            s3fs_kwargs=s3fs_kwargs,
+            fs_type=fs_type,
+            path_prefix=path_prefix,
+            fsspec_kwargs=fsspec_kwargs,
             pma_schema=pma_schema,
             retries=retries,
             retry_delay=retry_delay,

@@ -6,6 +6,7 @@ from time import sleep
 from typing import Literal, Optional
 
 import pandas as pd
+from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 from pymongo import MongoClient
 from pymongo.collection import Collection as MongoCollection
@@ -15,6 +16,7 @@ from s3fs import S3FileSystem
 from torch import Tensor
 from torch.utils.data import Dataset
 
+from neurosis.dataset.base import FilesystemType
 from neurosis.dataset.mongo.settings import MongoSettings
 from neurosis.dataset.utils import clear_fsspec, set_s3fs_opts
 from neurosis.utils import maybe_collect
@@ -38,8 +40,9 @@ class BaseMongoDataset(Dataset):
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         no_resize: bool = False,
-        s3_bucket: Optional[str] = None,
-        s3fs_kwargs: dict = {},
+        fs_type: str | FilesystemType = "s3",
+        path_prefix: Optional[str] = None,
+        fsspec_kwargs: dict = {},
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
@@ -67,18 +70,30 @@ class BaseMongoDataset(Dataset):
         else:
             self.extra_keys = extra_keys
 
-        # set up for s3fs, load S3_ENDPOINT_URL from env if not already present
-        if s3_endpoint_env := getenv("S3_ENDPOINT_URL", None):
-            s3fs_kwargs.setdefault("endpoint_url", s3_endpoint_env)
-        self.s3fs_kwargs = s3fs_kwargs
-        self.s3_bucket = s3_bucket
-        self.fs: S3FileSystem = None
+        match fs_type:
+            case FilesystemType.LOCAL:
+                logger.debug("Using local filesystem")
+                self.fs_type = FilesystemType.LOCAL
+            case FilesystemType.S3:
+                logger.debug("Using S3 filesystem")
+                self.fs_type = FilesystemType.S3
+                # set up for s3fs, load S3_ENDPOINT_URL from env if not already present
+                if s3_endpoint_env := getenv("S3_ENDPOINT_URL", None):
+                    fsspec_kwargs.setdefault("endpoint_url", s3_endpoint_env)
+            case _:
+                raise ValueError(f"Unsupported filesystem type '{fs_type}'")
+        self.fs: S3FileSystem | LocalFileSystem = None
+        self.path_prefix = path_prefix
+        self.fsspec_kwargs = fsspec_kwargs
         self.retries = retries
         self.retry_delay = retry_delay
 
         # set up for mongo
         self.client: MongoClient = None
         self.pma_schema: Schema = pma_schema
+
+        # preload indicator
+        self._preload_done = False
 
     def __len__(self):
         if self.samples is not None:
@@ -117,7 +132,13 @@ class BaseMongoDataset(Dataset):
             import fsspec
 
             fsspec.asyn.reset_lock()
-            self.fs = S3FileSystem(**self.s3fs_kwargs, skip_instance_cache=True)
+            match self.fs_type:
+                case FilesystemType.LOCAL:
+                    self.fs = LocalFileSystem(**self.fsspec_kwargs, skip_instance_cache=True)
+                case FilesystemType.S3:
+                    self.fs = S3FileSystem(**self.fsspec_kwargs, skip_instance_cache=True)
+                case _:
+                    raise ValueError(f"Unsupported filesystem type '{self.fs_type}'")
 
     def preload(self):
         self.refresh_clients()
@@ -131,6 +152,7 @@ class BaseMongoDataset(Dataset):
                 **self.settings.query.kwargs,
             )
 
+        self._preload_done = True
         logger.debug("Preload complete!")
         maybe_collect()
 
@@ -140,7 +162,7 @@ class BaseMongoDataset(Dataset):
 
         # prepend bucket if not already present
         image = None
-        path = f"{self.s3_bucket}/{path}" if self.s3_bucket is not None else path
+        path = f"{self.path_prefix}/{path}" if self.path_prefix is not None else path
 
         # get image
         attempts = 0
