@@ -1,21 +1,44 @@
 from torch.distributed.fsdp.wrap import ModuleWrapPolicy
 
-from neurosis.modules.diffusion.model import Decoder, Encoder, ResnetBlock, TorchSDPAttnBlock
+from neurosis.models.embedding import GeneralConditioner
+from neurosis.models.text_encoder import (
+    FrozenCLIPEmbedder,
+    FrozenOpenCLIPEmbedder,
+    FrozenOpenCLIPEmbedder2,
+    FrozenT5Embedder,
+)
+from neurosis.modules.diffusion.model import (
+    AttnBlock,
+    Decoder,
+    Encoder,
+    LinAttnBlock,
+    MemoryEfficientAttnBlock,
+    MemoryEfficientCrossAttentionWrapper,
+    ResnetBlock,
+    TorchSDPAttnBlock,
+)
 from neurosis.modules.diffusion.openaimodel import ResBlock, SpatialTransformer, UNetModel
-from neurosis.modules.encoders import GeneralConditioner
 
 
 class DiffusionFsdpPolicy(ModuleWrapPolicy):
     def __init__(self):
         module_classes = {
-            Encoder,
+            AttnBlock,
             Decoder,
-            ResnetBlock,
-            TorchSDPAttnBlock,
+            Encoder,
+            FrozenCLIPEmbedder,
+            FrozenOpenCLIPEmbedder,
+            FrozenOpenCLIPEmbedder2,
+            FrozenT5Embedder,
             GeneralConditioner,
-            UNetModel,
+            LinAttnBlock,
+            MemoryEfficientAttnBlock,
+            MemoryEfficientCrossAttentionWrapper,
             ResBlock,
+            ResnetBlock,
             SpatialTransformer,
+            TorchSDPAttnBlock,
+            UNetModel,
         }
 
         super().__init__(module_classes=module_classes)
