@@ -1,7 +1,7 @@
 import logging
 from os import PathLike
 from pathlib import Path
-from typing import Generator, Sequence
+from typing import Generator, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -12,13 +12,13 @@ from torch.utils.data import DataLoader
 
 from neurosis.constants import IMAGE_EXTNS
 from neurosis.dataset.aspect import (
-    AspectDistributedSampler,
     AspectBucket,
     AspectBucketDataset,
     AspectBucketList,
+    AspectDistributedSampler,
     SDXLBucketList,
 )
-from neurosis.dataset.utils import clean_word, load_bucket_image_file
+from neurosis.dataset.utils import clean_word, collate_dict_stack, load_bucket_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class ImageFolderDataset(AspectBucketDataset):
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
         self.preload()
-        self.batch_to_idx = None
+        self.batch_to_idx: Optional[list[list[int]]] = None
         if batch_size > 1:
             self.batch_to_idx = list(self.get_batch_iterator())
 
@@ -84,7 +84,7 @@ class ImageFolderDataset(AspectBucketDataset):
             "target_size_as_tuple": bucket.size,
         }
 
-    def __getitems__(self, indices: int | Sequence[int]) -> dict[str, Tensor]:
+    def __getitems__(self, indices: Sequence[int] | int) -> dict[str, Tensor | list[Tensor | np.ndarray]]:
         if isinstance(indices, int):
             if self.batch_to_idx is not None:
                 indices = self.batch_to_idx[indices]
@@ -92,7 +92,9 @@ class ImageFolderDataset(AspectBucketDataset):
                 indices = [indices]
 
         samples = [self.__getitem__(idx) for idx in indices]
-        # collate function will handle the rest
+        # remap the list of dicts to a dict of lists
+        samples = {k: [x[k] for x in samples] for k in samples[0].keys()}
+        # collate function can handle stacking tensors from here
         return samples
 
     def preload(self):
@@ -151,7 +153,7 @@ class ImageFolderDataset(AspectBucketDataset):
         aspect = np.float32(resolution[0] / resolution[1])
         bucket_idx = self.buckets.bucket_idx(aspect)
         return pd.Series(
-            data=[str(image_path).encode("utf-8"), caption, aspect, resolution, bucket_idx],
+            data=[str(image_path).encode("utf-8"), caption.encode("utf-8"), aspect, resolution, bucket_idx],
             index=["image_path", "caption", "aspect", "resolution", "bucket_idx"],
         )
 
@@ -256,6 +258,7 @@ class ImageFolderModule(LightningDataModule):
             self.dataset,
             batch_sampler=self.sampler,
             num_workers=self.num_workers,
+            collate_fn=collate_dict_stack,
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
             persistent_workers=True,

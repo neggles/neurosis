@@ -12,13 +12,13 @@ from torch.utils.data import BatchSampler, DataLoader
 
 from neurosis.constants import IMAGE_EXTNS
 from neurosis.dataset.aspect import (
-    AspectDistributedSampler,
     AspectBucket,
     AspectBucketDataset,
     AspectBucketList,
+    AspectDistributedSampler,
     SDXLBucketList,
 )
-from neurosis.dataset.utils import clean_word, load_bucket_image_file
+from neurosis.dataset.utils import clean_word, collate_dict_stack, load_bucket_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +270,7 @@ class MemeAspectModule(LightningDataModule):
             self.dataset,
             batch_sampler=batch_sampler,
             num_workers=self.num_workers,
+            collate_fn=collate_dict_stack,
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
             persistent_workers=True,

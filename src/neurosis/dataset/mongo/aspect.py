@@ -1,6 +1,6 @@
 import logging
 from os import PathLike, getpid
-from typing import Generator, Literal, Optional, Sequence
+from typing import Generator, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -23,7 +23,7 @@ from neurosis.dataset.aspect.sampler import AspectBucketSampler
 from neurosis.dataset.utils import (
     clean_word,
     clear_fsspec,
-    collate_dict_lists,
+    collate_dict_stack,
     pil_crop_bucket,
     set_s3fs_opts,
 )
@@ -97,7 +97,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
         )
 
         self.preload()
-        self.batch_to_idx = None
+        self.batch_to_idx: Optional[list[list[int]]] = None
         if batch_size > 1:
             self.batch_to_idx = list(self.get_batch_iterator())
 
@@ -119,17 +119,6 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             "target_size_as_tuple": torch.tensor(bucket.size, dtype=torch.int32),
             **{k: torch.tensor(sample.get(k)) for k in self.extra_keys if k in sample},
         }
-
-    def __getitems__(self, indices: int | Sequence[int]) -> dict[str, Tensor]:
-        if isinstance(indices, int):
-            if self.batch_to_idx is not None:
-                indices = self.batch_to_idx[indices]
-            else:
-                indices = [indices]
-
-        samples = [self.__getitem__(idx) for idx in indices]
-        # collate function will handle the rest
-        return samples
 
     def refresh_clients(self):
         """Helper func to replace the current clients with new ones post-fork etc."""
@@ -326,17 +315,18 @@ class MongoAspectModule(LightningDataModule):
                 self.dataset,
                 batch_sampler=self.sampler,
                 num_workers=self.num_workers,
-                collate_fn=collate_dict_lists,
+                collate_fn=collate_dict_stack,
                 pin_memory=self.pin_memory,
                 prefetch_factor=self.prefetch_factor,
                 worker_init_fn=mongo_worker_init,
+                persistent_workers=True,
                 **self.extra_loader_kwargs,
             )
         else:
             return DataLoader(
                 self.dataset,
                 batch_sampler=self.sampler,
-                collate_fn=collate_dict_lists,
+                collate_fn=collate_dict_stack,
                 pin_memory=self.pin_memory,
                 **self.extra_loader_kwargs,
             )

@@ -9,7 +9,7 @@ from einops import rearrange
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from neurosis.utils import count_params, disabled_train, expand_dims_like
+from neurosis.utils import count_params, disabled_train, expand_dims_like, np_text_decode
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +154,19 @@ class GeneralConditioner(nn.Module):
                 if getattr(embedder, "input_key", None) is not None:
                     if embedder.legacy_ucg_val is not None:
                         batch = self.possibly_get_ucg_val(embedder, batch)
-                    emb_out = embedder(batch[embedder.input_key])
+                    inputs = batch[embedder.input_key]
+                    if isinstance(inputs, list) and isinstance(inputs[0], (str, np.bytes_, np.ndarray)):
+                        inputs = np_text_decode(inputs, aslist=True)
+                    elif isinstance(inputs, (str, np.bytes_, np.ndarray)):
+                        inputs = np_text_decode(inputs)
+                    emb_out = embedder(inputs)
+
                 elif getattr(embedder, "input_keys", None) is not None:
-                    emb_out = embedder(*[batch[k] for k in embedder.input_keys])
+                    inputs = [batch[k] for k in embedder.input_keys]
+                    for idx in range(len(inputs)):
+                        if isinstance(inputs[idx][0], (str, np.bytes_, np.ndarray)):
+                            inputs[idx] = np_text_decode(inputs[idx], aslist=True)
+                    emb_out = embedder(*inputs)
 
             if not isinstance(emb_out, (Tensor, list, tuple)):
                 raise ValueError(f"encoder outputs must be tensors or a sequence, but got {type(emb_out)}")

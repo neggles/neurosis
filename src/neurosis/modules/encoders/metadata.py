@@ -24,7 +24,10 @@ class ConcatTimestepEmbedderND(AbstractEmbModel):
 
         if x.ndim == 1:
             x = x[:, None]
-        assert len(x.shape) == 2
+
+        if x.ndim != 2:
+            raise ValueError(f"Expected 2D input, got {x.ndim}D")
+
         b, dims = x.shape[0], x.shape[1]
         x = rearrange(x, "b d -> (b d)")
         emb = self.timestep(x)
