@@ -1,4 +1,5 @@
 import logging
+from enum import Enum
 from typing import Callable, Optional
 
 import pandas as pd
@@ -7,9 +8,15 @@ from PIL import Image, PngImagePlugin
 from torch.utils.data import Dataset
 from torchvision.transforms import v2 as T
 
-from neurosis.dataset.utils import VAENormalize
+from .utils import VAENormalize
 
 logger = logging.getLogger(__name__)
+
+
+class FilesystemType(str, Enum):
+    LOCAL = "local"
+    S3 = "s3"
+    GCS = "gcs"
 
 
 class NoBucketDataset(Dataset):
