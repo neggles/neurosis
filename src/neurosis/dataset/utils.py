@@ -15,7 +15,7 @@ class VAENormalize(nn.Module):
         super().__init__()
 
     def forward(self, x: Tensor) -> Tensor:
-        return 2.0 * x - 1.0
+        return (x * 2.0) - 1.0
 
 
 def clear_fsspec():
@@ -107,17 +107,21 @@ def pil_crop_bucket(
 ) -> tuple[Image.Image, tuple[int, int]]:
     # resize short edge to match bucket short edge
     image = ImageOps.cover(image, bucket.size, method=resampling)
+    width, height = image.size
 
-    # crop long edge to match bucket long edge
-    min_edge = min(image.size)
+    delta_w = width - bucket.width
+    delta_h = height - bucket.height
 
-    delta_w, delta_h = image.size[0] - min_edge, image.size[1] - min_edge
-    if all((delta_w, delta_h)):
+    # this should never happen
+    if all((delta_w != 0, delta_h != 0)):
         raise ValueError(f"Failed to crop short edge to match {bucket}!")
+
+    # easy case, no cropping needed
+    if delta_w == 0 and delta_h == 0:
+        return (image, (0, 0))
 
     top, left = np.random.randint(delta_h + 1), np.random.randint(delta_w + 1)
     image = image.crop((left, top, left + bucket.width, top + bucket.height))
-
     return (image, (top, left))
 
 
