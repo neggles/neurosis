@@ -1,5 +1,5 @@
 import logging
-from os import PathLike, getpid
+from os import PathLike
 from typing import Generator, Literal, Optional
 
 import numpy as np
@@ -8,7 +8,6 @@ import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from pymongoarrow.schema import Schema
-from s3fs import S3FileSystem
 from torch import Tensor
 from torch.utils.data import DataLoader
 
@@ -119,20 +118,6 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             "target_size_as_tuple": torch.tensor(bucket.size, dtype=torch.int32),
             **{k: torch.tensor(sample.get(k)) for k in self.extra_keys if k in sample},
         }
-
-    def refresh_clients(self):
-        """Helper func to replace the current clients with new ones post-fork etc."""
-        pid = getpid()
-        if self.client is None or self.pid != pid:
-            self.client = self.settings.new_client()
-            self.pid = pid
-
-        if self.fs is None or self.fs._pid != pid:
-            logger.debug(f"Loader detected fork, new PID {pid} - resetting fsspec clients")
-            import fsspec
-
-            fsspec.asyn.reset_lock()
-            self.fs = S3FileSystem(**self.fsspec_kwargs, skip_instance_cache=True)
 
     def preload(self):
         # call the superclasses' preload method
