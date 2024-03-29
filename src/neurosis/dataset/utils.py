@@ -161,3 +161,31 @@ def collate_dict_lists(batch: list[dict]) -> dict[str, Tensor | np.ndarray]:
             batch_dict[key] = np.stack(batch_dict[k], axis=0)
 
     return batch_dict
+
+
+def collate_dict_stack(batch: dict[str, list]) -> dict[str, Tensor | np.ndarray | list]:
+    """Collate function that takes a dict of lists and stacks any that are lists of tensors."""
+    collated = {}
+    for key, val in batch.items():
+        if isinstance(val[0], Tensor):
+            if val[0].ndim == 4 and val[0].shape[0] == 1:
+                # images with batch dim, cat
+                collated[key] = torch.cat(val, dim=0)
+            elif val[0].ndim == 0:
+                # scalars, stack
+                collated[key] = torch.stack(val, dim=0)
+            else:
+                if val[0].shape[0] == 1:
+                    # remove batch dim before stacking
+                    collated[key] = torch.stack([x.squeeze(0) for x in val], dim=0)
+                else:
+                    # normal stack
+                    collated[key] = torch.stack(val, dim=0)
+        elif isinstance(val[0], (str, np.bytes_)):
+            # this needs to be turned into a list of numpy arrays
+            collated[key] = [np.array(x, dtype=np.bytes_) for x in val]
+        else:
+            # tuples or other, just pass through
+            collated[key] = val
+
+    return collated

@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from neurosis.constants import IMAGE_EXTNS
 from neurosis.dataset.base import NoBucketDataset
-from neurosis.dataset.utils import load_crop_image_file
+from neurosis.dataset.utils import collate_dict_stack, load_crop_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +124,7 @@ class FolderVAEModule(LightningDataModule):
             self.dataset,
             batch_size=self.dataset.batch_size,
             num_workers=self.num_workers,
+            collate_fn=collate_dict_stack,
             pin_memory=self.pin_memory,
             prefetch_factor=self.prefetch_factor,
             persistent_workers=True,

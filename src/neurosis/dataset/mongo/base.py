@@ -3,8 +3,9 @@ from abc import abstractmethod
 from io import BytesIO
 from os import getenv, getpid
 from time import sleep
-from typing import Literal, Optional
+from typing import Literal, Optional, Sequence
 
+import numpy as np
 import pandas as pd
 from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
@@ -55,6 +56,9 @@ class BaseMongoDataset(Dataset):
         self.resampling = resampling
         self.no_resize = no_resize
 
+        # for mapping fake-batch indices to real indices, if used
+        self.batch_to_idx: Optional[list[list[int]]] = None
+
         # used to trigger a refresh check on first get just to be triple sure
         self._first_getitem = True
 
@@ -103,6 +107,19 @@ class BaseMongoDataset(Dataset):
     @abstractmethod
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         raise NotImplementedError("Abstract base class was called ;_;")
+
+    def __getitems__(self, indices: Sequence[int] | int) -> dict[str, Tensor | list[Tensor | np.ndarray]]:
+        if isinstance(indices, int):
+            if self.batch_to_idx is not None:
+                indices = self.batch_to_idx[indices]
+            else:
+                indices = [indices]
+
+        samples = [self.__getitem__(idx) for idx in indices]
+        # remap the list of dicts to a dict of lists
+        samples = {k: [x[k] for x in samples] for k in samples[0].keys()}
+        # collate function can handle stacking tensors from here
+        return samples
 
     @property
     def database(self) -> MongoCollection:
