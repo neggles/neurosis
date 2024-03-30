@@ -11,6 +11,7 @@ from typing import Annotated, Optional
 import torch
 import typer
 from safetensors.torch import save_file
+from torch import Tensor
 from tqdm import tqdm
 from typer import Typer
 
@@ -62,6 +63,28 @@ def save_safetensors(
         raise RuntimeError("Failed to save SafeTensors checkpoint metadata!") from e
 
     print(f"SafeTensors checkpoint saved to {path}")
+
+
+def maybe_remap_keys(
+    state_dict: OrderedDict | dict[str, Tensor],
+) -> OrderedDict[str, Tensor]:
+    new_sd = OrderedDict()
+    for k, v in state_dict.items():
+        # deal with moving the quant_conv and post_quant_conv back
+        if k.startswith("vae_decoder.post_quant_conv."):
+            # vae_decoder.post_quant_conv -> first_stage_model.post_quant_conv
+            k = k.replace("vae_decoder.", "first_stage_model.")
+        if k.startswith("vae_encoder.quant_conv."):
+            # vae_encoder.quant_conv -> first_stage_model.quant_conv
+            k = k.replace("vae_encoder.", "first_stage_model.")
+
+        # generally remap the vae keys to first_stage_model
+        if k.startswith("vae_"):
+            # vae_encoder -> first_stage_model.encoder, etc
+            k = k.replace("vae_", "first_stage_model.")
+        # assign to new state dict
+        new_sd[k] = v
+    return new_sd
 
 
 @app.command()
@@ -137,6 +160,9 @@ def main(
             if idx % 100 == 0:
                 gc.collect()
         gc.collect()
+
+    # maybe remap vae keys
+    state_dict = maybe_remap_keys(state_dict)
 
     # save the SafeTensors checkpoint
     typer.echo("Saving SafeTensors checkpoint...")
