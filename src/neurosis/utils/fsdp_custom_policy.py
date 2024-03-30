@@ -3,7 +3,6 @@ from torch import nn
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from transformers.models.clip.modeling_clip import CLIPEncoderLayer
 
-from neurosis.models.embedding import GeneralConditioner
 from neurosis.models.text_encoder import (
     FrozenCLIPEmbedder,
     FrozenOpenCLIPEmbedder,
@@ -30,6 +29,7 @@ from neurosis.modules.diffusion.openaimodel import (
     TimestepEmbedSequential,
     UNetModel,
 )
+from neurosis.modules.encoders.embedding import GeneralConditioner
 
 
 def diffusion_fsdp_policy(
