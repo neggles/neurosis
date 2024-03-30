@@ -10,7 +10,6 @@ from torch.utils.data import Dataset
 from torchvision.transforms import v2 as T
 
 from neurosis.dataset.aspect.lists import AspectBucketList
-from neurosis.dataset.utils import VAENormalize
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,7 @@ class AspectBucketDataset(Dataset):
             [
                 T.ToImage(),
                 T.ToDtype(torch.float32, scale=True),
-                VAENormalize(),
+                T.Normalize([0.5], [0.5]),
             ]
         )
 
