@@ -44,7 +44,7 @@ class Denoiser(nn.Module):
         net_inputs = inputs * c_in
         net_outputs = network(net_inputs, c_noise, cond, **additional_model_inputs)
 
-        return net_outputs * c_out + net_inputs * c_skip
+        return inputs * c_skip + net_outputs * c_out
 
 
 class DiscreteDenoiser(Denoiser):
