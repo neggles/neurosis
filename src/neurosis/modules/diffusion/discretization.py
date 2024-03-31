@@ -21,7 +21,7 @@ class Discretization(ABC):
     def __call__(
         self,
         n: int,
-        do_append_zero: bool = True,
+        do_append_zero: bool = False,
         device: str | torch.device = "cpu",
         flip: bool = False,
     ):
@@ -47,15 +47,35 @@ class EDMcDiscretization(Discretization):
     ):
         super().__init__()
         self.sigma_min = sigma_min
-        self.log_sigma_min = log(sigma_min)
         self.sigma_max = sigma_max
-        self.log_sigma_max = log(sigma_max)
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
-        sigmas = torch.linspace(self.log_sigma_min, self.log_sigma_max, n, dtype=torch.float32).exp()
+        sigmas = torch.linspace(log(self.sigma_min), log(self.sigma_max), n, dtype=torch.float32).exp()
 
         # return flipped so largest sigma is first
         return sigmas.flip(0).to(device)
+
+
+class EDMcSimpleDiscretization(Discretization):
+    def __init__(
+        self,
+        sigma_min: float = 0.001,
+        sigma_max: float = 1000.0,
+    ):
+        super().__init__()
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+
+    def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
+        sigmas = torch.linspace(log(self.sigma_min), log(self.sigma_max), 1000, dtype=torch.float32).exp()
+        sigs = []
+        ss = len(sigmas) / n
+        for x in range(n):
+            sigs += [float(sigmas[-(1 + int(x * ss))])]
+        sigs += [0.0]
+        sigs = torch.tensor(sigs)
+
+        return sigs.to(device)
 
 
 class TanZeroSNRDiscretization(Discretization):
@@ -65,11 +85,8 @@ class TanZeroSNRDiscretization(Discretization):
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
         # these calcs need to be float64 or they'll overflow in intermediate steps
-        half_pi_t = torch.acos(torch.zeros(1, dtype=torch.float64))[0]
-        sigmas = torch.tan(torch.linspace(0.0, half_pi_t, n, dtype=torch.float64))
-        # manually override the last value to be sigma_max to avoid overflow issues in fp16 nets
-        # (and because ~1.6e16 is unnecessarily high for any practical purpose)
-        sigmas[-1] = self.sigma_max
+        half_pi_t = torch.acos(torch.zeros(1, dtype=torch.float64)).squeeze(0)
+        sigmas = torch.tan(torch.linspace(0.0, half_pi_t - 0.001, 1000, dtype=torch.float64))
         # return flipped so largest sigma is first and cast to float32
         return sigmas.flip(0).to(device, dtype=torch.float32)
 
