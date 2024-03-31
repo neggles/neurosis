@@ -17,11 +17,13 @@ class SigmaGenerator(ABC):
 class EDMSigmaGenerator(SigmaGenerator):
     def __init__(
         self,
-        p_mean: float = -1.0,
+        p_mean: float = -1.2,
         p_std: float = 1.2,
+        scale: float = 2.0,
     ):
         self.p_mean = p_mean
         self.p_std = p_std
+        self.scale = scale
 
     def __call__(self, n_samples: int, rand: Optional[Tensor] = None):
         if rand is not None:
@@ -29,8 +31,8 @@ class EDMSigmaGenerator(SigmaGenerator):
         else:
             rand = torch.randn((n_samples,), dtype=torch.float32)
 
-        log_sigma = self.p_mean + self.p_std * rand
-        return log_sigma.exp()
+        log_sigma = self.p_mean + (self.p_std * rand)
+        return log_sigma.exp() * self.scale
 
 
 class DiscreteSigmaGenerator(SigmaGenerator):
