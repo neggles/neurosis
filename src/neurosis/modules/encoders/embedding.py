@@ -1,7 +1,7 @@
 import logging
 from contextlib import nullcontext
 from functools import partial
-from typing import List, Optional, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -9,7 +9,7 @@ from einops import rearrange
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from neurosis.utils import count_params, disabled_train, expand_dims_like, np_text_decode
+from neurosis.utils import count_params, np_text_decode
 
 logger = logging.getLogger(__name__)
 
@@ -17,18 +17,18 @@ logger = logging.getLogger(__name__)
 class AbstractEmbModel(nn.Module):
     name: Optional[str]
     input_key: Optional[str]
-    input_keys: Optional[List[str]]
-    legacy_ucg_val: Optional[float]
-    ucg_prng: Optional[np.random.RandomState]
+    input_keys: Optional[list[str]]
+    ucg_rate: float
+    is_trainable: bool
     base_lr: Optional[float]
 
     def __init__(
         self,
-        is_trainable: Optional[bool] = None,
-        ucg_rate: Optional[float] = 0.0,
-        input_key: Optional[str] = None,
-        base_lr: Optional[float] = None,
         name: Optional[str] = None,
+        input_key: Optional[str] = None,
+        ucg_rate: Optional[float] = 0.0,
+        is_trainable: Optional[bool] = None,
+        base_lr: Optional[float] = None,
     ):
         super().__init__()
         if not hasattr(self, "is_trainable"):
@@ -41,57 +41,13 @@ class AbstractEmbModel(nn.Module):
             self.base_lr = base_lr
 
         if not hasattr(self, "name"):
-            name = name or str(self.__class__.__name__)
-
-        # synchronize ucg_rate and ucg_prng for legacy ucg mode
-        if hasattr(self, "legacy_ucg_val") and self.legacy_ucg_val is not None:
-            self.ucg_prng = np.random.RandomState()
-        else:
-            self.ucg_prng = None
-
-    @property
-    def is_trainable(self) -> bool:
-        return self._is_trainable
-
-    @is_trainable.setter
-    def is_trainable(self, value: bool):
-        self._is_trainable = value
-
-    @is_trainable.deleter
-    def is_trainable(self) -> None:
-        del self._is_trainable
-
-    @property
-    def ucg_rate(self) -> Union[float, Tensor]:
-        return self._ucg_rate
-
-    @ucg_rate.setter
-    def ucg_rate(self, value: Union[float, Tensor]):
-        self._ucg_rate = value
-
-    @ucg_rate.deleter
-    def ucg_rate(self) -> None:
-        del self._ucg_rate
-
-    @property
-    def input_key(self) -> str:
-        return self._input_key
-
-    @input_key.setter
-    def input_key(self, value: str):
-        self._input_key = value
-
-    @input_key.deleter
-    def input_key(self) -> None:
-        del self._input_key
+            self.name = name or str(self.__class__.__name__)
 
     def freeze(self) -> None:
         # set self to eval mode
         self.eval()
         # set requires_grad to False for all parameters
         self.requires_grad_(False)
-        # set train method to disabled_train
-        self.train = disabled_train
 
 
 class GeneralConditioner(nn.Module):
@@ -117,10 +73,6 @@ class GeneralConditioner(nn.Module):
             if not any((hasattr(embedder, "input_key"), hasattr(embedder, "input_keys"))):
                 raise KeyError(f"need either 'input_key' or 'input_keys' for embedder #{idx} {emb_class}")
 
-            embedder.legacy_ucg_val = getattr(embedder, "legacy_ucg_value", None)
-            if embedder.legacy_ucg_val is not None:
-                embedder.ucg_prng = np.random.RandomState()
-
             embedders.append(embedder)
 
         if len(embedders) == 0:
@@ -128,21 +80,7 @@ class GeneralConditioner(nn.Module):
 
         self.embedders: list[AbstractEmbModel] = nn.ModuleList(embedders)
 
-    def possibly_get_ucg_val(self, embedder: AbstractEmbModel, batch: dict) -> tuple[dict]:
-        if embedder.legacy_ucg_val is None:
-            raise ValueError("embedder has no legacy_ucg_val")
-
-        is_ucg = [False] * len(batch[embedder.input_key])
-        p = embedder.ucg_rate
-        val = embedder.legacy_ucg_val
-        for i in range(len(batch[embedder.input_key])):
-            if embedder.ucg_prng.choice(2, p=[1 - p, p]):
-                batch[embedder.input_key][i] = val
-                is_ucg[i] = True
-        batch["is_ucg"] = is_ucg
-        return batch
-
-    def forward(self, batch: dict, force_zero_embeddings: Optional[List] = None) -> dict:
+    def forward(self, batch: dict, force_zero_embeddings: Optional[list] = None) -> dict:
         output = dict()
         if force_zero_embeddings is None:
             force_zero_embeddings = []
@@ -152,8 +90,6 @@ class GeneralConditioner(nn.Module):
             embedding_context = nullcontext if embedder.is_trainable else torch.no_grad
             with embedding_context():
                 if getattr(embedder, "input_key", None) is not None:
-                    if embedder.legacy_ucg_val is not None:
-                        batch = self.possibly_get_ucg_val(embedder, batch)
                     inputs = batch[embedder.input_key]
                     if isinstance(inputs, list) and isinstance(inputs[0], (str, np.bytes_, np.ndarray)):
                         inputs = np_text_decode(inputs, aslist=True)
@@ -176,11 +112,6 @@ class GeneralConditioner(nn.Module):
 
             for emb in emb_out:
                 out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
-                if embedder.ucg_rate > 0.0 and embedder.legacy_ucg_val is None:
-                    uncond = torch.bernoulli(
-                        (1.0 - embedder.ucg_rate) * torch.ones(emb.shape[0], device=emb.device)
-                    )
-                    emb = expand_dims_like(uncond, emb) * emb
                 if hasattr(embedder, "input_key") and embedder.input_key in force_zero_embeddings:
                     emb = torch.zeros_like(emb)
                 if out_key in output:
@@ -203,8 +134,12 @@ class GeneralConditioner(nn.Module):
         for embedder in self.embedders:
             embedder.ucg_rate = 0.0
 
-        c = self(batch_c, force_cond_zero_embeddings)
-        uc = self(batch_c if batch_uc is None else batch_uc, force_uc_zero_embeddings)
+        c = self(batch_c, force_zero_embeddings=force_cond_zero_embeddings)
+        if batch_uc is None:
+            batch_uc = batch_c.copy()
+            batch_uc["caption"] = [""] * len(batch_c["caption"]) if "caption" in batch_c else [""]
+
+        uc = self(batch_uc, force_zero_embeddings=force_uc_zero_embeddings)
 
         for embedder, rate in zip(self.embedders, ucg_rates):
             embedder.ucg_rate = rate

@@ -365,10 +365,7 @@ class DiffusionEngine(L.LightningModule):
         cond_dict = self.log_conditionings(batch, num_img, split)
         images_dict.update(cond_dict)
 
-        force_uc_zero = ucg_keys if len(self.conditioner.embedders) > 0 else []
-        cond, uncond = get_unconditional_conditioning(
-            self.conditioner, batch, force_uc_zero_embeddings=force_uc_zero
-        )
+        cond, uncond = get_unconditional_conditioning(self.conditioner, batch)
         for key in cond:
             if isinstance(cond[key], Tensor):
                 cond[key] = cond[key][:num_img].to(self.device)
@@ -379,14 +376,14 @@ class DiffusionEngine(L.LightningModule):
                 samples = self.sample(
                     cond=cond, shape=latents.shape[1:], uc=uncond, batch_size=num_img, **kwargs
                 )
-            samples = self.decode_first_stage(samples)
-            images_dict["samples"] = samples.cpu()
+            samples_out = self.decode_first_stage(samples)
+            images_dict["samples"] = samples_out.cpu()
 
         return images_dict
 
 
 def get_unconditional_conditioning(
-    conditioner,
+    conditioner: GeneralConditioner,
     batch_c: dict,
     batch_uc: Optional[dict] = None,
     force_uc_zero_embeddings: Optional[list[str]] = None,
@@ -399,8 +396,11 @@ def get_unconditional_conditioning(
     for embedder in conditioner.embedders:
         embedder.ucg_rate = 0.0
 
-    c = conditioner(batch_c, force_cond_zero_embeddings)
-    uc = conditioner(batch_c if batch_uc is None else batch_uc, force_uc_zero_embeddings)
+    c = conditioner(batch_c, force_zero_embeddings=force_cond_zero_embeddings)
+    if batch_uc is None:
+        batch_uc = batch_c.copy()
+        batch_uc["caption"] = [""] * len(batch_c["caption"]) if "caption" in batch_c else [""]
+    uc = conditioner(batch_uc, force_zero_embeddings=force_uc_zero_embeddings)
 
     for embedder, rate in zip(conditioner.embedders, ucg_rates):
         embedder.ucg_rate = rate

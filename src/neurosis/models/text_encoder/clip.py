@@ -63,7 +63,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
                 layer_idx += 12 if layer_idx < 0 else 0
                 self.layer_idx = layer_idx
             case "penultimate":
-                self.layer_idx = 11
+                self.layer_idx = 10
             case _:
                 raise ValueError("Only last, penultimate and hidden layers are supported")
 
@@ -71,9 +71,8 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         self.transformer = self.transformer.eval()
         super().freeze()
 
-    @autocast
     def forward(self, text: Union[str, list[str]]):
-        text = np_text_decode(text)
+        text = np_text_decode(text, aslist=True)
 
         batch_encoding: BatchEncoding = self.tokenizer(
             text,
@@ -95,7 +94,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
             case "pooled":
                 z = outputs.pooler_output[:, None, :]
             case _:
-                z = outputs.hidden_states[self.layer_idx]
+                z = outputs.hidden_states[self.layer_idx + 1]
 
         if self.return_pooled:
             return z, outputs.pooler_output
@@ -153,7 +152,7 @@ class FrozenOpenCLIPEmbedder(AbstractEmbModel):
         super().freeze()
 
     def forward(self, text: Union[str, list[str]]) -> Tensor:
-        text = np_text_decode(text)
+        text = np_text_decode(text, aslist=True)
         tokens = open_clip.tokenize(text)
         z = self.encode_with_transformer(tokens.to(self.device))
         return z
@@ -220,14 +219,6 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
             self.freeze()
 
         self.layer = layer
-        match self.layer:
-            case "last":
-                self.layer_idx = 0
-            case "penultimate":
-                self.layer_idx = 1
-            case _:
-                raise ValueError("Only last and penultimate layers are supported")
-
         self.return_pooled = always_return_pooled
         self.legacy = legacy
 
@@ -235,9 +226,8 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         self.model = self.model.eval()
         super().freeze()
 
-    @autocast
     def forward(self, text: Union[str, list[str]]) -> Tensor | tuple[Tensor, Tensor]:
-        text = np_text_decode(text)
+        text = np_text_decode(text, aslist=True)
         tokens: Tensor = open_clip.tokenize(text)
         z: Tensor = self.encode_with_transformer(tokens.to(self.device))
         if not self.return_pooled and self.legacy:
@@ -282,8 +272,8 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         outputs["last"] = x.permute(1, 0, 2)  # LND -> NLD
         return outputs
 
-    def encode(self, text: str) -> Tensor:
-        return self(text)
+    def encode(self, text: str | list[str]) -> Tensor:
+        return self.forward(text)
 
 
 class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
@@ -436,4 +426,4 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
         return x, tokens if self.output_tokens else x
 
     def encode(self, text: str) -> Tensor:
-        return self(text)
+        return self.forward(text)
