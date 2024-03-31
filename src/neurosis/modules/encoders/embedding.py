@@ -137,7 +137,7 @@ class GeneralConditioner(nn.Module):
         c = self(batch_c, force_zero_embeddings=force_cond_zero_embeddings)
         if batch_uc is None:
             batch_uc = batch_c.copy()
-            batch_uc["caption"] = [""] * len(batch_c["caption"]) if "caption" in batch_c else [""]
+            batch_uc["caption"] = ([""] * len(batch_c["caption"])) if "caption" in batch_c else [""]
 
         uc = self(batch_uc, force_zero_embeddings=force_uc_zero_embeddings)
 

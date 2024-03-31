@@ -399,7 +399,7 @@ def get_unconditional_conditioning(
     c = conditioner(batch_c, force_zero_embeddings=force_cond_zero_embeddings)
     if batch_uc is None:
         batch_uc = batch_c.copy()
-        batch_uc["caption"] = [""] * len(batch_c["caption"]) if "caption" in batch_c else [""]
+        batch_uc["caption"] = ([""] * len(batch_c["caption"])) if "caption" in batch_c else [""]
     uc = conditioner(batch_uc, force_zero_embeddings=force_uc_zero_embeddings)
 
     for embedder, rate in zip(conditioner.embedders, ucg_rates):
