@@ -7,6 +7,8 @@ from pytorch_optimizer.base.types import BETAS, CLOSURE, DEFAULTS, LOSS, PARAMET
 from torch import Tensor, nn
 from torch.optim.optimizer import Optimizer
 
+from .utils import copy_stochastic_
+
 
 class CAME(Optimizer, BaseOptimizer):
     r"""Confidence-guided Adaptive Memory Efficient Optimization.
@@ -79,18 +81,10 @@ class CAME(Optimizer, BaseOptimizer):
                 state["exp_avg"] = torch.zeros_like(p)
 
                 if factored:
-                    state["exp_avg_sq_row"] = torch.zeros(
-                        grad_shape[:-1], dtype=grad.dtype, device=grad.device
-                    )
-                    state["exp_avg_sq_col"] = torch.zeros(
-                        grad_shape[:-2] + grad_shape[-1:], dtype=grad.dtype, device=grad.device
-                    )
-                    state["exp_avg_res_row"] = torch.zeros(
-                        grad_shape[:-1], dtype=grad.dtype, device=grad.device
-                    )
-                    state["exp_avg_res_col"] = torch.zeros(
-                        grad_shape[:-2] + grad_shape[-1:], dtype=grad.dtype, device=grad.device
-                    )
+                    state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1]).to(grad)
+                    state["exp_avg_sq_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).to(grad)
+                    state["exp_avg_res_row"] = torch.zeros(grad_shape[:-1]).to(grad)
+                    state["exp_avg_res_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).to(grad)
                 else:
                     state["exp_avg_sq"] = torch.zeros_like(grad)
 
@@ -105,21 +99,20 @@ class CAME(Optimizer, BaseOptimizer):
         return len(shape) >= 2
 
     @staticmethod
-    def get_rms(x: torch.Tensor) -> float:
+    def get_rms(x: Tensor) -> Tensor:
         r"""Get RMS."""
-        return x.norm(2) / math.sqrt(x.numel())
+        rms = x.norm(2).div(math.sqrt(x.numel()))
+        return rms
 
     @staticmethod
     def approximate_sq_grad(
-        exp_avg_sq_row: torch.Tensor,
-        exp_avg_sq_col: torch.Tensor,
-        output: torch.Tensor,
+        exp_avg_sq_row: Tensor,
+        exp_avg_sq_col: Tensor,
+        output: Tensor,
     ):
         r"""Get approximation of EMA of squared gradient."""
-        r_factor: torch.Tensor = (
-            (exp_avg_sq_row / exp_avg_sq_row.mean(dim=-1, keepdim=True)).rsqrt_().unsqueeze(-1)
-        )
-        c_factor: torch.Tensor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
+        r_factor: Tensor = (exp_avg_sq_row / exp_avg_sq_row.mean(dim=-1, keepdim=True)).rsqrt_().unsqueeze(-1)
+        c_factor: Tensor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
         torch.mul(r_factor, c_factor, out=output)
 
     @torch.no_grad()
@@ -146,28 +139,22 @@ class CAME(Optimizer, BaseOptimizer):
                 grad = p.grad
                 if grad.is_sparse:
                     raise NoSparseGradientError(str(self))
+                if grad.dtype in {torch.float16, torch.bfloat16}:
+                    grad = grad.to(torch.float32)
 
                 state = self.state[p]
+                grad_shape: torch.Size = grad.shape
 
-                grad_shape: tuple[int, ...] = grad.shape
                 factored: bool = self.get_options(grad_shape)
 
                 if len(state) == 0:
                     state["exp_avg"] = torch.zeros_like(p)
 
                     if factored:
-                        state["exp_avg_sq_row"] = torch.zeros(
-                            grad_shape[:-1], dtype=grad.dtype, device=grad.device
-                        )
-                        state["exp_avg_sq_col"] = torch.zeros(
-                            grad_shape[:-2] + grad_shape[-1:], dtype=grad.dtype, device=grad.device
-                        )
-                        state["exp_avg_res_row"] = torch.zeros(
-                            grad_shape[:-1], dtype=grad.dtype, device=grad.device
-                        )
-                        state["exp_avg_res_col"] = torch.zeros(
-                            grad_shape[:-2] + grad_shape[-1:], dtype=grad.dtype, device=grad.device
-                        )
+                        state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1]).to(grad)
+                        state["exp_avg_sq_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).to(grad)
+                        state["exp_avg_res_row"] = torch.zeros(grad_shape[:-1]).to(grad)
+                        state["exp_avg_res_col"] = torch.zeros(grad_shape[:-2] + grad_shape[-1:]).to(grad)
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(grad)
 
@@ -176,7 +163,11 @@ class CAME(Optimizer, BaseOptimizer):
 
                     state["RMS"] = 0.0
 
-                state["RMS"] = self.get_rms(p)
+                p_data_fp32 = p
+                if p.dtype in {torch.float16, torch.bfloat16}:
+                    p_data_fp32 = p_data_fp32.to(torch.float32)
+
+                state["RMS"] = self.get_rms(p_data_fp32)
 
                 update = torch.mul(grad, grad).add_(self.eps1)
 
@@ -216,10 +207,10 @@ class CAME(Optimizer, BaseOptimizer):
                     self.approximate_sq_grad(exp_avg_res_row, exp_avg_res_col, update)
                     update.mul_(exp_avg)
                 else:
-                    update = exp_avg
+                    update = exp_avg.clone()
 
                 self.apply_weight_decay(
-                    p=p,
+                    p=p_data_fp32,
                     grad=grad,
                     lr=group["lr"],
                     weight_decay=group["weight_decay"],
@@ -229,6 +220,9 @@ class CAME(Optimizer, BaseOptimizer):
 
                 update.mul_(group["lr"])
 
-                p.add_(-update)
+                p_data_fp32.add_(-update)
+
+                if p.dtype in {torch.float16, torch.bfloat16}:
+                    copy_stochastic_(p, p_data_fp32)
 
         return loss
