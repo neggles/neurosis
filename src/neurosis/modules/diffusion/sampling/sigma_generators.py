@@ -88,3 +88,25 @@ class CosineScheduleSigmaGenerator(SigmaGenerator):
             return logSNR
 
         return torch.exp(-logSNR / 2) * self.sigma_data
+
+
+class TanScheduleSigmaGenerator(SigmaGenerator):
+    def __init__(self, start_shift: float = 0.001, end_shift: float = 0.001, clip=True):
+        self.start_shift = start_shift
+        self.end_shift = end_shift
+        self.clip = clip
+
+    def __call__(self, n_samples: int, rand=None):
+        if rand is not None:
+            rand = rand.to(torch.float64)
+        else:
+            rand = torch.rand((n_samples,), dtype=torch.float64)
+        half_pi_t = torch.acos(torch.zeros(1)) * rand
+
+        if self.clip:
+            lower_bound = torch.Tensor([self.start_shift]).to(torch.float64)
+            upper_bound = torch.acos(torch.zeros(1, dtype=torch.float64)) - self.end_shift
+
+            half_pi_t = half_pi_t.clip(lower_bound, upper_bound)
+
+        return torch.tan(half_pi_t).to(torch.float32)
