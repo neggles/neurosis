@@ -61,13 +61,17 @@ class EDMcSimpleDiscretization(Discretization):
         self,
         sigma_min: float = 0.001,
         sigma_max: float = 1000.0,
+        num_sigmas: int = 1000,
     ):
         super().__init__()
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
+        self.num_sigmas = num_sigmas
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
-        sigmas = torch.linspace(log(self.sigma_min), log(self.sigma_max), 1000, dtype=torch.float32).exp()
+        sigmas = torch.linspace(
+            log(self.sigma_min), log(self.sigma_max), self.num_sigmas, dtype=torch.float32
+        ).exp()
         sigs = []
         ss = len(sigmas) / n
         for x in range(n):
