@@ -91,7 +91,7 @@ class GeneralConditioner(nn.Module):
             with embedding_context():
                 if getattr(embedder, "input_key", None) is not None:
                     inputs = batch[embedder.input_key]
-                    if not isinstance(inputs, (list, tuple)):
+                    if not isinstance(inputs, (list, tuple, Tensor)):
                         inputs = [inputs]
                     # handle text inputs, decode if necessary
                     if isinstance(inputs, list) and isinstance(inputs[0], (str, np.bytes_, np.ndarray)):
