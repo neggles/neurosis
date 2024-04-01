@@ -91,7 +91,12 @@ class CosineScheduleSigmaGenerator(SigmaGenerator):
 
 
 class TanScheduleSigmaGenerator(SigmaGenerator):
-    def __init__(self, start_shift: float = 0.001, end_shift: float = 0.001, clip=True):
+    def __init__(
+        self,
+        start_shift: float = 0.001,
+        end_shift: float = 0.001,
+        clip: bool = True,
+    ):
         self.start_shift = start_shift
         self.end_shift = end_shift
         self.clip = clip
