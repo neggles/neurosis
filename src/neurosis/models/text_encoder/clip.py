@@ -2,6 +2,7 @@ import logging
 from typing import Any, Optional, Union
 
 import kornia
+import numpy as np
 import open_clip
 import torch
 from einops import rearrange, repeat
@@ -73,6 +74,10 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
 
     def forward(self, text: Union[str, list[str]]):
         text = np_text_decode(text, aslist=True)
+
+        # hijack the uncond rate for empty-prompt dropout
+        if self.ucg_rate > 0.0 and self.ucg_rate < np.random.rand():
+            text = [""] * len(text)
 
         batch_encoding: BatchEncoding = self.tokenizer(
             text,
@@ -228,6 +233,11 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
 
     def forward(self, text: Union[str, list[str]]) -> Tensor | tuple[Tensor, Tensor]:
         text = np_text_decode(text, aslist=True)
+
+        # hijack the uncond rate for empty-prompt dropout
+        if self.ucg_rate > 0.0 and self.ucg_rate < np.random.rand():
+            text = [""] * len(text)
+
         tokens: Tensor = open_clip.tokenize(text)
         z: Tensor = self.encode_with_transformer(tokens.to(self.device))
         if not self.return_pooled and self.legacy:
