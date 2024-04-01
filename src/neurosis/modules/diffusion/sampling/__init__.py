@@ -13,19 +13,21 @@ from .sigma_generators import (
     DiscreteSigmaGenerator,
     EDMSigmaGenerator,
     SigmaGenerator,
+    TanScheduleSigmaGenerator,
 )
 
 __all__ = [
     "BaseDiffusionSampler",
     "CosineScheduleSigmaGenerator",
+    "DiscreteSigmaGenerator",
     "DPMPP2MSampler",
     "DPMPP2SAncestralSampler",
     "EDMSampler",
+    "EDMSigmaGenerator",
     "EulerAncestralSampler",
     "EulerEDMSampler",
     "HeunEDMSampler",
     "LinearMultistepSampler",
     "SigmaGenerator",
-    "DiscreteSigmaGenerator",
-    "EDMSigmaGenerator",
+    "TanScheduleSigmaGenerator",
 ]
