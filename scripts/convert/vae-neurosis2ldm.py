@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Convert neurosis (Lightning) VAE checkpoint into HF model and ldm checkpoint"""
+
 from collections import OrderedDict
 from enum import Enum
 from os import PathLike
@@ -9,18 +10,20 @@ from typing import Annotated, Any, Optional
 import torch
 import typer
 from diffusers import AutoencoderKL
-from rich.traceback import install as traceback_install
 from safetensors.torch import save_file
 from typer import Typer
 
+try:
+    from rich.traceback import install as traceback_install
+
+    _ = traceback_install(show_locals=False, width=120)
+except ImportError:
+    pass
+
 app = Typer(
-    name="pl2sd",
+    name="pl2sd-vae",
     add_help_option=True,
     rich_help_panel=True,
-)
-_ = traceback_install(
-    show_locals=False,
-    width=120,
 )
 
 
