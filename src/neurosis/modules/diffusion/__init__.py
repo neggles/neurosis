@@ -17,6 +17,7 @@ from .discretization import (
     EDMcDiscretization,
     EDMDiscretization,
     LegacyDDPMDiscretization,
+    TanZeroSNRDiscretization,
 )
 from .loss import DiffusionLoss, StandardDiffusionLoss
 from .model import (
@@ -78,6 +79,7 @@ __all__ = [
     "ResnetBlock",
     "SigmaGenerator",
     "StandardDiffusionLoss",
+    "TanZeroSNRDiscretization",
     "Timestep",
     "TorchSDPAttnBlock",
     "UNetModel",
