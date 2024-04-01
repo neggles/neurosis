@@ -17,9 +17,9 @@ from typer import Typer
 
 try:
     from rich.pretty import print
-    from rich.traceback import install as install_traceback
+    from rich.traceback import install as traceback_install
 
-    _ = install_traceback(show_locals=True, locals_max_length=1)
+    _ = traceback_install(show_locals=False, width=120)
 except ImportError:
     pass
 
