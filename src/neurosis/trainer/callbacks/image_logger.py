@@ -36,6 +36,7 @@ class ImageLogger(Callback):
         batch_size: int = 1,
         accumulate_grad_batches: int = 1,
         label_img: bool = False,
+        wandb_log_table: bool = False,
     ):
         super().__init__()
         self.every_n_train_steps = every_n_train_steps
@@ -46,6 +47,7 @@ class ImageLogger(Callback):
         self.enable_autocast = enable_autocast
         self.enabled = enabled
         self.label_img = label_img
+        self.wandb_log_table = wandb_log_table
 
         if self.max_images < 1 and self.enabled:
             raise ValueError("max_images must be >= 1 if disable=False")
@@ -295,12 +297,12 @@ class ImageLogger(Callback):
         # log to wandb
         for pl_logger in [x for x in pl_module.loggers if isinstance(x, WandbLogger)]:
             pl_logger.log_metrics(wandb_dict)
-            if len(table_dict) > 0:
+            if self.wandb_log_table is True and len(table_dict) > 0:
                 try:
                     table_df = pd.DataFrame(table_dict)
                     pl_logger.log_table(f"{split}/table", data=table_df, step=step)
                 except Exception as e:
-                    logger.exception("Failed to log table to WandB", e)
+                    logger.exception(f"Failed to log table to WandB: {e}")
 
     def maybe_log_images(
         self,
