@@ -8,8 +8,9 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from neurosis.modules.diffusion.hooks import LossHook
 from neurosis.utils import np_text_decode
+
+from .common import LossHook
 
 logger = logging.getLogger(__name__)
 
