@@ -21,12 +21,12 @@ from neurosis.modules.diffusion import (
     DiffusionLoss,
     UNetModel,
 )
-from neurosis.modules.diffusion.hooks import LossHook
 from neurosis.modules.diffusion.model import Decoder, Encoder
 from neurosis.modules.diffusion.wrappers import OpenAIWrapper
 from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
+from neurosis.modules.hooks import LossHook
 from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
 
 logger = logging.getLogger(__name__)
