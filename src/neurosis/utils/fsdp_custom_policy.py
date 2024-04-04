@@ -5,7 +5,6 @@ from transformers.models.clip.modeling_clip import CLIPEncoderLayer
 
 from neurosis.models.text_encoder import (
     FrozenCLIPEmbedder,
-    FrozenOpenCLIPEmbedder,
     FrozenOpenCLIPEmbedder2,
     FrozenT5Embedder,
 )
@@ -47,7 +46,6 @@ def diffusion_fsdp_policy(
             Decoder,
             Encoder,
             FrozenCLIPEmbedder,
-            FrozenOpenCLIPEmbedder,
             FrozenOpenCLIPEmbedder2,
             FrozenT5Embedder,
             GeneralConditioner,
@@ -76,7 +74,6 @@ def diffusion_fsdp_lowmem_policy(
             Encoder,
             FeedForward,
             FrozenCLIPEmbedder,
-            FrozenOpenCLIPEmbedder,
             FrozenOpenCLIPEmbedder2,
             FrozenT5Embedder,
             GeneralConditioner,

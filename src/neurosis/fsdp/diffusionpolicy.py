@@ -3,7 +3,6 @@ from torch.distributed.fsdp.wrap import ModuleWrapPolicy
 from neurosis.models.embedding import GeneralConditioner
 from neurosis.models.text_encoder import (
     FrozenCLIPEmbedder,
-    FrozenOpenCLIPEmbedder,
     FrozenOpenCLIPEmbedder2,
     FrozenT5Embedder,
 )
@@ -27,7 +26,6 @@ class DiffusionFsdpPolicy(ModuleWrapPolicy):
             Decoder,
             Encoder,
             FrozenCLIPEmbedder,
-            FrozenOpenCLIPEmbedder,
             FrozenOpenCLIPEmbedder2,
             FrozenT5Embedder,
             GeneralConditioner,
