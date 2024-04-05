@@ -41,6 +41,8 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
         path_key: str = "s3_path",
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
+        reverse: bool = False,
+        shuffle: bool = False,
         fs_type: str | FilesystemType = "s3",
         path_prefix: Optional[str] = None,
         fsspec_kwargs: dict = {},
@@ -67,6 +69,8 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
             path_key=path_key,
             extra_keys=extra_keys,
             resampling=resampling,
+            shuffle=shuffle,
+            reverse=reverse,
             fs_type=fs_type,
             path_prefix=path_prefix,
             fsspec_kwargs=fsspec_kwargs,
@@ -99,9 +103,6 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
             "crop_coords_top_left": torch.tensor(crop_coords, dtype=torch.int32),
             **{k: torch.tensor(sample.get(k)) for k in self.extra_keys if k in sample},
         }
-
-    def preload(self):
-        super().preload()
 
     def _get_osize(self, resolution: tuple[int, int]) -> tuple[int, int]:
         if self.clamp_orig:
@@ -147,6 +148,8 @@ class MongoSquareModule(LightningDataModule):
         word_sep: str = " ",
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
+        reverse: bool = False,
+        shuffle: bool = False,
         process_tags: bool = True,
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
@@ -175,6 +178,8 @@ class MongoSquareModule(LightningDataModule):
             word_sep=word_sep,
             extra_keys=extra_keys,
             resampling=resampling,
+            shuffle=shuffle,
+            reverse=reverse,
             process_tags=process_tags,
             shuffle_tags=shuffle_tags,
             shuffle_keep=shuffle_keep,
