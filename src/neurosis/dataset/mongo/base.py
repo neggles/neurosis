@@ -40,6 +40,8 @@ class BaseMongoDataset(Dataset):
         path_key: str = "s3_path",
         extra_keys: list[str] | Literal["all"] = [],
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
+        reverse: bool = False,
+        shuffle: bool = False,
         no_resize: bool = False,
         fs_type: str | FilesystemType = "s3",
         path_prefix: Optional[str] = None,
@@ -54,6 +56,8 @@ class BaseMongoDataset(Dataset):
         self.batch_size = batch_size
         self.path_key = path_key
         self.resampling = resampling
+        self.reverse = reverse
+        self.shuffle = shuffle
         self.no_resize = no_resize
 
         # for mapping fake-batch indices to real indices, if used
@@ -168,6 +172,10 @@ class BaseMongoDataset(Dataset):
                 schema=self.pma_schema,
                 **self.settings.query.kwargs,
             )
+            if self.reverse is True:
+                self.samples = self.samples[::-1].reset_index(drop=True)
+            if self.shuffle is True:
+                self.samples = self.samples.sample(frac=1).reset_index(drop=True)
 
         self._preload_done = True
         logger.debug("Preload complete!")
