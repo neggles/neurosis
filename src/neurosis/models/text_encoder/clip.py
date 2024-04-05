@@ -35,6 +35,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         layer: str = "last",
         layer_idx: Optional[int] = None,
         always_return_pooled: bool = False,
+        extended_chunks: int = 0,
         **kwargs,
     ):
         # clip-vit-base-patch32
@@ -53,6 +54,9 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         self.layer = layer
         self.return_pooled = always_return_pooled
         self.output_hidden_states = self.layer in ["hidden", "penultimate"]
+        self.extended_chunks = extended_chunks
+        self.bos_token_id = self.tokenizer.bos_token_id
+        self.eos_token_id = self.tokenizer.eos_token_id
 
         match layer:
             case "hidden":
@@ -73,13 +77,75 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         super().freeze()
 
     def forward(self, text: Union[str, list[str]]):
+        # decode any numpy bytearrays and ensure text is a list
         text = np_text_decode(text, aslist=True)
 
         # hijack the uncond rate for empty-prompt dropout
         if self.ucg_rate > 0.0 and self.ucg_rate < np.random.rand():
             text = [""] * len(text)
 
-        batch_encoding: BatchEncoding = self.tokenizer(
+        if self.extended_chunks > 1:
+            # extended mode
+            z: list[Tensor] = []
+            pooled: list[Tensor] = []
+
+            batch_tokens: Tensor = self.tokenize_extended(text)["input_ids"]  # Batch, Chunk, Tokens
+
+            # encode each chunk as if it were a minibatch
+            for sample in batch_tokens:
+                outputs: BaseModelOutputWithPooling = self.transformer(
+                    input_ids=sample.to(self.device), output_hidden_states=self.output_hidden_states
+                )
+                # get appropriate layer output
+                match self.layer:
+                    case "last":
+                        z.append(outputs.last_hidden_state.unsqueeze(0))
+                    case "pooled":
+                        z.append(outputs.pooler_output[:, None, :].unsqueeze(0))
+                    case _:
+                        z.append(outputs.hidden_states[self.layer_idx + 1].unsqueeze(0))
+                # save the first pooled embedding, but only the first
+                if self.return_pooled:
+                    pooled.append(outputs.pooler_output[0])
+            # concat on channel dim
+            z: Tensor = torch.stack(z, dim=0)
+            z = z.reshape(z.shape[0], -1, z[0].shape[-1])
+            if self.return_pooled:
+                return z, pooled
+            else:
+                return z
+
+        else:
+            batch_tokens: Tensor = self.tokenizer(
+                text,
+                truncation=True,
+                max_length=self.max_length,
+                return_length=True,
+                return_overflowing_tokens=False,
+                padding="max_length",
+                return_tensors="pt",
+            )["input_ids"]
+
+            outputs: BaseModelOutputWithPooling = self.transformer(
+                input_ids=batch_tokens.to(self.device), output_hidden_states=self.output_hidden_states
+            )
+            match self.layer:
+                case "last":
+                    z = outputs.last_hidden_state
+                case "pooled":
+                    z = outputs.pooler_output[:, None, :]
+                case _:
+                    z = outputs.hidden_states[self.layer_idx + 1]
+
+            if self.return_pooled:
+                return z, outputs.pooler_output
+            return z
+
+    def encode(self, text):
+        return self(text)
+
+    def tokenize(self, text: list[str]) -> BatchEncoding:
+        return self.tokenizer(
             text,
             truncation=True,
             max_length=self.max_length,
@@ -88,25 +154,42 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
             padding="max_length",
             return_tensors="pt",
         )
-        tokens = batch_encoding["input_ids"].to(self.device)
-        outputs: BaseModelOutputWithPooling = self.transformer(
-            input_ids=tokens, output_hidden_states=self.output_hidden_states
+
+    def tokenize_extended(self, text: list[str]) -> BatchEncoding:
+        chunk_tokens = self.tokenizer.model_max_length - 2  # -2 for start and end tokens
+        max_tokens = self.extended_chunks * chunk_tokens
+        n_prompts = len(text)
+
+        # get the input_ids for the prompt (sans special tokens)
+        input_ids: Tensor = self.tokenizer.batch_encode_plus(
+            text,
+            truncation=True,
+            add_special_tokens=False,
+            max_length=max_tokens,
+            padding="max_length",
+            return_tensors="pt",
+        )["input_ids"]
+
+        # reshape into chunks
+        input_ids = input_ids.view(n_prompts, self.extended_chunks, chunk_tokens)
+        bos_eos_shape = input_ids.shape[:2] + (1,)
+        # prepend BOS token and append EOS token to each chunk
+        input_ids = torch.cat(
+            (
+                torch.full(bos_eos_shape, self.tokenizer.bos_token_id, dtype=torch.long),
+                input_ids,
+                torch.full(bos_eos_shape, self.tokenizer.eos_token_id, dtype=torch.long),
+            ),
+            dim=2,
         )
 
-        match self.layer:
-            case "last":
-                z = outputs.last_hidden_state
-            case "pooled":
-                z = outputs.pooler_output[:, None, :]
-            case _:
-                z = outputs.hidden_states[self.layer_idx + 1]
+        return BatchEncoding({"input_ids": input_ids})
 
-        if self.return_pooled:
-            return z, outputs.pooler_output
-        return z
 
-    def encode(self, text):
-        return self(text)
+OPENCLIP_2_MAP = {
+    "default": "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",
+    "ViT-bigG-14": "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",
+}
 
 
 class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
@@ -119,14 +202,15 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
 
     def __init__(
         self,
-        arch: str = "ViT-H-14",
-        version: Optional[str] = "laion2b_s32b_b79k",
+        arch: str = "ViT-bigG-14",
+        version: Optional[str] = "laion2b_s39b_b160k",
         device: Union[str, torch.device] = "cuda",
         max_length: int = 77,
         freeze: bool = True,
         layer: str = "last",
         always_return_pooled: bool = False,
         legacy: bool = False,
+        extended_chunks: int = 0,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -142,6 +226,12 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         del model.visual
         self.model: open_clip.CLIP = model
 
+        tokenizer_repo = OPENCLIP_2_MAP.get(arch, None)
+        if tokenizer_repo is None:
+            logger.warning(f"Could not find tokenizer for {arch=} and {version=}, using default")
+            tokenizer_repo = OPENCLIP_2_MAP["default"]
+        self.tokenizer: CLIPTokenizer = CLIPTokenizer.from_pretrained(tokenizer_repo)
+
         self.device = torch.device(device)
         self.max_length = max_length
         if freeze:
@@ -150,6 +240,16 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         self.layer = layer
         self.return_pooled = always_return_pooled
         self.legacy = legacy
+
+        self.extended_chunks = extended_chunks
+        self.bos_token_id = self.tokenizer.bos_token_id
+        self.eos_token_id = self.tokenizer.eos_token_id
+        self.embed_dim = self.model.text_projection.shape[-1]
+
+        if self.return_pooled and self.legacy:
+            raise ValueError("legacy mode does not support returning pooled embeddings!")
+        if extended_chunks > 1 and self.legacy:
+            raise ValueError("legacy mode does not support extended chunks!")
 
     def freeze(self) -> None:
         self.model = self.model.eval()
@@ -162,15 +262,44 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         if self.ucg_rate > 0.0 and self.ucg_rate < np.random.rand():
             text = [""] * len(text)
 
-        tokens: Tensor = open_clip.tokenize(text)
-        z: Tensor = self.encode_with_transformer(tokens.to(self.device))
-        if not self.return_pooled and self.legacy:
-            return z
-        if self.return_pooled:
+        if self.extended_chunks > 1:
+            # extended mode
+            z = []
+            pooled = []
+
+            batch_tokens: Tensor = self.tokenize_extended(text)["input_ids"]  # Batch, Chunk, Tokens
+
+            # encode each chunk as if it were a minibatch
+            for sample in batch_tokens:
+                outputs = self.encode_with_transformer(sample.to(self.device))
+                # save the first pooled embedding, but only the first
+                if self.return_pooled:
+                    pooled.append(outputs["pooled"][0:1])
+                # append the layer output to the list
+                z.append(outputs[self.layer].unsqueeze(0))
+
+            # for pooled, stack the pooled embeddings for the batch
+            if self.return_pooled:
+                pooled = torch.cat(pooled, dim=0)
+
+            # concat on channel dim
+            z = torch.stack(z, dim=0)
+            z = z.reshape(z.shape[0], -1, z.shape[-1])
+            if self.return_pooled:
+                return z, pooled
+            else:
+                return z
+
+        else:
+            # standard mode
+            batch_tokens: Tensor = self.tokenize(text)["input_ids"]  # Batch, Tokens
+            z = self.encode_with_transformer(batch_tokens.to(self.device))
             if self.legacy:
-                raise ValueError("legacy mode does not support returning pooled embeddings!")
-            return z[self.layer], z["pooled"]
-        return z[self.layer]
+                return z
+            if self.return_pooled:
+                return z[self.layer], z["pooled"]
+            else:
+                return z[self.layer]
 
     def encode_with_transformer(self, text: Tensor) -> dict[str, Tensor]:
         x = self.model.token_embedding(text)  # [batch_size, n_ctx, d_model]
@@ -208,6 +337,46 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
 
     def encode(self, text: str | list[str]) -> Tensor:
         return self.forward(text)
+
+    def tokenize(self, text: list[str]) -> BatchEncoding:
+        return self.tokenizer(
+            text,
+            truncation=True,
+            max_length=self.max_length,
+            return_length=True,
+            return_overflowing_tokens=False,
+            padding="max_length",
+            return_tensors="pt",
+        )
+
+    def tokenize_extended(self, text: list[str]) -> BatchEncoding:
+        chunk_tokens = self.tokenizer.model_max_length - 2  # -2 for start and end tokens
+        max_tokens = self.extended_chunks * chunk_tokens
+        n_prompts = len(text)
+
+        # get the input_ids for the prompt (sans special tokens)
+        input_ids: Tensor = self.tokenizer.batch_encode_plus(
+            text,
+            truncation=True,
+            add_special_tokens=False,
+            max_length=max_tokens,
+            padding="max_length",
+            return_tensors="pt",
+        )["input_ids"]
+        # reshape into chunks
+        input_ids = input_ids.view(n_prompts, self.extended_chunks, chunk_tokens)
+        bos_eos_shape = input_ids.shape[:2] + (1,)
+        # prepend BOS token and append EOS token to each chunk
+        input_ids = torch.cat(
+            (
+                torch.full(bos_eos_shape, self.tokenizer.bos_token_id, dtype=torch.long),
+                input_ids,
+                torch.full(bos_eos_shape, self.tokenizer.eos_token_id, dtype=torch.long),
+            ),
+            dim=2,
+        )
+
+        return BatchEncoding({"input_ids": input_ids})
 
 
 class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
