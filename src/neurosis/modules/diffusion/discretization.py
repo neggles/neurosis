@@ -15,8 +15,9 @@ def generate_roughly_equally_spaced_steps(num_substeps: int, max_step: int) -> n
 
 
 class Discretization(ABC):
-    def __init__(self):
+    def __init__(self, do_append_zero: bool = True):
         super().__init__()
+        self.do_append_zero = do_append_zero
 
     def __call__(
         self,
@@ -27,7 +28,7 @@ class Discretization(ABC):
     ):
         sigmas: Tensor = self.get_sigmas(n, device=device)
 
-        if do_append_zero:
+        if self.do_append_zero:
             sigmas = append_zero(sigmas)
         if flip:
             sigmas = sigmas.flip((0,))
@@ -80,6 +81,18 @@ class EDMcSimpleDiscretization(Discretization):
         sigs = torch.tensor(sigs)
 
         return sigs.to(device)
+
+
+class RectifiedFlowDiscretization(Discretization):
+    def __init__(self, start_shift: float = 0.0, end_shift: float = 0.001, do_append_zero: bool = False):
+        super().__init__(do_append_zero=do_append_zero)
+        self.start_shift = start_shift
+        self.end_shift = end_shift
+
+    def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
+        t = torch.linspace(self.start_shift, 1 - self.end_shift, n, dtype=torch.float64)
+        sigmas = t / (1.0 - t)
+        return sigmas.flip(0).to(device, dtype=torch.float32)
 
 
 class TanZeroSNRDiscretization(Discretization):
