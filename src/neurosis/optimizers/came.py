@@ -96,8 +96,6 @@ class CAME(Optimizer, BaseOptimizer):
                 if group["ams_bound"]:
                     state["exp_avg_sq_hat"] = torch.zeros_like(grad)
 
-                state["RMS"] = torch.zeros((1)).to(grad)
-
     @staticmethod
     def get_options(shape: tuple[int, ...]) -> bool:
         r"""Get `factored`."""
@@ -165,13 +163,9 @@ class CAME(Optimizer, BaseOptimizer):
                     if group["ams_bound"]:
                         state["exp_avg_sq_hat"] = torch.zeros_like(grad)
 
-                    state["RMS"] = torch.zeros((1)).to(grad)
-
                 p_data_fp32 = p
                 if p.dtype in {torch.float16, torch.bfloat16}:
                     p_data_fp32 = p_data_fp32.to(torch.float32)
-
-                state["RMS"] = self.get_rms(p_data_fp32)
 
                 update = torch.mul(grad, grad).add_(self.eps1)
 
