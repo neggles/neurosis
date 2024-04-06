@@ -124,14 +124,13 @@ class StandardDiffusionLoss(DiffusionLoss):
         # get noised input
         noised_input = self.get_noised_input(sigmas_bc, noise, inputs)
 
-        # get model output
-        outputs = denoiser(network, noised_input, sigmas, cond, **extra_inputs)
+        eps_output = denoiser(network, noised_input, sigmas, cond, "F", **extra_inputs)
 
         # get loss weighting
         weight = self.loss_weighting(sigmas)
 
         # get loss
-        loss = self.get_loss(outputs, inputs, weight)
+        loss = self.get_loss(eps_output, noise, weight)
 
         return loss
 

@@ -31,6 +31,7 @@ class Denoiser(nn.Module):
         inputs: Tensor,
         sigma: Tensor,
         cond: dict,
+        output_mode="D",
         **additional_model_inputs,
     ) -> Tensor:
         sigma = self.possibly_quantize_sigma(sigma)
@@ -40,11 +41,20 @@ class Denoiser(nn.Module):
         c_skip, c_out, c_in, c_noise = self.preconditioning(sigma)
 
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
+        c_in = c_in.to(inputs.dtype)
+        c_out = c_out.to(inputs.dtype)
+        c_skip = c_skip.to(inputs.dtype)
+        c_out = c_out.to(inputs.dtype)
 
         net_inputs = inputs * c_in
         net_outputs = network(net_inputs, c_noise, cond, **additional_model_inputs)
-
-        return inputs * c_skip + net_outputs * c_out
+        match output_mode:
+            case "D":
+                return net_outputs * c_out + inputs * c_skip
+            case "F":
+                return net_outputs
+            case _:
+                return net_outputs * c_out + inputs * c_skip
 
 
 class DiscreteDenoiser(Denoiser):
