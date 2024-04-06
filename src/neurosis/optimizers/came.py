@@ -74,8 +74,13 @@ class CAME(Optimizer, BaseOptimizer):
                 state = self.state[p]
 
                 grad = p.grad
+                if grad.is_sparse:
+                    raise NoSparseGradientError(str(self))
+                if grad.dtype in {torch.float16, torch.bfloat16}:
+                    grad = grad.to(torch.float32)
 
-                grad_shape: tuple[int, ...] = grad.shape
+                state = self.state[p]
+                grad_shape: torch.Size = grad.shape
                 factored: bool = self.get_options(grad_shape)
 
                 state["exp_avg"] = torch.zeros_like(p)
@@ -91,7 +96,7 @@ class CAME(Optimizer, BaseOptimizer):
                 if group["ams_bound"]:
                     state["exp_avg_sq_hat"] = torch.zeros_like(grad)
 
-                state["RMS"] = 0.0
+                state["RMS"] = torch.zeros((1)).to(grad)
 
     @staticmethod
     def get_options(shape: tuple[int, ...]) -> bool:
@@ -144,7 +149,6 @@ class CAME(Optimizer, BaseOptimizer):
 
                 state = self.state[p]
                 grad_shape: torch.Size = grad.shape
-
                 factored: bool = self.get_options(grad_shape)
 
                 if len(state) == 0:
@@ -161,7 +165,7 @@ class CAME(Optimizer, BaseOptimizer):
                     if group["ams_bound"]:
                         state["exp_avg_sq_hat"] = torch.zeros_like(grad)
 
-                    state["RMS"] = 0.0
+                    state["RMS"] = torch.zeros((1)).to(grad)
 
                 p_data_fp32 = p
                 if p.dtype in {torch.float16, torch.bfloat16}:
