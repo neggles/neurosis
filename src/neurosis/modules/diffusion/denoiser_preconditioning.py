@@ -72,3 +72,19 @@ class EDMPreconditioning(DenoiserPreconditioning):
 
     def get_c_noise(self, sigma: Tensor) -> Tensor:
         return 0.25 * sigma.log()
+
+
+class RectifiedFlowXLPreconditioning(DenoiserPreconditioning):
+    def get_c_skip(self, sigma: Tensor) -> Tensor:
+        return torch.ones_like(sigma, device=sigma.device)
+
+    def get_c_out(self, sigma: Tensor) -> Tensor:
+        return -sigma
+
+    def get_c_in(self, sigma: Tensor) -> Tensor:
+        s_t = 1.0 / (1.0 + sigma)
+        noise_std = ((1.0 / (sigma + 1.0)) ** 2.0 + (sigma / (sigma + 1.0)) ** 2.0) ** 0.5
+        return s_t / noise_std
+
+    def get_c_noise(self, sigma: Tensor) -> Tensor:
+        return 1000.0 * (sigma / (1 + sigma))

@@ -106,7 +106,7 @@ class TanScheduleSigmaGenerator(SigmaGenerator):
             rand = rand.to(torch.float64)
         else:
             rand = torch.rand((n_samples,), dtype=torch.float64)
-        half_pi_t = torch.acos(torch.zeros(1)) * rand
+        half_pi_t = torch.acos(torch.zeros(1), dtype=torch.float64) * rand
 
         if self.clip:
             lower_bound = torch.Tensor([self.start_shift]).to(torch.float64)
@@ -115,3 +115,26 @@ class TanScheduleSigmaGenerator(SigmaGenerator):
             half_pi_t = half_pi_t.clip(lower_bound, upper_bound)
 
         return torch.tan(half_pi_t).to(torch.float32)
+
+
+class RectifiedFlowSigmaGenerator(SigmaGenerator):
+    def __init__(
+        self,
+        start_shift: float = 0.0,
+        end_shift: float = 0.001,
+        clip: bool = True,
+    ):
+        self.start_shift = start_shift
+        self.end_shift = end_shift
+        self.clip = clip
+
+    def __call__(self, n_samples: int, rand=None):
+        if rand is not None:
+            rand = rand.to(torch.float64)
+        else:
+            rand = torch.rand((n_samples,), dtype=torch.float64)
+        t = rand
+        if self.clip:
+            t = t.clip(self.start_shift, 1 - self.end_shift)
+        sigma = t / (1 - t)
+        return sigma.to(torch.float32)
