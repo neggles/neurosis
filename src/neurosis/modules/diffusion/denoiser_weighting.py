@@ -45,7 +45,7 @@ class RectifiedFlowWeighting(DenoiserWeighting):
         t = sigma / (1.0 + sigma)
         cfm_weights = 1 / (1 - t) ** 2
         # logit-normal sampling
-        half_pi = torch.acos(torch.zeros(1), dtype=torch.float64)[0]
+        half_pi = torch.acos(torch.zeros(1, dtype=torch.float64))[0]
         pi_weights = (
             (1 / (self.s * (4.0 * half_pi) ** 0.5))
             * (1 / (t * (1.0 - t)))

@@ -1,6 +1,7 @@
 """
-    Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py
+Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py
 """
+
 import logging
 from abc import abstractmethod
 from typing import Optional
@@ -63,6 +64,9 @@ class BaseDiffusionSampler:
     def denoise(self, x: Tensor, denoiser, sigma, cond, uc):
         inputs = self.guider.prepare_inputs(x, sigma, cond, uc)
         denoised = denoiser(*inputs)
+        for i in range(denoised.shape[0]):
+            if denoised[i].std() > 1.5:
+                denoised[i] /= denoised[i].std()
         denoised = self.guider(denoised, sigma)
         return denoised
 
@@ -273,7 +277,7 @@ class LinearMultistepSampler(BaseDiffusionSampler):
         sigmas_cpu = sigmas.detach().cpu().numpy()
         for i in self.get_sigma_gen(num_sigmas):
             sigma = s_in * sigmas[i]
-            denoised = denoiser(*self.guider.prepare_inputs(x, sigma, cond, uc), **kwargs)
+            denoised = denoiser(*self.guider.prepare_inputs(x, sigma, cond, uc), "D", **kwargs)
             denoised = self.guider(denoised, sigma)
             d = to_d(x, sigma, denoised)
             ds.append(d)
