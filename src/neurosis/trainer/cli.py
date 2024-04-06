@@ -17,7 +17,7 @@ from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
 
 # set up rich if we're in a tty/interactive and NOT in kube
-if isatty(1) and getenv("KUBERNETES_PORT", None) is not None:
+if isatty(1) and getenv("KUBERNETES_PORT", None) is None:
     _ = install_traceback(
         console=console,
         suppress=[jsonargparse, torch, lightning],
