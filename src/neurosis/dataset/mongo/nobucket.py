@@ -8,15 +8,13 @@ import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from pymongoarrow.schema import Schema
-from torch import Tensor
 from torch.utils.data import DataLoader
 
-from neurosis.dataset.base import NoBucketDataset
+from neurosis.dataset.base import FilesystemType, NoBucketDataset, SampleType
+from neurosis.dataset.mongo.base import BaseMongoDataset, mongo_worker_init
+from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
+from neurosis.dataset.processing.transform import DataTransform
 from neurosis.dataset.utils import clean_word, pil_crop_square
-
-from ..base import FilesystemType
-from .base import BaseMongoDataset, mongo_worker_init
-from .settings import MongoSettings, get_mongo_settings
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +41,7 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         reverse: bool = False,
         shuffle: bool = False,
+        data_transforms: list[DataTransform] = [],
         fs_type: str | FilesystemType = "s3",
         path_prefix: Optional[str] = None,
         fsspec_kwargs: dict = {},
@@ -60,7 +59,12 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
 
         self.image_key = image_key
         self.caption_key = caption_key
-        self.batch_keys: list[str] = [image_key, caption_key]
+        self.batch_keys: list[str] = [
+            image_key,
+            caption_key,
+            "original_size_as_tuple",
+            "crop_coords_top_left",
+        ]
 
         BaseMongoDataset.__init__(
             self,
@@ -71,6 +75,7 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
             resampling=resampling,
             shuffle=shuffle,
             reverse=reverse,
+            data_transforms=data_transforms,
             fs_type=fs_type,
             path_prefix=path_prefix,
             fsspec_kwargs=fsspec_kwargs,
@@ -87,7 +92,7 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
 
         self.preload()
 
-    def __getitem__(self, index: int) -> dict[str, Tensor]:
+    def __getitem__(self, index: int) -> SampleType:
         if self._first_getitem:
             self.refresh_clients()
             self._first_getitem = False

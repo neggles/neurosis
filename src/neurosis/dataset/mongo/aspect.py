@@ -19,6 +19,10 @@ from neurosis.dataset.aspect import (
     SDXLBucketList,
 )
 from neurosis.dataset.aspect.sampler import AspectBucketSampler
+from neurosis.dataset.base import FilesystemType
+from neurosis.dataset.mongo.base import BaseMongoDataset
+from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
+from neurosis.dataset.processing.transform import DataTransform
 from neurosis.dataset.utils import (
     clean_word,
     clear_fsspec,
@@ -27,10 +31,6 @@ from neurosis.dataset.utils import (
     set_s3fs_opts,
 )
 from neurosis.utils import maybe_collect
-
-from ..base import FilesystemType
-from .base import BaseMongoDataset
-from .settings import MongoSettings, get_mongo_settings
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         reverse: bool = False,
         shuffle: bool = False,
+        data_transforms: list[DataTransform] = [],
         fs_type: str | FilesystemType = "s3",
         path_prefix: Optional[str] = None,
         fsspec_kwargs: dict = {},
@@ -67,7 +68,13 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
     ):
         self.image_key = image_key
         self.caption_key = caption_key
-        self.batch_keys: list[str] = [image_key, caption_key]
+        self.batch_keys: list[str] = [
+            image_key,
+            caption_key,
+            "original_size_as_tuple",
+            "crop_coords_top_left",
+            "target_size_as_tuple",
+        ]
 
         self.tag_sep = tag_sep
         self.word_sep = word_sep
@@ -85,6 +92,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             resampling=resampling,
             reverse=reverse,
             shuffle=shuffle,
+            data_transforms=data_transforms,
             fs_type=fs_type,
             path_prefix=path_prefix,
             fsspec_kwargs=fsspec_kwargs,

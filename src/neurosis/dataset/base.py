@@ -1,14 +1,19 @@
 import logging
 from enum import Enum
-from typing import Callable, Optional
+from typing import Callable, Optional, TypeAlias
 
+import numpy as np
 import pandas as pd
 import torch
 from PIL import Image, PngImagePlugin
+from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.transforms import v2 as T
 
 logger = logging.getLogger(__name__)
+
+SampleType: TypeAlias = dict[str, Tensor | np.ndarray] | pd.Series
+BatchType: TypeAlias = dict[str, list[Tensor | np.ndarray | pd.Series]] | pd.DataFrame
 
 
 class FilesystemType(str, Enum):

@@ -7,15 +7,13 @@ import torch
 from lightning.pytorch import LightningDataModule
 from PIL import Image
 from pymongoarrow.schema import Schema
-from torch import Tensor
 from torch.utils.data import DataLoader
 
-from neurosis.dataset.base import NoBucketDataset
+from neurosis.dataset.base import FilesystemType, NoBucketDataset, SampleType
+from neurosis.dataset.mongo.base import BaseMongoDataset, mongo_worker_init
+from neurosis.dataset.mongo.settings import MongoSettings, get_mongo_settings
+from neurosis.dataset.processing.transform import DataTransform
 from neurosis.dataset.utils import pil_crop_random, pil_crop_square
-
-from ..base import FilesystemType
-from .base import BaseMongoDataset, mongo_worker_init
-from .settings import MongoSettings, get_mongo_settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +33,7 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         reverse: bool = False,
         shuffle: bool = False,
+        data_transforms: list[DataTransform] = [],
         no_resize: bool = False,
         fs_type: str | FilesystemType = "s3",
         path_prefix: Optional[str] = None,
@@ -45,7 +44,10 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
         **kwargs,
     ):
         self.image_key = image_key
-        self.batch_keys: list[str] = [image_key]
+        self.batch_keys: list[str] = [
+            image_key,
+            "crop_coords_top_left",
+        ]
 
         BaseMongoDataset.__init__(
             self,
@@ -56,6 +58,7 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
             resampling=resampling,
             reverse=reverse,
             shuffle=shuffle,
+            data_transforms=data_transforms,
             no_resize=no_resize,
             fs_type=fs_type,
             path_prefix=path_prefix,
@@ -78,7 +81,7 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
 
         self.preload()
 
-    def __getitem__(self, index: int) -> dict[str, Tensor]:
+    def __getitem__(self, index: int) -> SampleType:
         if self._first_getitem:
             logger.debug(f"First __getitem__ (idx {index}) - refreshing clients")
             self.refresh_clients()
@@ -87,6 +90,8 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
         sample: pd.Series = self.samples.iloc[index]
         image = self._get_image(sample[self.path_key])
         image, crop_coords = self.img_load_fn(image, self.resolution, self.resampling)
+
+        sample = self.apply_data_transforms(sample)
 
         return {
             self.image_key: self.transforms(image),

@@ -5,7 +5,6 @@ from os import getenv, getpid
 from time import sleep
 from typing import Literal, Optional, Sequence
 
-import numpy as np
 import pandas as pd
 from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
@@ -14,11 +13,11 @@ from pymongo.collection import Collection as MongoCollection
 from pymongoarrow.api import find_pandas_all
 from pymongoarrow.schema import Schema
 from s3fs import S3FileSystem
-from torch import Tensor
 from torch.utils.data import Dataset
 
-from neurosis.dataset.base import FilesystemType
+from neurosis.dataset.base import BatchType, FilesystemType, SampleType
 from neurosis.dataset.mongo.settings import MongoSettings
+from neurosis.dataset.processing.transform import DataTransform
 from neurosis.dataset.utils import clear_fsspec, set_s3fs_opts
 from neurosis.utils import maybe_collect
 from neurosis.utils.image import pil_ensure_rgb
@@ -43,6 +42,7 @@ class BaseMongoDataset(Dataset):
         reverse: bool = False,
         shuffle: bool = False,
         no_resize: bool = False,
+        data_transforms: list[DataTransform] = [],
         fs_type: str | FilesystemType = "s3",
         path_prefix: Optional[str] = None,
         fsspec_kwargs: dict = {},
@@ -59,6 +59,7 @@ class BaseMongoDataset(Dataset):
         self.reverse = reverse
         self.shuffle = shuffle
         self.no_resize = no_resize
+        self.data_transforms = data_transforms
 
         # for mapping fake-batch indices to real indices, if used
         self.batch_to_idx: Optional[list[list[int]]] = None
@@ -73,8 +74,11 @@ class BaseMongoDataset(Dataset):
             self.batch_keys.append(path_key)
 
         # if extra_keys is "all", then load all keys that are not consumed by the batch
-        if isinstance(extra_keys, str) and extra_keys == "all":
-            self.extra_keys = [x for x in self.query_keys if x not in self.batch_keys]
+        if isinstance(extra_keys, str):
+            if extra_keys == "all":
+                self.extra_keys = [x for x in self.query_keys if x not in self.batch_keys]
+            else:
+                raise ValueError(f"Unsupported value for extra_keys: {extra_keys}")
         else:
             self.extra_keys = extra_keys
 
@@ -109,10 +113,10 @@ class BaseMongoDataset(Dataset):
         return self.query_count
 
     @abstractmethod
-    def __getitem__(self, index: int) -> dict[str, Tensor]:
+    def __getitem__(self, index: int) -> SampleType:
         raise NotImplementedError("Abstract base class was called ;_;")
 
-    def __getitems__(self, indices: Sequence[int] | int) -> dict[str, Tensor | list[Tensor | np.ndarray]]:
+    def __getitems__(self, indices: Sequence[int] | int) -> BatchType:
         if isinstance(indices, int):
             if self.batch_to_idx is not None:
                 indices = self.batch_to_idx[indices]
@@ -180,6 +184,11 @@ class BaseMongoDataset(Dataset):
         self._preload_done = True
         logger.debug("Preload complete!")
         maybe_collect()
+
+    def apply_data_transforms(self, sample: SampleType, index: int) -> SampleType:
+        for transform in self.data_transforms:
+            sample = transform(sample, index)
+        return sample
 
     def _get_image(self, path: str) -> Image.Image:
         if self.fs is None:
