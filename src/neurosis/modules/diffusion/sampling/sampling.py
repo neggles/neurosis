@@ -14,7 +14,7 @@ from neurosis.modules.guidance import Guider, IdentityGuider
 from neurosis.utils import append_dims
 
 from ..denoiser import Denoiser
-from ..discretization import Discretization
+from ..discretization import Discretization, RectifiedFlowComfyDiscretization
 from .utils import (
     get_ancestral_step,
     linear_multistep_coeff,
@@ -41,6 +41,8 @@ class BaseDiffusionSampler:
         self.verbose = verbose
         self.device = device if isinstance(device, torch.device) else torch.device(device)
 
+        self._comfy_rf = isinstance(self.discretization, RectifiedFlowComfyDiscretization)
+
     def prepare_sampling_loop(
         self,
         x: Tensor,
@@ -54,9 +56,10 @@ class BaseDiffusionSampler:
         sigmas = self.discretization(num_steps)
         uc = uc if uc is not None else cond
 
-        # x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
-        # !! only works for ComfyRF for now
-        x *= sigmas[0]
+        if self._comfy_rf:
+            x *= sigmas[0]
+        else:
+            x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
 
         num_sigmas = len(sigmas)
 
@@ -69,15 +72,16 @@ class BaseDiffusionSampler:
         denoised = denoiser(*inputs)
         denoised = self.guider(denoised, sigma)
 
-        # normalized output hack for the start of transitioning phase
-        # !! only works for ComfyRF for now
-        alpha = 1.0 - sigma
-        denoised_x0 = denoised / alpha
-        std_values = denoised_x0.std(dim=tuple(range(1, denoised.dim())))
-        mask_lower = std_values < 0.5
-        mask_upper = std_values > 1.5
-        mask = mask_lower | mask_upper
-        denoised[mask] /= std_values[mask].view(-1, *[1] * (denoised.dim() - 1))
+        if self._comfy_rf:
+            # normalized output hack for the start of transitioning phase
+            # !! only works for ComfyRF for now
+            alpha = 1.0 - sigma
+            denoised_x0 = denoised / alpha
+            std_values = denoised_x0.std(dim=tuple(range(1, denoised.dim())))
+            mask_lower = std_values < 0.5
+            mask_upper = std_values > 1.5
+            mask = mask_lower | mask_upper
+            denoised[mask] /= std_values[mask].view(-1, *[1] * (denoised.dim() - 1))
 
         return denoised
 
