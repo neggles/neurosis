@@ -1,4 +1,5 @@
 import logging
+from functools import lru_cache
 from time import perf_counter
 from typing import Optional
 
@@ -11,6 +12,12 @@ from pynvml import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=64)
+def get_device_handle(index: int):
+    """Cache the device handle to avoid repeated lookups."""
+    return nvmlDeviceGetHandleByIndex(index)
 
 
 class ConflictAbortCallback(Callback):
@@ -42,12 +49,14 @@ class ConflictAbortCallback(Callback):
     def nvml_init(self):
         if not self._nvml_ready:
             logger.debug("Initializing NVML")
+            get_device_handle.cache_clear()
             nvmlInit()
             self._nvml_ready = True
 
     def nvml_shutdown(self):
         if self._nvml_ready:
             logger.debug("Releasing NVML")
+            get_device_handle.cache_clear()
             nvmlShutdown()
             self._nvml_ready = False
 
@@ -92,7 +101,7 @@ class ConflictAbortCallback(Callback):
         return perf_counter() - self.last_check > self.interval
 
     def get_device_processes(self, index: int) -> list:
-        device_handle = nvmlDeviceGetHandleByIndex(index)
+        device_handle = get_device_handle(index)
         return nvmlDeviceGetComputeRunningProcesses(device_handle)
 
     def check_gpu_conflict(self, trainer: Trainer, pl_module: LightningModule):
