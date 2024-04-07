@@ -316,7 +316,15 @@ class DiffusionEngine(L.LightningModule):
                     if isinstance(inputs[0], (bytes, np.bytes_)):
                         inputs = np_text_decode(inputs, aslist=True)
                     if isinstance(inputs[0], Tensor):
-                        inputs = [str(x.item()) for x in inputs]
+                        inputs = [
+                            str(x.item()) if x.numel() == 1 else f"({', '.join(str(i.item()) for i in x)})"
+                            for x in inputs
+                        ]
+                    elif isinstance(inputs[0], (int, float, list)):
+                        inputs = [
+                            str(x) if isinstance(x, (int, float)) else f"({', '.join(str(i) for i in x)})"
+                            for x in inputs
+                        ]
                     if isinstance(inputs[0], str):
                         # strings
                         value = log_txt_as_img(wh, inputs, size=min(wh[0] // 20, 24))

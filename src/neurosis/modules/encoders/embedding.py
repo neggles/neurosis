@@ -91,12 +91,16 @@ class GeneralConditioner(nn.Module):
             with embedding_context():
                 if getattr(embedder, "input_key", None) is not None:
                     inputs = batch[embedder.input_key]
-                    if not isinstance(inputs, (list, tuple, Tensor)):
-                        inputs = [inputs]
-                    # handle text inputs, decode if necessary
                     if isinstance(inputs, list) and isinstance(inputs[0], (str, np.bytes_, np.ndarray)):
                         inputs = np_text_decode(inputs, aslist=True)
-
+                    elif isinstance(inputs, (str, np.bytes_, np.ndarray)):
+                        inputs = np_text_decode(inputs)
+                    elif (
+                        isinstance(inputs, list) and embedder.__class__.__name__ == "ConcatTimestepEmbedderND"
+                    ):
+                        inputs = torch.tensor(
+                            inputs, device=batch["image"].device, dtype=batch["image"].dtype
+                        )
                     emb_out = embedder(inputs)
 
                 elif getattr(embedder, "input_keys", None) is not None:
