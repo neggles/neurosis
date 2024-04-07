@@ -1,7 +1,7 @@
 [project]
 name = "neurosis"
 authors = [
-  {name = "Andi Powers-Holmes", email = "aholmes@omnom.net"},
+  { name = "Andi Powers-Holmes", email = "aholmes@omnom.net" },
 ]
 description = "A neural network trainer (for weebs)"
 readme = "README.md"
@@ -16,7 +16,7 @@ keywords = [
   "stable-diffusion",
   "transformers",
 ]
-license = {file = "LICENSE.md"}
+license = { file = "LICENSE.md" }
 classifiers = [
   "Programming Language :: Python :: 3",
 ]
@@ -64,13 +64,13 @@ dependencies = [
 dev = [
   "ruff >=0.0.289",
   "setuptools-scm >= 8.0.0",
-  "pre-commit >= 3.0.0", # remember to run `pre-commit install` after installing
-  "tabulate >= 0.8.9", # for inductor log prettyprinting
+  "pre-commit >= 3.0.0",     # remember to run `pre-commit install` after installing
+  "tabulate >= 0.8.9",       # for inductor log prettyprinting
 ]
 extra = [
   "datasets >= 2.13.0",
   "hf-transfer >= 0.1.4, < 1.0.0",
-  "pynvml >= 11.0.0, < 12.0.0",
+  "nvidia-ml-py >= 12.0.0, < 13.0.0",
   "ray[data] >= 2.7.0, < 3.0.0",
   "tensorboard",
   "pytorch_optimizer >= 2.12.0",
