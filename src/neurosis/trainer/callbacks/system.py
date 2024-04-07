@@ -78,7 +78,7 @@ class ConflictAbortCallback(Callback):
         if pl_module.device.type != "cuda":
             return  # this callback only works on nVidia GPUs for the moment
         if self.should_check():
-            self.check_gpu_conflicts(trainer, pl_module)
+            self.check_gpu_conflict(trainer, pl_module)
 
     def on_train_batch_start(
         self, trainer: Trainer, pl_module: LightningModule, batch, batch_idx: int
@@ -86,7 +86,7 @@ class ConflictAbortCallback(Callback):
         if pl_module.device.type != "cuda":
             return  # this callback only works on nVidia GPUs for the moment
         if self.should_check():
-            self.check_gpu_conflicts(trainer, pl_module)
+            self.check_gpu_conflict(trainer, pl_module)
 
     def should_check(self) -> bool:
         return perf_counter() - self.last_check > self.interval
@@ -100,6 +100,7 @@ class ConflictAbortCallback(Callback):
         if gpu_id is None:
             return  # no GPU to check
 
+        should_stop = False
         processes = self.get_device_processes(gpu_id)
         if (n_proc := len(processes)) > self.max_proc:
             logger.exception(
