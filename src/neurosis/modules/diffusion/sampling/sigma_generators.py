@@ -138,3 +138,26 @@ class RectifiedFlowSigmaGenerator(SigmaGenerator):
             t = t.clip(self.start_shift, 1 - self.end_shift)
         sigma = t / (1 - t)
         return sigma.to(torch.float32)
+
+
+class RectifiedFlowComfySigmaGenerator(SigmaGenerator):
+    def __init__(
+        self,
+        start_shift: float = 0.0,
+        end_shift: float = 0.001,
+        clip: bool = True,
+    ):
+        self.start_shift = start_shift
+        self.end_shift = end_shift
+        self.clip = clip
+
+    def __call__(self, n_samples: int, rand=None):
+        if rand is not None:
+            rand = rand.to(torch.float64)
+        else:
+            rand = torch.rand((n_samples,), dtype=torch.float64)
+        t = rand
+        if self.clip:
+            t = t.clip(self.start_shift, 1 - self.end_shift)
+        sigma = t
+        return sigma.to(torch.float32)

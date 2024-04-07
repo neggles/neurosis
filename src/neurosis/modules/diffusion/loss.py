@@ -42,10 +42,6 @@ class DiffusionLoss(ABC, nn.Module):
 
         return noise
 
-    def get_noised_input(self, sigmas_bc: Tensor, noise: Tensor, inputs: Tensor) -> Tensor:
-        noised_inputs = inputs + noise * sigmas_bc
-        return noised_inputs
-
     def forward(
         self,
         network: nn.Module,
@@ -113,18 +109,18 @@ class StandardDiffusionLoss(DiffusionLoss):
         extra_inputs = {k: batch[k] for k in batch if k in self.input_keys}
         # get sigmas
         sigmas = self.sigma_generator(inputs.shape[0]).to(inputs)
-
         # get noise
         noise = torch.randn_like(inputs)
         # apply offset
         noise = self.apply_noise_offset(noise, inputs)
-
         # expand sigmas to broadcast over batch
         sigmas_bc = append_dims(sigmas, inputs.ndim)
-        # get noised input
-        noised_input = self.get_noised_input(sigmas_bc, noise, inputs)
+        # get latent state
+        # !! only works for ComfyRF for now
+        alpha = 1.0 - sigmas_bc
+        z_t = alpha * inputs + sigmas_bc * noise
 
-        eps_output = denoiser(network, noised_input, sigmas, cond, "F", **extra_inputs)
+        eps_output = denoiser(network, z_t, sigmas, cond, "F", **extra_inputs)
 
         # get loss weighting
         weight = self.loss_weighting(sigmas)

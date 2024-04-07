@@ -95,6 +95,17 @@ class RectifiedFlowDiscretization(Discretization):
         return sigmas.flip(0).to(device, dtype=torch.float32)
 
 
+class RectifiedFlowComfyDiscretization(Discretization):
+    def __init__(self, start_shift: float = 0.0, end_shift: float = 0.001, do_append_zero: bool = False):
+        super().__init__(do_append_zero=do_append_zero)
+        self.start_shift = start_shift
+        self.end_shift = end_shift
+
+    def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
+        sigmas = torch.linspace(self.start_shift, 1 - self.end_shift, n, dtype=torch.float64)
+        return sigmas.flip(0).to(device, dtype=torch.float32)
+
+
 class TanZeroSNRDiscretization(Discretization):
     def __init__(self, start_shift: float = 0.001, end_shift: float = 0.001):
         super().__init__()

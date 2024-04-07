@@ -14,6 +14,7 @@ from .sigma_generators import (
     EDMSigmaGenerator,
     SigmaGenerator,
     TanScheduleSigmaGenerator,
+    RectifiedFlowComfySigmaGenerator,
     RectifiedFlowSigmaGenerator,
 )
 
@@ -29,6 +30,7 @@ __all__ = [
     "EulerEDMSampler",
     "HeunEDMSampler",
     "LinearMultistepSampler",
+    "RectifiedFlowComfySigmaGenerator",
     "RectifiedFlowSigmaGenerator",
     "SigmaGenerator",
     "TanScheduleSigmaGenerator",

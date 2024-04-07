@@ -88,3 +88,18 @@ class RectifiedFlowXLPreconditioning(DenoiserPreconditioning):
 
     def get_c_noise(self, sigma: Tensor) -> Tensor:
         return 1000.0 * (sigma / (1 + sigma))
+
+
+class RectifiedFlowComfyPreconditioning(DenoiserPreconditioning):
+    def get_c_skip(self, sigma: Tensor) -> Tensor:
+        return torch.ones_like(sigma, device=sigma.device)
+
+    def get_c_out(self, sigma: Tensor) -> Tensor:
+        return -sigma
+
+    def get_c_in(self, sigma: Tensor) -> Tensor:
+        noise_std_inv = (sigma**2.0 + (1.0 - sigma) ** 2.0) ** -0.5
+        return noise_std_inv
+
+    def get_c_noise(self, sigma: Tensor) -> Tensor:
+        return 1000.0 * sigma

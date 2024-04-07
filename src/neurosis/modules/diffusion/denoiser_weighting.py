@@ -55,6 +55,26 @@ class RectifiedFlowWeighting(DenoiserWeighting):
         return cfm_weights * pi_weights
 
 
+class RectifiedFlowComfyWeighting(DenoiserWeighting):
+    def __init__(self, m: float = 0.0, s: float = 1.0):
+        super().__init__()
+        self.m = m
+        self.s = s
+
+    def __call__(self, sigma: Tensor) -> Tensor:
+        t = sigma.to(torch.float64)
+
+        cfm_weights = 1 / (1 - t) ** 2
+        # logit-normal sampling
+        half_pi = torch.acos(torch.zeros(1, dtype=torch.float64))[0]
+        pi_weights = (
+            (1 / (self.s * (4.0 * half_pi) ** 0.5))
+            * (1 / (t * (1.0 - t)))
+            * torch.exp(-0.5 * (torch.log(t / (1 - t)) - self.m) ** 2 / self.s**2)
+        )
+        return cfm_weights * pi_weights
+
+
 class MinSNRGammaModifier(DenoiserWeighting):
     def __init__(
         self,

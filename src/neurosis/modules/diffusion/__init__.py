@@ -3,6 +3,7 @@ from .denoiser_preconditioning import (
     DenoiserPreconditioning,
     EDMPreconditioning,
     EpsPreconditioning,
+    RectifiedFlowComfyPreconditioning,
     RectifiedFlowXLPreconditioning,
     VPreconditioning,
     VPreconditioningWithEDMcNoise,
@@ -13,6 +14,7 @@ from .denoiser_weighting import (
     EpsWeighting,
     UnitWeighting,
     RectifiedFlowWeighting,
+    RectifiedFlowComfyWeighting,
 )
 from .discretization import (
     Discretization,
@@ -20,6 +22,7 @@ from .discretization import (
     EDMDiscretization,
     LegacyDDPMDiscretization,
     TanZeroSNRDiscretization,
+    RectifiedFlowComfyDiscretization,
     RectifiedFlowDiscretization,
 )
 from .loss import DiffusionLoss, StandardDiffusionLoss
@@ -79,6 +82,9 @@ __all__ = [
     "MemoryEfficientAttnBlock",
     "Model",
     "OpenAIWrapper",
+    "RectifiedFlowComfyDiscretization",
+    "RectifiedFlowComfyPreconditioning",
+    "RectifiedFlowComfyWeighting",
     "RectifiedFlowDiscretization",
     "RectifiedFlowWeighting",
     "RectifiedFlowXLPreconditioning",

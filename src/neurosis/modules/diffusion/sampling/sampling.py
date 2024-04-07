@@ -54,7 +54,10 @@ class BaseDiffusionSampler:
         sigmas = self.discretization(num_steps)
         uc = uc if uc is not None else cond
 
-        x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
+        # x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
+        # !! only works for ComfyRF for now
+        x *= sigmas[0]
+
         num_sigmas = len(sigmas)
 
         s_in = x.new_ones([x.shape[0]])
@@ -64,10 +67,18 @@ class BaseDiffusionSampler:
     def denoise(self, x: Tensor, denoiser, sigma, cond, uc):
         inputs = self.guider.prepare_inputs(x, sigma, cond, uc)
         denoised = denoiser(*inputs)
-        for i in range(denoised.shape[0]):
-            if denoised[i].std() > 1.5:
-                denoised[i] /= denoised[i].std()
         denoised = self.guider(denoised, sigma)
+
+        # normalized output hack for the start of transitioning phase
+        # !! only works for ComfyRF for now
+        alpha = 1.0 - sigma
+        denoised_x0 = denoised / alpha
+        std_values = denoised_x0.std(dim=tuple(range(1, denoised.dim())))
+        mask_lower = std_values < 0.5
+        mask_upper = std_values > 1.5
+        mask = mask_lower | mask_upper
+        denoised[mask] /= std_values[mask].view(-1, *[1] * (denoised.dim() - 1))
+
         return denoised
 
     def get_sigma_gen(self, num_sigmas: int):
