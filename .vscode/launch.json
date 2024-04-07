@@ -5,6 +5,24 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python Debugger: Current File torch deterministic",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "env": {
+                "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+                "PYTORCH_CUDA_ALLOC_CONF": "backend:cudaMallocAsync"
+            }
+        },
+        {
             "name": "neurosis test",
             "type": "debugpy",
             "request": "launch",
