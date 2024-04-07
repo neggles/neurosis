@@ -75,6 +75,7 @@ class BaseDiffusionSampler:
         if self._comfy_rf:
             # normalized output hack for the start of transitioning phase
             # !! only works for ComfyRF for now
+            sigma = append_dims(sigma, x.ndim)
             alpha = 1.0 - sigma
             denoised_x0 = denoised / alpha
             std_values = denoised_x0.std(dim=tuple(range(1, denoised.dim())))
