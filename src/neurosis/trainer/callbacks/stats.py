@@ -26,18 +26,18 @@ class GPUMemoryUsage(Callback):
         disabled: bool = False,
         every_n_steps: int = 1,
         step_type: CallbackInterval = CallbackInterval.GlobalStep,
-        before_batch: bool = False,
-        after_batch: bool = True,
+        on_batch_start: bool = False,
+        on_batch_end: bool = True,
     ):
         super().__init__()
-        if before_batch and after_batch:
-            raise ValueError("before_batch and after_batch cannot both be True")
+        if on_batch_start and on_batch_end:
+            raise ValueError("on_batch_start and on_batch_end cannot both be True")
 
         self.enabled = not disabled
         self.every_n = every_n_steps
         self.step_type = step_type
-        self.before_batch = before_batch
-        self.after_batch = after_batch
+        self.on_batch_start = on_batch_start
+        self.on_batch_end = on_batch_end
 
         self.device: torch.device = None
 
@@ -100,9 +100,10 @@ class GPUMemoryUsage(Callback):
         batch: dict[str, Any],
         batch_idx: int,
     ) -> None:
-        if not (self.before_batch and self.check_interval(trainer, batch_idx)):
-            return  # skip
-        pl_module.log_dict(self.get_memory_usage("gpu/memory"), prog_bar=False, logger=True, on_step=True)
+        if self.on_batch_start and self.check_interval(trainer, batch_idx):
+            stats_dict = self.get_memory_usage("train/gpu/memory")
+            pl_module.log_dict(stats_dict, prog_bar=False, logger=True, on_step=True)
+        return
 
     def on_train_batch_end(
         self,
@@ -112,6 +113,7 @@ class GPUMemoryUsage(Callback):
         batch: dict[str, Any],
         batch_idx: int,
     ) -> None:
-        if not (self.after_batch and self.check_interval(trainer, batch_idx)):
-            return  # skip
-        pl_module.log_dict(self.get_memory_usage("gpu/memory"), prog_bar=False, logger=True, on_step=True)
+        if self.on_batch_end and self.check_interval(trainer, batch_idx):
+            stats_dict = self.get_memory_usage("train/gpu/memory")
+            pl_module.log_dict(stats_dict, prog_bar=False, logger=True, on_step=True)
+        return
