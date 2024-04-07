@@ -109,21 +109,26 @@ class ConflictAbortCallback(Callback):
         if gpu_id is None:
             return  # no GPU to check
 
-        should_stop = False
         processes = self.get_device_processes(gpu_id)
-        if (n_proc := len(processes)) > self.max_proc:
-            logger.exception(
-                f"ConflictAbortCallback: {n_proc} processes on GPU{gpu_id} (limit {self.max_proc}), aborting!"
-            )
-            should_stop = True
+        n_proc = len(processes)
+        should_stop = n_proc > self.max_proc
 
         # synchronize all processes to ensure that if one process is stopping, all are
         should_stop = trainer.strategy.reduce_boolean_decision(should_stop, all=False)
         trainer.should_stop = trainer.should_stop or should_stop
 
         if trainer.should_stop:
+            logger.exception(
+                f"ConflictAbortCallback: {n_proc} processes on GPU{gpu_id} (limit {self.max_proc}), aborting!"
+            )
             self.stopped_epoch = trainer.current_epoch
             self.stopped_step = trainer.global_step
             # if min_epochs or min_steps is set, that'll override should_stop, so we need to check here and raise an exception
-            if trainer.min_epochs is not None or trainer.min_steps is not None:
+            if (trainer.min_steps is not None and trainer.global_step < trainer.min_steps) or (
+                trainer.min_epochs is not None and trainer.current_epoch < trainer.min_epochs
+            ):
                 raise RuntimeError("ConflictAbortCallback detected a conflict and stopped the training run")
+        else:
+            logger.debug(
+                f"ConflictAbortCallback: {n_proc} processes on GPU{gpu_id} (limit {self.max_proc}), OK"
+            )
