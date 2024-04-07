@@ -10,7 +10,7 @@ from torch import Tensor, nn
 from neurosis.dataset.aspect.bucket import AspectBucket
 from neurosis.utils.image import pil_ensure_rgb
 
-SampleType: TypeAlias = dict[str, Tensor | list[Tensor | np.ndarray]]
+SampleType: TypeAlias = dict[str, Tensor | np.ndarray | list[Tensor | np.ndarray]]
 
 
 class VAENormalize(nn.Module):

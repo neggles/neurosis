@@ -2,7 +2,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 
-import pandas as pd
+
+from ..utils import SampleType
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +23,9 @@ class DataTransform(ABC):
         if len(kwargs) > 0:
             logger.warning(f"{name} superclass received unexpected kwargs:\n" + f"{kwargs}")
 
-    def __call__(
-        self,
-        sample: pd.DataFrame,
-    ) -> pd.DataFrame:
+    def __call__(self, sample: SampleType) -> SampleType:
         return self.forward(sample)
 
     @abstractmethod
-    def forward(
-        self,
-        sample: pd.DataFrame,
-    ) -> pd.DataFrame:
+    def forward(self, sample: SampleType) -> SampleType:
         pass
