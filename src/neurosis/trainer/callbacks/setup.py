@@ -3,8 +3,6 @@ import logging
 import torch
 from lightning.pytorch import Callback, LightningModule, Trainer
 
-MULTINODE_HACKS = True
-
 logger = logging.getLogger(__name__)
 
 
