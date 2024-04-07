@@ -36,7 +36,6 @@ class ConflictAbortCallback(Callback):
         if max_others < 0:
             raise ValueError("max_others must be a non-negative integer!")
 
-        self.max_proc = max_others + 1
         self.last_check = 0.0
         self.stopped_epoch = 0
         self.stopped_step = 0
@@ -45,6 +44,10 @@ class ConflictAbortCallback(Callback):
         self._trainer: Optional[Trainer] = None
         self._stage: Optional[str] = None
         self._nvml_ready = False
+
+    @property
+    def max_proc(self):
+        return self.max_others + 1
 
     def nvml_init(self):
         if not self._nvml_ready:
@@ -65,7 +68,6 @@ class ConflictAbortCallback(Callback):
             "enabled": self.enabled,
             "interval": self.interval,
             "max_others": self.max_others,
-            "max_proc": self.max_proc,
             "stopped_epoch": self.stopped_epoch,
             "stopped_step": self.stopped_step,
         }
