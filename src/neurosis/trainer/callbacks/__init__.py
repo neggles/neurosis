@@ -17,7 +17,6 @@ __all__ = [
     "NeurosisProgressBar",
     "NeurosisProgressTheme",
     "ReferenceModelImageLogger",
-    "SetupCallback",
     "TF32Callback",
     "WandbLogger",
 ]
