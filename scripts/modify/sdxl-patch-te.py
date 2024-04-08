@@ -96,9 +96,11 @@ def main(
         raise FileNotFoundError(f"Could not find TE checkpoint file at {tenc_ckpt_path}!")
 
     # resolve the output path
+    if out_path is None:
+        out_path = base_ckpt_path.parent.joinpath(base_ckpt_path.stem + "_te.safetensors")
     out_path = Path(out_path).resolve()
     if out_path.is_dir():
-        out_path = out_path.joinpath(base_ckpt_path.stem + "_te.safetensors")
+        out_path = out_path.parent.joinpath(base_ckpt_path.stem + "_te.safetensors")
 
     # load the original checkpoint
     typer.echo("Loading base checkpoint...")
