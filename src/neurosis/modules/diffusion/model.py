@@ -745,8 +745,8 @@ class Decoder(nn.Module):
         )
         if self.max_batch_size is None or not standalone:
             if post_quant_conv:
-                dec = self.post_quant_conv(z)
-            dec = self.decode(dec, **kwargs)
+                z = self.post_quant_conv(z)
+            dec = self.decode(z, **kwargs)
         else:
             N = z.shape[0]
             bs = self.max_batch_size
