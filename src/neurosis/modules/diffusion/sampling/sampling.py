@@ -34,6 +34,7 @@ class BaseDiffusionSampler:
         num_steps: Optional[int] = None,
         verbose: bool = False,
         device: str | torch.device = "cuda",
+        rf_safeguard: bool = False,
     ):
         self.discretization = discretization
         self.guider = guider if guider is not None else IdentityGuider()
@@ -41,7 +42,10 @@ class BaseDiffusionSampler:
         self.verbose = verbose
         self.device = device if isinstance(device, torch.device) else torch.device(device)
 
+        self.rf_safeguard = rf_safeguard
         self._comfy_rf = isinstance(self.discretization, RectifiedFlowComfyDiscretization)
+        if self.rf_safeguard and not self._comfy_rf:
+            logger.warning("RF safeguard is only available for ComfyRF! Continuing without it.")
 
     def prepare_sampling_loop(
         self,
@@ -72,7 +76,7 @@ class BaseDiffusionSampler:
         denoised = denoiser(*inputs)
         denoised = self.guider(denoised, sigma)
 
-        if self._comfy_rf:
+        if self._comfy_rf and self.rf_safeguard:
             # normalized output hack for the start of transitioning phase
             # !! only works for ComfyRF for now
             sigma = append_dims(sigma, x.ndim)
