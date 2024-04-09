@@ -5,11 +5,29 @@ from typing import Any, Optional, Type
 
 import lightning.pytorch as L
 import torch
+from lightning.fabric.utilities.rank_zero import _get_rank, rank_zero_only
 from lightning.pytorch import Trainer
 from natsort import natsorted
 from packaging.version import Version
 
+
 logger = logging.getLogger(__name__)
+
+
+class LocalRankZeroFilter(logging.Filter):
+    """
+    Filter that only allows rank 0 to log messages at or below a certain level.
+    Used to ignore debug and info messages from non-zero ranks.
+    """
+
+    def __init__(self, min_level: int = logging.WARNING):
+        self.min_level = min_level
+
+    def filter(self, record):
+        rank = getattr(rank_zero_only, "rank", _get_rank() or 0)
+        if rank != 0 and record.levelno < self.min_level:
+            return False
+        return True
 
 
 def instantiate_compile_class(class_type: Type[L.LightningModule], *args, **kwargs) -> L.LightningModule:
