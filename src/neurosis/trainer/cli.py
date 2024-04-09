@@ -15,6 +15,7 @@ from rich.traceback import install as install_traceback
 from neurosis import __version__, console, is_debug
 from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
+from neurosis.trainer.util import LocalRankZeroFilter
 
 # set up rich if we're in a tty/interactive and NOT in kube
 if isatty(1) and getenv("KUBERNETES_PORT", None) is None:
@@ -34,7 +35,11 @@ train_app: typer.Typer = typer.Typer(
 )
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("neurosis")
+if not is_debug:
+    logger.addFilter(
+        LocalRankZeroFilter(min_level=logging.WARNING),
+    )
 
 
 class DiffusionTrainerCli(LightningCLI):
