@@ -4,6 +4,7 @@ from itertools import islice
 from typing import Generator, Iterable, Iterator, List, Optional, TypeVar
 
 import numpy as np
+import torch
 
 from neurosis import is_debug
 
@@ -90,3 +91,19 @@ def silence_hf_load_warnings():
             yield
         finally:
             pass
+
+
+def str_to_dtype(dtype: str) -> torch.dtype:
+    match dtype:
+        case "float32":
+            return torch.float32
+        case "float16":
+            return torch.float16
+        case "bfloat16":
+            return torch.bfloat16
+        case "float64":
+            return torch.float64
+        case _:
+            if torch_dtype := getattr(torch, dtype, None):
+                return torch_dtype
+            raise ValueError(f"Unknown dtype: {dtype}")
