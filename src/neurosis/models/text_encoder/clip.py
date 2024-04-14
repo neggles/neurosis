@@ -94,7 +94,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
             # encode each chunk as if it were a minibatch
             for sample in batch_tokens:
                 outputs: BaseModelOutputWithPooling = self.transformer(
-                    input_ids=sample.to(self.device), output_hidden_states=self.output_hidden_states
+                    input_ids=sample, output_hidden_states=self.output_hidden_states
                 )
                 # get appropriate layer output
                 match self.layer:
@@ -127,7 +127,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
             )["input_ids"]
 
             outputs: BaseModelOutputWithPooling = self.transformer(
-                input_ids=batch_tokens.to(self.device), output_hidden_states=self.output_hidden_states
+                input_ids=batch_tokens, output_hidden_states=self.output_hidden_states
             )
             match self.layer:
                 case "last":
@@ -161,7 +161,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         n_prompts = len(text)
 
         # get the input_ids for the prompt (sans special tokens)
-        input_ids: Tensor = self.tokenizer.batch_encode_plus(
+        input_ids: Tensor = self.tokenizer(
             text,
             truncation=True,
             add_special_tokens=False,
@@ -176,9 +176,9 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         # prepend BOS token and append EOS token to each chunk
         input_ids = torch.cat(
             (
-                torch.full(bos_eos_shape, self.tokenizer.bos_token_id, dtype=torch.long),
+                torch.full(bos_eos_shape, self.tokenizer.bos_token_id, dtype=torch.long, device=self.device),
                 input_ids,
-                torch.full(bos_eos_shape, self.tokenizer.eos_token_id, dtype=torch.long),
+                torch.full(bos_eos_shape, self.tokenizer.eos_token_id, dtype=torch.long, device=self.device),
             ),
             dim=2,
         )
@@ -271,7 +271,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
 
             # encode each chunk as if it were a minibatch
             for sample in batch_tokens:
-                outputs = self.encode_with_transformer(sample.to(self.device))
+                outputs = self.encode_with_transformer(sample)
                 # save the first pooled embedding, but only the first
                 if self.return_pooled:
                     pooled.append(outputs["pooled"][0:1])
@@ -293,7 +293,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         else:
             # standard mode
             batch_tokens: Tensor = self.tokenize(text)["input_ids"]  # Batch, Tokens
-            z = self.encode_with_transformer(batch_tokens.to(self.device))
+            z = self.encode_with_transformer(batch_tokens)
             if self.legacy:
                 return z
             if self.return_pooled:
@@ -355,7 +355,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         n_prompts = len(text)
 
         # get the input_ids for the prompt (sans special tokens)
-        input_ids: Tensor = self.tokenizer.batch_encode_plus(
+        input_ids: Tensor = self.tokenizer(
             text,
             truncation=True,
             add_special_tokens=False,
@@ -363,15 +363,16 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
             padding="max_length",
             return_tensors="pt",
         )["input_ids"]
+
         # reshape into chunks
         input_ids = input_ids.view(n_prompts, self.extended_chunks, chunk_tokens)
         bos_eos_shape = input_ids.shape[:2] + (1,)
         # prepend BOS token and append EOS token to each chunk
         input_ids = torch.cat(
             (
-                torch.full(bos_eos_shape, self.tokenizer.bos_token_id, dtype=torch.long),
+                torch.full(bos_eos_shape, self.tokenizer.bos_token_id, dtype=torch.long, device=self.device),
                 input_ids,
-                torch.full(bos_eos_shape, self.tokenizer.eos_token_id, dtype=torch.long),
+                torch.full(bos_eos_shape, self.tokenizer.eos_token_id, dtype=torch.long, device=self.device),
             ),
             dim=2,
         )
