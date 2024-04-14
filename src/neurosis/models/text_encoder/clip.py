@@ -124,7 +124,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
                 return_overflowing_tokens=False,
                 padding="max_length",
                 return_tensors="pt",
-            )["input_ids"]
+            )["input_ids"].to(self.device)
 
             outputs: BaseModelOutputWithPooling = self.transformer(
                 input_ids=batch_tokens, output_hidden_states=self.output_hidden_states
@@ -168,7 +168,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
             max_length=max_tokens,
             padding="max_length",
             return_tensors="pt",
-        )["input_ids"]
+        )["input_ids"].to(self.device)
 
         # reshape into chunks
         input_ids = input_ids.view(n_prompts, self.extended_chunks, chunk_tokens)
@@ -362,7 +362,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
             max_length=max_tokens,
             padding="max_length",
             return_tensors="pt",
-        )["input_ids"]
+        )["input_ids"].to(self.device)
 
         # reshape into chunks
         input_ids = input_ids.view(n_prompts, self.extended_chunks, chunk_tokens)
