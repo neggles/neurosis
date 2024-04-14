@@ -85,7 +85,11 @@ class FeedForward(nn.Module):
         dim_out = dim_out or dim
         project_in = nn.Sequential(nn.Linear(dim, inner_dim), nn.GELU()) if not glu else GEGLU(dim, inner_dim)
 
-        self.net = nn.Sequential(project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_out))
+        self.net = nn.Sequential(
+            project_in,
+            nn.Dropout(dropout),
+            nn.Linear(inner_dim, dim_out),
+        )
 
     def forward(self, x):
         return self.net(x)
@@ -165,7 +169,7 @@ class SelfAttention(nn.Module):
 
 
 class SpatialSelfAttention(nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels: int):
         super().__init__()
         self.in_channels = in_channels
 
@@ -175,27 +179,27 @@ class SpatialSelfAttention(nn.Module):
         self.v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.proj_out = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, x):
-        h_: Tensor = x
-        h_ = self.norm(h_)
+    def forward(self, x: Tensor) -> Tensor:
+        h_ = self.norm(x)
         q: Tensor = self.q(h_)
         k: Tensor = self.k(h_)
         v: Tensor = self.v(h_)
 
         # compute attention
         _, C, H, _ = q.shape
-        q = rearrange(q, "b c h w -> b (h w) c")
-        k = rearrange(k, "b c h w -> b c (h w)")
+
+        q = q.reshape(q.shape[0], -1, q.shape[1])  # b c h w -> b (h w) c
+        k = k.reshape(*k.shape[:2], -1)  # b c h w -> b c (h w)
         w_ = torch.einsum("bij,bjk->bik", q, k)
 
-        w_ = w_ * (int(C) ** (-0.5))
+        w_ = w_ * (C ** (-0.5))
         w_ = F.softmax(w_, dim=2)
 
         # attend to values
-        v = rearrange(v, "b c h w -> b c (h w)")
-        w_ = rearrange(w_, "b i j -> b j i")
+        v = v.reshape(*v.shape[:2], -1)  # b c h w -> b c (h w)
+        w_ = w_.transpose(1, 2)  # b i j -> b j i
         h_ = torch.einsum("bij,bjk->bik", v, w_)
-        h_ = rearrange(h_, "b c (h w) -> b c h w", h=H)
+        h_ = h_.reshape(*h_.shape[:2], H, -1)  # b c (h w) -> b c h w
         h_ = self.proj_out(h_)
 
         return x + h_
@@ -256,7 +260,9 @@ class CrossAttention(nn.Module):
             k = repeat(k[::n_times_crossframe_attn_in_self], "b ... -> (b n) ...", n=n_cp)
             v = repeat(v[::n_times_crossframe_attn_in_self], "b ... -> (b n) ...", n=n_cp)
 
-        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=h), (q, k, v))
+        q = rearrange(q, "b n (h d) -> b h n d", h=h)
+        k = rearrange(k, "b n (h d) -> b h n d", h=h)
+        v = rearrange(v, "b n (h d) -> b h n d", h=h)
 
         with sdp_kernel(**BACKEND_MAP[self.backend]):
             # logger.debug("dispatching into backend", self.backend, "q/k/v shape: ", q.shape, k.shape, v.shape)
