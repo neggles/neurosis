@@ -15,7 +15,7 @@ from rich.traceback import install as install_traceback
 from neurosis import __version__, console, is_debug
 from neurosis.trainer.callbacks.image_logger import ImageLogger
 from neurosis.trainer.callbacks.wandb import LoggerSaveConfigCallback
-from neurosis.trainer.util import LocalRankZeroFilter
+from neurosis.trainer.util import AddRankFilter, LocalRankZeroFilter
 
 # set up rich if we're in a tty/interactive and NOT in kube
 if isatty(1) and getenv("KUBERNETES_PORT", None) is None:
@@ -34,8 +34,11 @@ train_app: typer.Typer = typer.Typer(
     rich_markup_mode="rich" if isatty(1) else None,
 )
 
-logging.basicConfig(level=logging.INFO)
+LOG_FMT = "[%(levelname)s][%(name)s:%(funcName)s]: %(message)s"
+
+logging.basicConfig(level=logging.INFO, format=LOG_FMT)
 logger = logging.getLogger("neurosis")
+logger.addFilter(AddRankFilter())
 if not is_debug:
     logger.addFilter(
         LocalRankZeroFilter(min_level=logging.WARNING),
