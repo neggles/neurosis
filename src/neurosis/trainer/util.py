@@ -5,11 +5,11 @@ from typing import Any, Optional, Type
 
 import lightning.pytorch as L
 import torch
+import torch.distributed as dist
 from lightning.fabric.utilities.rank_zero import _get_rank, rank_zero_only
 from lightning.pytorch import Trainer
 from natsort import natsorted
 from packaging.version import Version
-
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,22 @@ class LocalRankZeroFilter(logging.Filter):
         rank = getattr(rank_zero_only, "rank", _get_rank() or 0)
         if rank != 0 and record.levelno < self.min_level:
             return False
+        return True
+
+
+class AddRankFilter(logging.Filter):
+    def __init__(self, rank: int = -1):
+        self._rank = rank
+
+    @property
+    def rank(self) -> int:
+        if self._rank == -1 and dist.is_initialized():
+            self._rank = getattr(rank_zero_only, "rank", _get_rank() or -1)
+        return self._rank
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if self.rank != -1:
+            record.msg = f"[R{self.rank}] {record.msg}"
         return True
 
 
