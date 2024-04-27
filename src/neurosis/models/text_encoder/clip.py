@@ -145,7 +145,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         return self(text)
 
     def tokenize(self, text: list[str]) -> BatchEncoding:
-        return self.tokenizer(
+        input_ids = self.tokenizer(
             text,
             truncation=True,
             max_length=self.max_length,
@@ -153,7 +153,8 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
             return_overflowing_tokens=False,
             padding="max_length",
             return_tensors="pt",
-        )
+        )["input_ids"].to(self.device)
+        return BatchEncoding({"input_ids": input_ids})
 
     def tokenize_extended(self, text: list[str]) -> BatchEncoding:
         chunk_tokens = self.tokenizer.model_max_length - 2  # -2 for start and end tokens
@@ -339,7 +340,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         return self.forward(text)
 
     def tokenize(self, text: list[str]) -> BatchEncoding:
-        return self.tokenizer(
+        input_ids = self.tokenizer(
             text,
             truncation=True,
             max_length=self.max_length,
@@ -347,7 +348,8 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
             return_overflowing_tokens=False,
             padding="max_length",
             return_tensors="pt",
-        )
+        )["input_ids"].to(self.device)
+        return BatchEncoding({"input_ids": input_ids})
 
     def tokenize_extended(self, text: list[str]) -> BatchEncoding:
         chunk_tokens = self.tokenizer.model_max_length - 2  # -2 for start and end tokens
