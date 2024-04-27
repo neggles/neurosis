@@ -1,6 +1,6 @@
 from .base import AspectBucketDataset
 from .bucket import AspectBucket, AspectBucketList
-from .lists import SDXLBucketList, WDXLBucketList
+from .lists import SDXLBucketList, WDXLBucketList, WDXLBucketList2
 from .sampler import AspectBucketSampler, AspectDistributedSampler
 
 __all__ = [
@@ -11,4 +11,5 @@ __all__ = [
     "AspectDistributedSampler",
     "SDXLBucketList",
     "WDXLBucketList",
+    "WDXLBucketList2",
 ]
