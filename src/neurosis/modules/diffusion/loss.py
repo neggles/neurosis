@@ -75,11 +75,13 @@ class StandardDiffusionLoss(DiffusionLoss):
         noise_offset: float = 0.0,
         noise_offset_chance: float = 0.0,
         input_keys: str | list[str] = [],
+        objective_type: str = "edm",
     ):
         super().__init__(noise_offset, noise_offset_chance)
         self.sigma_generator = sigma_generator
         self.loss_weighting = loss_weighting
         self.snr_gamma = snr_gamma
+        self.objective_type = objective_type
 
         match loss_type.lower():
             case "l1":
@@ -115,18 +117,31 @@ class StandardDiffusionLoss(DiffusionLoss):
         noise = self.apply_noise_offset(noise, inputs)
         # expand sigmas to broadcast over batch
         sigmas_bc = append_dims(sigmas, inputs.ndim)
-        # get latent state
-        # !! only works for ComfyRF for now
-        alpha = 1.0 - sigmas_bc
-        z_t = alpha * inputs + sigmas_bc * noise
 
-        eps_output = denoiser(network, z_t, sigmas, cond, "F", **extra_inputs)
+        match self.objective_type:
+            case "rf":
+                # get latent state
+                alpha = 1.0 - sigmas_bc
+                z_t = alpha * inputs + sigmas_bc * noise
 
-        # get loss weighting
-        weight = self.loss_weighting(sigmas)
+                eps_output = denoiser(network, z_t, sigmas, cond, "F", **extra_inputs)
 
-        # get loss
-        loss = self.get_loss(eps_output, noise, weight)
+                # get loss weighting
+                weight = self.loss_weighting(sigmas)
+
+                # get loss
+                loss = self.get_loss(eps_output, noise, weight)
+            case "edm":
+                # get latent state
+                z_t = inputs + sigmas_bc * noise
+
+                D_output = denoiser(network, z_t, sigmas, cond, "D", **extra_inputs)
+
+                # get loss weighting
+                weight = self.loss_weighting(sigmas)
+
+                # get loss
+                loss = self.get_loss(D_output, inputs, weight)
 
         return loss
 
