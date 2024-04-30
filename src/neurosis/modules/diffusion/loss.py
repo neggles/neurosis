@@ -124,24 +124,20 @@ class StandardDiffusionLoss(DiffusionLoss):
                 alpha = 1.0 - sigmas_bc
                 z_t = alpha * inputs + sigmas_bc * noise
 
-                eps_output = denoiser(network, z_t, sigmas, cond, "F", **extra_inputs)
-
-                # get loss weighting
-                weight = self.loss_weighting(sigmas)
-
-                # get loss
-                loss = self.get_loss(eps_output, noise, weight)
+                output = denoiser(network, z_t, sigmas, cond, "F", **extra_inputs)
             case "edm":
                 # get latent state
                 z_t = inputs + sigmas_bc * noise
 
-                D_output = denoiser(network, z_t, sigmas, cond, "D", **extra_inputs)
+                output = denoiser(network, z_t, sigmas, cond, "D", **extra_inputs)
+            case _:
+                raise ValueError(f"Unknown objective type: '{self.objective_type}'")
 
-                # get loss weighting
-                weight = self.loss_weighting(sigmas)
+        # get loss weighting
+        weight = self.loss_weighting(sigmas)
 
-                # get loss
-                loss = self.get_loss(D_output, inputs, weight)
+        # get loss
+        loss = self.get_loss(output, inputs, weight)
 
         return loss
 
