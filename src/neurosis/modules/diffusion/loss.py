@@ -6,6 +6,7 @@ import torch
 from torch import Tensor, nn
 
 from neurosis.modules.losses.functions import BatchL1Loss, BatchMSELoss
+from neurosis.modules.losses.types import DiffusionObjective, GenericLoss
 from neurosis.utils import append_dims
 
 from ..encoders import GeneralConditioner
@@ -70,12 +71,12 @@ class StandardDiffusionLoss(DiffusionLoss):
         self,
         sigma_generator: SigmaGenerator,
         loss_weighting: DenoiserWeighting,
-        loss_type: str = "l2",
+        loss_type: GenericLoss = GenericLoss.L2,
         snr_gamma: float = 0.0,
         noise_offset: float = 0.0,
         noise_offset_chance: float = 0.0,
         input_keys: str | list[str] = [],
-        objective_type: str = "edm",
+        objective_type: DiffusionObjective = DiffusionObjective.EDM,
     ):
         super().__init__(noise_offset, noise_offset_chance)
         self.sigma_generator = sigma_generator
@@ -84,11 +85,11 @@ class StandardDiffusionLoss(DiffusionLoss):
         self.objective_type = objective_type
 
         match loss_type.lower():
-            case "l1":
+            case GenericLoss.L1:
                 logger.debug("Using L1 loss")
                 self.loss_type = "l1"
                 self.loss = BatchL1Loss(reduction="mean")
-            case "l2" | "mse":
+            case GenericLoss.L2 | GenericLoss.MSE:
                 logger.debug("Using L2 loss")
                 self.loss_type = "l2"
                 self.loss = BatchMSELoss(reduction="mean")
@@ -123,21 +124,23 @@ class StandardDiffusionLoss(DiffusionLoss):
                 # get latent state
                 alpha = 1.0 - sigmas_bc
                 z_t = alpha * inputs + sigmas_bc * noise
-
-                output = denoiser(network, z_t, sigmas, cond, "F", **extra_inputs)
+                # get eps output
+                eps_output = denoiser(network, z_t, sigmas, cond, "F", **extra_inputs)
+                # get weighting
+                weight = self.loss_weighting(sigmas)
+                # get loss
+                loss = self.get_loss(eps_output, noise, weight)
             case "edm":
                 # get latent state
                 z_t = inputs + sigmas_bc * noise
-
-                output = denoiser(network, z_t, sigmas, cond, "D", **extra_inputs)
+                # get denoised output
+                D_output = denoiser(network, z_t, sigmas, cond, "D", **extra_inputs)
+                # get weighting
+                weight = self.loss_weighting(sigmas)
+                # get loss
+                loss = self.get_loss(D_output, inputs, weight)
             case _:
                 raise ValueError(f"Unknown objective type: '{self.objective_type}'")
-
-        # get loss weighting
-        weight = self.loss_weighting(sigmas)
-
-        # get loss
-        loss = self.get_loss(output, inputs, weight)
 
         return loss
 

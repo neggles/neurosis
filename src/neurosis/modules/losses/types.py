@@ -24,3 +24,8 @@ class GenericLoss(str, Enum):
 class DiscriminatorLoss(str, Enum):
     Vanilla = "vanilla"
     Hinge = "hinge"
+
+
+class DiffusionObjective(str, Enum):
+    EDM = "edm"
+    RF = "rf"
