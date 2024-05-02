@@ -257,8 +257,8 @@ src/neurosis/_version.py
 .env.*
 
 # temp files
-**/tmp_*.*
-**/*.tmp.*
+**/tmp_*
+**/*.tmp*
 
 # but keep examples
 !*.example
