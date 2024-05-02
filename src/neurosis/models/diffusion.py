@@ -14,7 +14,7 @@ from safetensors.torch import load_file as load_safetensors
 from torch import Tensor
 
 from neurosis.constants import CHECKPOINT_EXTNS
-from neurosis.models.autoencoder import AutoencodingEngine
+from neurosis.models.autoencoder import AutoencoderKL, AutoencodingEngine
 from neurosis.modules.diffusion import (
     BaseDiffusionSampler,
     Denoiser,
@@ -27,7 +27,7 @@ from neurosis.modules.ema import LitEma
 from neurosis.modules.encoders import GeneralConditioner
 from neurosis.modules.encoders.embedding import AbstractEmbModel
 from neurosis.modules.hooks import LossHook
-from neurosis.utils import disabled_train, log_txt_as_img, np_text_decode
+from neurosis.utils import log_txt_as_img, np_text_decode
 
 logger = logging.getLogger(__name__)
 
@@ -52,16 +52,22 @@ class DiffusionEngine(L.LightningModule):
         log_keys: Optional[list] = None,
         no_cond_log: bool = False,
         compile_model: bool = False,
+        compile_vae: bool = False,
+        compile_kwargs: Optional[dict] = None,
         vae_batch_size: Optional[int] = None,
         forward_hooks: list[LossHook] = [],
     ):
         super().__init__()
         logger.info("Initializing DiffusionEngine")
 
+        if (compile_model or compile_vae) and compile_kwargs is None:
+            logger.info("Compiling with default kwargs")
+            compile_kwargs = {"mode": "reduce-overhead", "dynamic": True}
+
         self.log_keys = log_keys
         self.input_key = input_key
 
-        self.model: UNetModel = OpenAIWrapper(model, compile_model=compile_model)
+        self.model: UNetModel = OpenAIWrapper(model, compile_model, **compile_kwargs)
         self.denoiser = denoiser
         self.sampler = sampler
         self.conditioner = conditioner
@@ -71,7 +77,9 @@ class DiffusionEngine(L.LightningModule):
 
         # do first stage model setup
         logger.info("Loading first stage (VAE) model...")
-        self._init_first_stage(first_stage_model)
+        self.vae_encoder: Encoder = None
+        self.vae_decoder: Decoder = None
+        self._init_first_stage(first_stage_model, compile_vae, **compile_kwargs)
 
         self.loss_fn = loss_fn
         self.forward_hooks = forward_hooks
@@ -91,12 +99,6 @@ class DiffusionEngine(L.LightningModule):
 
         if ckpt_path is not None:
             self.init_from_ckpt(Path(ckpt_path))
-
-        self.vae_encoder: Encoder = self.first_stage_model.encoder
-        self.vae_decoder: Decoder = self.first_stage_model.decoder
-        self.vae_encoder.quant_conv.load_state_dict(self.first_stage_model.quant_conv.state_dict())
-        self.vae_decoder.post_quant_conv.load_state_dict(self.first_stage_model.post_quant_conv.state_dict())
-        del self.first_stage_model
 
         self.save_hyperparameters(
             ignore=[
@@ -125,21 +127,39 @@ class DiffusionEngine(L.LightningModule):
             raise NotImplementedError(f"Unknown checkpoint extension {path.suffix}")
 
         missing, unexpected = self.load_state_dict(sd, strict=False)
+        # filter the relocated VAE keys
+        unexpected = [x for x in unexpected if not x.startswith("first_stage_model")]
+        missing = [x for x in missing if (not x.startswith("vae_")) and "._orig_mod." not in x]
+
         logger.info(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
             logger.warn(f"Missing Keys: {missing}")
         if len(unexpected) > 0:
             logger.info(f"Unexpected Keys: {unexpected}")
 
-    def _init_first_stage(self, model: AutoencodingEngine):
+    def _init_first_stage(
+        self,
+        model: AutoencoderKL,
+        compile: bool = False,
+        **kwargs,
+    ):
         model = model.eval()
         model.freeze()
-        model.train = disabled_train
-        self.first_stage_model = model
+
+        self.vae_encoder = model.encoder
+        self.vae_encoder.quant_conv.load_state_dict(model.quant_conv.state_dict())
+        self.vae_encoder.quant_conv.requires_grad_(False)
+        self.vae_decoder = model.decoder
+        self.vae_decoder.post_quant_conv.load_state_dict(model.post_quant_conv.state_dict())
+        self.vae_decoder.post_quant_conv.requires_grad_(False)
+
+        if compile:
+            self.vae_encoder = torch.compile(self.vae_encoder, **kwargs)
+            self.vae_decoder = torch.compile(self.vae_decoder, **kwargs)
+
+        del model
 
     def get_input(self, batch: dict[str, Tensor]) -> Tensor:
-        # assuming unified data format, dataloader returns a dict.
-        # image tensors should be scaled to -1 ... 1 and in bchw format
         inputs: Tensor = batch[self.input_key]
         if inputs.ndim == 3:
             inputs = inputs.unsqueeze(0)
@@ -154,9 +174,7 @@ class DiffusionEngine(L.LightningModule):
         all_out = []
         # with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
         for n in range(n_rounds):
-            out = self.vae_decoder(
-                z[n * n_samples : (n + 1) * n_samples], post_quant_conv=True, cat_zero=True, standalone=True
-            )
+            out = self.vae_decoder(z[n * n_samples : (n + 1) * n_samples], cat_zero=True, standalone=True)
             all_out.append(out)
         out = torch.cat(all_out, dim=0)
         return out
@@ -168,9 +186,7 @@ class DiffusionEngine(L.LightningModule):
         all_out = []
         # with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
         for n in range(n_rounds):
-            out = self.vae_encoder(
-                x[n * n_samples : (n + 1) * n_samples], quant_conv=True, regularize=True, standalone=True
-            )
+            out = self.vae_encoder(x[n * n_samples : (n + 1) * n_samples], regularize=True, standalone=True)
             all_out.append(out)
         z = torch.cat(all_out, dim=0)
         z = self.scale_factor * z

@@ -3,6 +3,7 @@ import logging
 import math
 from functools import wraps
 from typing import Any, Optional, Sequence
+from warnings import warn
 
 import numpy as np
 import torch
@@ -21,7 +22,9 @@ try:
     XFORMERS_IS_AVAILABLE = True
 except ImportError:
     XFORMERS_IS_AVAILABLE = False
-    logger.warn("xformers is not available, proceeding without it")
+
+    xops = None
+    logger.info("xformers is not available, proceeding without it")
 
 
 def get_timestep_embedding(timesteps: Tensor, embedding_dim: int) -> Tensor:
@@ -270,6 +273,8 @@ def make_attn(in_channels: int, attn_type="vanilla", attn_kwargs=None) -> nn.Mod
         assert attn_kwargs is None
         return AttnBlock(in_channels)
     elif attn_type == "vanilla-xformers":
+        if not XFORMERS_IS_AVAILABLE:
+            raise ValueError("xformers is not available, cannot use vanilla-xformers attention")
         logger.debug(f"building MemoryEfficientAttnBlock with {in_channels} in_channels...")
         return MemoryEfficientAttnBlock(in_channels)
     elif attn_type == "memory-efficient-cross-attn":
@@ -302,6 +307,7 @@ class Model(nn.Module):
     ):
         super().__init__()
         if use_linear_attn:
+            warn("use_linear_attn is deprecated, use attn_type='linear' instead")
             attn_type = "linear"
         self.ch = ch
         self.temb_ch = self.ch * 4
@@ -401,7 +407,7 @@ class Model(nn.Module):
         self.norm_out = get_norm_layer(block_in)
         self.conv_out = nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, x, t=None, context=None):
+    def forward(self, x: Tensor, t: Optional[Tensor] = None, context: Optional[Tensor] = None) -> Tensor:
         # assert x.shape[2] == x.shape[3] == self.resolution
         if context is not None:
             # assume aligned context, cat along channel axis
@@ -470,10 +476,12 @@ class Encoder(nn.Module):
         use_linear_attn: bool = False,
         attn_type: str = "vanilla",
         embed_dim: int = 256,
-        **ignore_kwargs,
+        standalone: bool = True,
+        **kwargs,
     ):
         super().__init__()
         if use_linear_attn:
+            warn("use_linear_attn is deprecated, use attn_type='linear' instead")
             attn_type = "linear"
         self.ch = ch
         self.temb_ch = 0
@@ -494,7 +502,7 @@ class Encoder(nn.Module):
             attn = nn.ModuleList()
             block_in = ch * in_ch_mult[i_level]
             block_out = ch * ch_mult[i_level]
-            for i_block in range(self.num_res_blocks):
+            for _ in range(self.num_res_blocks):
                 block.append(
                     ResnetBlock(
                         in_channels=block_in,
@@ -543,9 +551,13 @@ class Encoder(nn.Module):
         self.regularizer = DiagonalGaussianRegularizer(sample=False)
         self.max_batch_size = None
 
-        quant_conv_in_ch = (1 + double_z) * z_channels
-        quant_conv_out_ch = (1 + double_z) * embed_dim
-        self.quant_conv = nn.Conv2d(quant_conv_in_ch, quant_conv_out_ch, 1)
+        self.quant_conv: nn.Conv2d | nn.Identity
+        if standalone:
+            quant_conv_in_ch = (1 + double_z) * z_channels
+            quant_conv_out_ch = (1 + double_z) * embed_dim
+            self.quant_conv = nn.Conv2d(quant_conv_in_ch, quant_conv_out_ch, 1)
+        else:
+            self.quant_conv = nn.Identity()
 
     def encode(self, x):
         # timestep embedding
@@ -574,8 +586,14 @@ class Encoder(nn.Module):
         h = self.conv_out(h)
         return h
 
-    def forward(self, x, quant_conv=False, regularize=False, standalone=False):
-        if self.max_batch_size is None or not standalone:
+    def forward(
+        self,
+        x: Tensor,
+        quant_conv: bool = False,
+        regularize: bool = False,
+        standalone: bool = False,
+    ):
+        if self.max_batch_size is None or (not standalone):
             z = self.encode(x)
             if quant_conv:
                 z = self.quant_conv(z)
@@ -615,10 +633,12 @@ class Decoder(nn.Module):
         use_linear_attn: bool = False,
         attn_type: str = "vanilla",
         embed_dim: int = 256,
+        standalone: bool = True,
         **kwargs,
     ):
         super().__init__()
         if use_linear_attn:
+            warn("use_linear_attn is deprecated, use attn_type='linear' instead")
             attn_type = "linear"
         self.ch = ch
         self.temb_ch = 0
@@ -630,28 +650,24 @@ class Decoder(nn.Module):
         self.tanh_out = tanh_out
 
         # compute in_ch_mult, block_in and curr_res at lowest res
-        in_ch_mult = (1,) + tuple(ch_mult)
         block_in = ch * ch_mult[self.num_resolutions - 1]
         curr_res = resolution // 2 ** (self.num_resolutions - 1)
         self.z_shape = (1, z_channels, curr_res, curr_res)
         logger.debug(f"Working with z of shape {self.z_shape} = {np.prod(self.z_shape)} dimensions.")
 
-        make_attn_cls = self._make_attn()
-        make_resblock_cls = self._make_resblock()
-        make_conv_cls = self._make_conv()
         # z to block_in
         self.conv_in = nn.Conv2d(z_channels, block_in, kernel_size=3, stride=1, padding=1)
 
         # middle
         self.mid = nn.Module()
-        self.mid.block_1 = make_resblock_cls(
+        self.mid.block_1 = ResnetBlock(
             in_channels=block_in,
             out_channels=block_in,
             temb_channels=self.temb_ch,
             dropout=dropout,
         )
-        self.mid.attn_1 = make_attn_cls(block_in, attn_type=attn_type)
-        self.mid.block_2 = make_resblock_cls(
+        self.mid.attn_1 = make_attn(block_in, attn_type=attn_type)
+        self.mid.block_2 = ResnetBlock(
             in_channels=block_in,
             out_channels=block_in,
             temb_channels=self.temb_ch,
@@ -666,7 +682,7 @@ class Decoder(nn.Module):
             block_out = ch * ch_mult[i_level]
             for _ in range(self.num_res_blocks + 1):
                 block.append(
-                    make_resblock_cls(
+                    ResnetBlock(
                         in_channels=block_in,
                         out_channels=block_out,
                         temb_channels=self.temb_ch,
@@ -675,7 +691,7 @@ class Decoder(nn.Module):
                 )
                 block_in = block_out
                 if curr_res in attn_resolutions:
-                    attn.append(make_attn_cls(block_in, attn_type=attn_type))
+                    attn.append(make_attn(block_in, attn_type=attn_type))
             up = nn.Module()
             up.block = block
             up.attn = attn
@@ -686,23 +702,19 @@ class Decoder(nn.Module):
 
         # end
         self.norm_out = get_norm_layer(block_in)
-        self.conv_out = make_conv_cls(block_in, out_ch, kernel_size=3, stride=1, padding=1)
+        self.conv_out = nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
         self.max_batch_size = None
-        self.post_quant_conv = nn.Conv2d(embed_dim, z_channels, 1)
 
-    def _make_attn(self) -> nn.Module:
-        return make_attn
-
-    def _make_resblock(self) -> nn.Module:
-        return ResnetBlock
-
-    def _make_conv(self) -> nn.Module:
-        return nn.Conv2d
+        self.post_quant_conv: nn.Conv2d | nn.Identity
+        if standalone:
+            self.post_quant_conv = nn.Conv2d(embed_dim, z_channels, 1)
+        else:
+            self.post_quant_conv = nn.Identity()
 
     def get_last_layer(self, **kwargs):
         return self.conv_out.weight
 
-    def decode(self, z, **kwargs):
+    def decode(self, z: Tensor, **kwargs) -> Tensor:
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 
@@ -737,15 +749,15 @@ class Decoder(nn.Module):
             h = torch.tanh(h)
         return h
 
-    def forward(self, z, **kwargs):
-        post_quant_conv, cat_zero, standalone = (
-            kwargs.pop("post_quant_conv", False),
-            kwargs.pop("cat_zero", False),
-            kwargs.pop("standalone", False),
-        )
+    def forward(
+        self,
+        z: Tensor,
+        cat_zero: bool = False,
+        standalone: bool = False,
+        **kwargs,
+    ):
         if self.max_batch_size is None or not standalone:
-            if post_quant_conv:
-                z = self.post_quant_conv(z)
+            z = self.post_quant_conv(z)
             dec = self.decode(z, **kwargs)
         else:
             N = z.shape[0]
@@ -753,8 +765,7 @@ class Decoder(nn.Module):
             n_batches = int(math.ceil(N / bs))
             dec = list()
             for i_batch in range(n_batches):
-                if post_quant_conv:
-                    dec_batch = self.post_quant_conv(z[i_batch * bs : (i_batch + 1) * bs])
+                dec_batch = self.post_quant_conv(z[i_batch * bs : (i_batch + 1) * bs])
                 dec_batch = self.decode(dec_batch, **kwargs)
                 dec.append(dec_batch)
             if cat_zero:

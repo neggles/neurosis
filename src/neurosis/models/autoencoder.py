@@ -42,8 +42,8 @@ class AbstractAutoencoder(L.LightningModule):
         base_lr: Optional[float] = None,
     ):
         super().__init__()
-        self.encoder: nn.Module
-        self.decoder: nn.Module
+        self.encoder: Encoder
+        self.decoder: Decoder
 
         self.input_key = input_key
         self.base_lr = base_lr
@@ -433,7 +433,7 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
         embed_dim: int,
         loss: Optional[nn.Module] = None,
         regularizer: Optional[AbstractRegularizer] = None,
-        ddconfig: dict,
+        ddconfig: dict = {},
         **kwargs,
     ):
         self.max_batch_size = kwargs.pop("max_batch_size", None)
