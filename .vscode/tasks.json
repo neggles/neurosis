@@ -1,0 +1,36 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "python: create venv",
+            "type": "shell",
+            "group": "build",
+            "command": "python3.10",
+            "windows": { "command": "python3.exe" },
+            "args": ["-m", "venv", ".venv"],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "pip: install (dev)",
+            "type": "shell",
+            "group": "build",
+            "dependsOn": ["python: create venv"],
+            "dependsOrder": "sequence",
+            "command": ".venv/bin/pip",
+            "windows": { "command": ".venv\\Scripts\\pip.exe" },
+            "args": ["install", "-e", ".[all]"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PIP_REQUIRE_VIRTUALENV": "true"
+                }
+            },
+            "presentation": { "reveal": "always", "panel": "shared" }
+        }
+    ]
+}

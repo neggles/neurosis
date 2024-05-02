@@ -1,18 +1,15 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File",
+            "name": "Python: Current File",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
         },
         {
-            "name": "Python Debugger: Current File torch deterministic",
+            "name": "Python: Current File (Torch Deterministic Mode)",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
@@ -23,12 +20,22 @@
             }
         },
         {
-            "name": "neurosis test",
+            "name": "Python: neurosis testrun",
             "type": "debugpy",
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "module": "neurosis.trainer.cli",
             "args": ["fit", "--config", "configs/neurosis-test.yaml"],
+            "justMyCode": false,
+            "subProcess": true
+        },
+        {
+            "name": "TorchRun: Current File (2-GPU)",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/.venv/bin/torchrun",
+            "args": ["--standalone", "--nproc-per-node=2", "${file}"],
             "justMyCode": false,
             "subProcess": true
         }
