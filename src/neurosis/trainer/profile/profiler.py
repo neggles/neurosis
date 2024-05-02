@@ -9,7 +9,7 @@ from warnings import warn
 
 import torch.autograd.profiler as prof
 from lightning.pytorch import LightningModule
-from lightning.pytorch.profilers import Profiler
+from lightning.pytorch.profilers.profiler import Profiler
 from torch import Tensor, nn
 from torch._C._profiler import _ExperimentalConfig  # type: ignore
 from torch.profiler import (
