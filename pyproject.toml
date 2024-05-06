@@ -150,9 +150,13 @@ exclude = [
 ]
 
 [tool.pyright]
-include = ["src/**"]
-exclude = ["/usr/lib/**"]
+include = ["src"]
+exclude = [
+  "**/__pycache__", # cache directories
+  "./typings",      # generated type stubs
+]
 stubPath = "./typings"
+# reportMissingTypeStubs = "information"  # re-enable this once autogen of stubs actually works
 
 [tool.tomlsort]
 in_place = true
