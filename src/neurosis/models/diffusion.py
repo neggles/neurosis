@@ -53,14 +53,14 @@ class DiffusionEngine(L.LightningModule):
         no_cond_log: bool = False,
         compile_model: bool = False,
         compile_vae: bool = False,
-        compile_kwargs: Optional[dict] = None,
+        compile_kwargs: dict = {},
         vae_batch_size: Optional[int] = None,
         forward_hooks: list[LossHook] = [],
     ):
         super().__init__()
         logger.info("Initializing DiffusionEngine")
 
-        if (compile_model or compile_vae) and compile_kwargs is None:
+        if (compile_model or compile_vae) and len(compile_kwargs) == 0:
             logger.info("Compiling with default kwargs")
             compile_kwargs = {"mode": "reduce-overhead", "dynamic": True}
 
