@@ -476,7 +476,7 @@ class Encoder(nn.Module):
         use_linear_attn: bool = False,
         attn_type: str = "vanilla",
         embed_dim: int = 256,
-        standalone: bool = True,
+        standalone: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -551,8 +551,9 @@ class Encoder(nn.Module):
         self.regularizer = DiagonalGaussianRegularizer(sample=False)
         self.max_batch_size = None
 
+        self.standalone = standalone
         self.quant_conv: nn.Conv2d | nn.Identity
-        if standalone:
+        if self.standalone:
             quant_conv_in_ch = (1 + double_z) * z_channels
             quant_conv_out_ch = (1 + double_z) * embed_dim
             self.quant_conv = nn.Conv2d(quant_conv_in_ch, quant_conv_out_ch, 1)
@@ -589,14 +590,11 @@ class Encoder(nn.Module):
     def forward(
         self,
         x: Tensor,
-        quant_conv: bool = False,
         regularize: bool = False,
-        standalone: bool = False,
     ):
-        if self.max_batch_size is None or (not standalone):
+        if self.max_batch_size is None:
             z = self.encode(x)
-            if quant_conv:
-                z = self.quant_conv(z)
+            z = self.quant_conv(z)
         else:
             N = x.shape[0]
             bs = self.max_batch_size
@@ -604,8 +602,7 @@ class Encoder(nn.Module):
             z = list()
             for i_batch in range(n_batches):
                 z_batch = self.encode(x[i_batch * bs : (i_batch + 1) * bs])
-                if quant_conv:
-                    z_batch = self.quant_conv(z_batch)
+                z_batch = self.quant_conv(z_batch)
                 z.append(z_batch)
             z = torch.cat(z, 0)
         if regularize:
@@ -633,7 +630,7 @@ class Decoder(nn.Module):
         use_linear_attn: bool = False,
         attn_type: str = "vanilla",
         embed_dim: int = 256,
-        standalone: bool = True,
+        standalone: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -705,8 +702,9 @@ class Decoder(nn.Module):
         self.conv_out = nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
         self.max_batch_size = None
 
+        self.standalone = standalone
         self.post_quant_conv: nn.Conv2d | nn.Identity
-        if standalone:
+        if self.standalone:
             self.post_quant_conv = nn.Conv2d(embed_dim, z_channels, 1)
         else:
             self.post_quant_conv = nn.Identity()
@@ -753,10 +751,9 @@ class Decoder(nn.Module):
         self,
         z: Tensor,
         cat_zero: bool = False,
-        standalone: bool = False,
         **kwargs,
     ):
-        if self.max_batch_size is None or not standalone:
+        if self.max_batch_size is None:
             z = self.post_quant_conv(z)
             dec = self.decode(z, **kwargs)
         else:

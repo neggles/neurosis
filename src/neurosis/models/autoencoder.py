@@ -220,8 +220,8 @@ class AutoencodingEngine(AbstractAutoencoder):
 
     def forward(self, x: Tensor, **additional_decode_kwargs) -> tuple[Tensor, Tensor, dict]:
         z, reg_log = self.encode(x, return_reg_log=True)
-        dec = self.decode(z, **additional_decode_kwargs)
-        return z, dec, reg_log
+        x = self.decode(z, **additional_decode_kwargs)
+        return z, x, reg_log
 
     def inner_training_step(self, batch: dict, batch_idx: int, optimizer_idx: int = 0) -> Tensor:
         x = self.get_input(batch)
@@ -443,6 +443,7 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
 
         ckpt_path = kwargs.pop("ckpt_path", None)
         ignore_keys = kwargs.pop("ignore_keys", tuple())
+
         ddconfig["embed_dim"] = embed_dim
         super().__init__(
             encoder=Encoder(**ddconfig),
@@ -487,20 +488,20 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
 
     def decode(self, z: Tensor, **decoder_kwargs) -> Tensor:
         if self.max_batch_size is None:
-            dec = self.post_quant_conv(z)
-            dec = self.decoder(dec, **decoder_kwargs)
+            x = self.post_quant_conv(z)
+            x = self.decoder(x, **decoder_kwargs)
         else:
             N = z.shape[0]
             bs = self.max_batch_size
             n_batches = int(math.ceil(N / bs))
-            dec = list()
+            x = list()
             for i_batch in range(n_batches):
-                dec_batch = self.post_quant_conv(z[i_batch * bs : (i_batch + 1) * bs])
-                dec_batch = self.decoder(dec_batch, **decoder_kwargs)
-                dec.append(dec_batch)
-            dec = torch.cat(dec, 0)
+                x_batch = self.post_quant_conv(z[i_batch * bs : (i_batch + 1) * bs])
+                x_batch = self.decoder(x_batch, **decoder_kwargs)
+                x.append(x_batch)
+            x = torch.cat(x, 0)
 
-        return dec
+        return x
 
 
 class AutoencoderKL(AutoencodingEngineLegacy):
@@ -509,6 +510,7 @@ class AutoencoderKL(AutoencodingEngineLegacy):
     @wraps(AutoencodingEngineLegacy.__init__)
     def __init__(
         self,
+        *,
         regularizer: Optional[nn.Module] = None,
         train_decoder_only: bool = False,
         **kwargs,
@@ -518,6 +520,121 @@ class AutoencoderKL(AutoencodingEngineLegacy):
         if train_decoder_only:
             self.freeze()
             self.unfreeze_decoder()
+
+
+class FSDPAutoencoderKL(AutoencodingEngineLegacy):
+    @wraps(AutoencodingEngineLegacy.__init__)
+    def __init__(
+        self,
+        *,
+        embed_dim: int,
+        regularizer: Optional[nn.Module] = None,
+        ddconfig: dict = {},
+        loss: nn.Module = nn.Identity(),
+        standalone: Optional[Any] = None,
+        **kwargs,
+    ):
+        self.embed_dim = embed_dim
+        self.max_batch_size = kwargs.pop("max_batch_size", None)
+
+        if standalone is not None:
+            # this keeps being False. I do not know why. it should not be anything.
+            logger.warn(f"standalone is {standalone} somehow")
+
+        ckpt_path = kwargs.pop("ckpt_path", None)
+        ignore_keys = kwargs.pop("ignore_keys", tuple())
+
+        # set embed dim
+        ddconfig["embed_dim"] = embed_dim
+        # override standalone
+        ddconfig["standalone"] = True
+        # always gaussian, always
+        regularizer = DiagonalGaussianRegularizer(sample=False)
+
+        AutoencodingEngine.__init__(
+            self,
+            encoder=Encoder(**ddconfig),
+            decoder=Decoder(**ddconfig),
+            regularizer=regularizer,
+            loss=loss,
+            **kwargs,
+        )
+        self.encoder.max_batch_size = self.max_batch_size
+        self.decoder.max_batch_size = self.max_batch_size
+
+        if ckpt_path is not None:
+            self.init_from_ckpt(ckpt_path, ignore_keys)
+
+    def init_from_ckpt(self, path: Path, ignore_keys: Union[tuple, list] = tuple()) -> None:
+        path = Path(path)
+        if path.suffix == ".safetensors":
+            sd = load_safetensors(path)
+        elif path.suffix in CHECKPOINT_EXTNS:
+            sd = torch.load(path, map_location="cpu")["state_dict"]
+        else:
+            raise ValueError(f"Unknown checkpoint extension {path.suffix}")
+
+        if self.use_ema is False:
+            if ignore_keys is None:
+                ignore_keys = tuple()
+            ignore_keys = ignore_keys + ("model_ema", "model_ema.ema_decay", "model_ema.ema_buffer")
+
+        for ik in ignore_keys:
+            for k in list(sd.keys()):
+                if re.search(re.escape(ik), k):
+                    logger.info(f"Deleting key {k} from state_dict.")
+                    _ = sd.pop(k, None)
+
+        keymap = {
+            "quant_conv": "encoder.quant_conv",
+            "post_quant_conv": "decoder.post_quant_conv",
+        }
+        for sd_prefix, model_prefix in keymap.items():
+            for pname in ("weight", "bias"):
+                pkey, mkey = f"{sd_prefix}.{pname}", f"{model_prefix}.{pname}"
+                if pkey in sd:
+                    logger.info(f"Remapping {pkey} to {mkey}")
+                    sd[mkey] = sd.pop(pkey)
+
+        missing, unexpected = self.load_state_dict(sd, strict=False)
+        logger.info(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
+        if len(missing) > 0:
+            logger.warn(f"Missing Keys: {missing}")
+        if len(unexpected) > 0:
+            logger.info(f"Unexpected Keys: {unexpected}")
+
+    def encode(self, x: Tensor, return_reg_log: bool = False) -> Union[Tensor, tuple[Tensor, dict]]:
+        if self.max_batch_size is None:
+            z = self.encoder(x)
+        else:
+            N = x.shape[0]
+            bs = self.max_batch_size
+            n_batches = int(math.ceil(N / bs))
+            z = list()
+            for i_batch in range(n_batches):
+                z_batch = self.encoder(x[i_batch * bs : (i_batch + 1) * bs])
+                z.append(z_batch)
+            z = torch.cat(z, 0)
+
+        z, reg_log = self.regularization(z)
+        if return_reg_log:
+            return z, reg_log
+        return z
+
+    def decode(self, z: Tensor, **decoder_kwargs) -> Tensor:
+        if self.max_batch_size is None:
+            x = self.decoder(z, **decoder_kwargs)
+        else:
+            N = z.shape[0]
+            bs = self.max_batch_size
+            n_batches = int(math.ceil(N / bs))
+            x = list()
+            for i_batch in range(n_batches):
+                x_batch = self.decoder(z[i_batch * bs : (i_batch + 1) * bs], **decoder_kwargs)
+                x.append(x_batch)
+            x = torch.cat(x, 0)
+
+        return x
 
 
 class AutoencoderKLInferenceWrapper(AutoencoderKL):

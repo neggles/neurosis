@@ -14,7 +14,7 @@ from safetensors.torch import load_file as load_safetensors
 from torch import Tensor
 
 from neurosis.constants import CHECKPOINT_EXTNS
-from neurosis.models.autoencoder import AutoencoderKL, AutoencodingEngine
+from neurosis.models.autoencoder import AutoencoderKL, AutoencodingEngine, FSDPAutoencoderKL
 from neurosis.modules.diffusion import (
     BaseDiffusionSampler,
     Denoiser,
@@ -139,7 +139,7 @@ class DiffusionEngine(L.LightningModule):
 
     def _init_first_stage(
         self,
-        model: AutoencoderKL,
+        model: AutoencoderKL | FSDPAutoencoderKL,
         compile: bool = False,
         **kwargs,
     ):
@@ -147,17 +147,15 @@ class DiffusionEngine(L.LightningModule):
         model.freeze()
 
         self.vae_encoder = model.encoder
-        self.vae_encoder.quant_conv.load_state_dict(model.quant_conv.state_dict())
-        self.vae_encoder.quant_conv.requires_grad_(False)
         self.vae_decoder = model.decoder
-        self.vae_decoder.post_quant_conv.load_state_dict(model.post_quant_conv.state_dict())
-        self.vae_decoder.post_quant_conv.requires_grad_(False)
+        if not isinstance(model, FSDPAutoencoderKL):
+            self.vae_encoder.quant_conv.load_state_dict(model.quant_conv)
+            self.vae_decoder.post_quant_conv.load_state_dict(model.post_quant_conv)
+        del model
 
         if compile:
             self.vae_encoder = torch.compile(self.vae_encoder, **kwargs)
             self.vae_decoder = torch.compile(self.vae_decoder, **kwargs)
-
-        del model
 
     def get_input(self, batch: dict[str, Tensor]) -> Tensor:
         inputs: Tensor = batch[self.input_key]
@@ -174,7 +172,7 @@ class DiffusionEngine(L.LightningModule):
         all_out = []
         # with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
         for n in range(n_rounds):
-            out = self.vae_decoder(z[n * n_samples : (n + 1) * n_samples], cat_zero=True, standalone=True)
+            out = self.vae_decoder(z[n * n_samples : (n + 1) * n_samples], cat_zero=True)
             all_out.append(out)
         out = torch.cat(all_out, dim=0)
         return out
@@ -186,7 +184,7 @@ class DiffusionEngine(L.LightningModule):
         all_out = []
         # with torch.autocast(self.device.type, enabled=self.first_stage_autocast):
         for n in range(n_rounds):
-            out = self.vae_encoder(x[n * n_samples : (n + 1) * n_samples], regularize=True, standalone=True)
+            out = self.vae_encoder(x[n * n_samples : (n + 1) * n_samples], regularize=True)
             all_out.append(out)
         z = torch.cat(all_out, dim=0)
         z = self.scale_factor * z
