@@ -48,6 +48,7 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
+        skip_preload: bool = False,
         **kwargs,
     ):
         self.tag_sep = tag_sep
@@ -90,7 +91,8 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
             **kwargs,
         )
 
-        self.preload()
+        if not skip_preload:
+            self.preload()
 
     def __getitem__(self, index: int) -> SampleType:
         if self._first_getitem:
@@ -170,6 +172,7 @@ class MongoSquareModule(LightningDataModule):
         drop_last: bool = True,
     ):
         super().__init__()
+        self.prepare_data_per_node = True
         self.mongo_settings = get_mongo_settings(config_path)
 
         self.dataset = MongoSquareDataset(
@@ -206,10 +209,10 @@ class MongoSquareModule(LightningDataModule):
         return self.dataset.batch_size
 
     def prepare_data(self) -> None:
-        pass
+        self.dataset.preload()  # runs on local rank 0 to cache metadata
 
     def setup(self, stage: str):
-        logger.debug(f"Refreshing dataset clients for {stage}")
+        self.dataset.preload()  # runs on all ranks
         self.dataset.refresh_clients()
 
     def train_dataloader(self):

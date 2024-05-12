@@ -1,7 +1,8 @@
 import logging
 from abc import abstractmethod
 from io import BytesIO
-from os import getenv, getpid
+from os import PathLike, getenv, getpid
+from pathlib import Path
 from time import sleep
 from typing import Literal, Optional, Sequence
 
@@ -49,6 +50,7 @@ class BaseMongoDataset(Dataset):
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
+        cache_dir: Optional[PathLike] = None,
         **kwargs,
     ):
         self.pid = getpid()
@@ -60,6 +62,7 @@ class BaseMongoDataset(Dataset):
         self.shuffle = shuffle
         self.no_resize = no_resize
         self.data_transforms = data_transforms
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else Path.cwd().joinpath("temp")
 
         # for mapping fake-batch indices to real indices, if used
         self.batch_to_idx: Optional[list[list[int]]] = None
@@ -106,6 +109,10 @@ class BaseMongoDataset(Dataset):
 
         # preload indicator
         self._preload_done = False
+
+        # cache stuff (for speeding up multiprocess loading)
+        self._cache_path = self.cache_dir.joinpath(self.settings.query_hash).with_suffix(".df")
+        self._cache_compression = {"method": "zstd", "level": 3, "threads": -1}
 
     def __len__(self):
         if self.samples is not None:
@@ -165,17 +172,46 @@ class BaseMongoDataset(Dataset):
                 case _:
                     raise ValueError(f"Unsupported filesystem type '{self.fs_type}'")
 
+    def _maybe_load_cache(self) -> bool:
+        if not self._cache_path.is_file():
+            return False
+        try:
+            self.samples = pd.read_pickle(
+                self._cache_path, compression={"method": self._cache_compression["method"]}
+            )
+            logger.info(f"Loaded metadata cache from {self._cache_path}")
+            return True
+        except Exception:
+            logger.warning(f"Could not load cache from {self._cache_path}, will load as normal")
+            return False
+
+    def _save_cache(self):
+        if not isinstance(self.samples, pd.DataFrame) or len(self.samples) == 0:
+            raise ValueError("Can't save cache when we don't have any samples yet!")
+        if self._cache_path.exists():
+            logger.debug(f"Found dataset cache at {self._cache_path}, not overwriting")
+            return
+        # save cache
+        logger.info(f"Saving dataset query cache to {self._cache_path}")
+        self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.samples.to_pickle(self._cache_path, compression=self._cache_compression)
+
     def preload(self):
         self.refresh_clients()
+        if self._preload_done:
+            return
 
         if not isinstance(self.samples, pd.DataFrame) or len(self.samples) == 0:
-            logger.info(f"Loading metadata for {self.query_count} documents, this may take a while...")
-            self.samples: pd.DataFrame = find_pandas_all(
-                self.collection,
-                query=dict(self.settings.query.filter),
-                schema=self.pma_schema,
-                **self.settings.query.kwargs,
-            )
+            if not self._maybe_load_cache():
+                logger.info(f"Loading metadata for {self.query_count} documents, this may take a while...")
+                self.samples: pd.DataFrame = find_pandas_all(
+                    self.collection,
+                    query=dict(self.settings.query.filter),
+                    schema=self.pma_schema,
+                    **self.settings.query.kwargs,
+                )
+                self._save_cache()
+
             if self.reverse is True:
                 self.samples = self.samples[::-1].reset_index(drop=True)
             if self.shuffle is True:

@@ -1,5 +1,6 @@
 import logging
 from functools import cached_property
+from hashlib import sha1
 from os import PathLike
 from pathlib import Path
 from typing import Any, Optional
@@ -100,6 +101,12 @@ class MongoSettings(BaseSettings):
             aggr.insert(-2, {"$limit": self.query.limit})
         count = self.collection.aggregate(aggr).next()["count"]
         return count
+
+    @computed_field
+    @cached_property
+    def query_hash(self) -> str:
+        q_json = self.query.model_dump_json().encode("utf-8")
+        return sha1(q_json).hexdigest().lower()
 
     def new_client(self) -> MongoClient:
         # parse the query string for extra kwargs to pass to MongoClient

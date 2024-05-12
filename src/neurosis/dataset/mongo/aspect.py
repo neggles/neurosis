@@ -64,6 +64,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
+        skip_preload: bool = False,
         **kwargs,
     ):
         self.image_key = image_key
@@ -107,10 +108,9 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             **kwargs,
         )
 
-        self.preload()
         self.batch_to_idx: Optional[list[list[int]]] = None
-        if batch_size > 1:
-            self.batch_to_idx = list(self.get_batch_iterator())
+        if not skip_preload:
+            self.preload()
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         if self._first_getitem:
@@ -134,6 +134,11 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
     def preload(self):
         # call the superclasses' preload method
         super().preload()
+
+        # make batch_to_idx happen
+        if self.batch_size > 1:
+            self.batch_to_idx = list(self.get_batch_iterator())
+
         # assign aspect ratios to buckets
         self.assign_aspect()
 
@@ -258,8 +263,10 @@ class MongoAspectModule(LightningDataModule):
         pin_memory: bool = False,
         drop_last: bool = True,
         extra_loader_kwargs: dict = {},
+        cache_dir: Optional[PathLike] = None,
     ):
         super().__init__()
+        self.prepare_data_per_node = True
         self.mongo_settings = get_mongo_settings(config_path)
 
         self.dataset = MongoAspectDataset(
@@ -285,6 +292,8 @@ class MongoAspectModule(LightningDataModule):
             pma_schema=pma_schema,
             retries=retries,
             retry_delay=retry_delay,
+            cache_dir=cache_dir,
+            skip_preload=True,
         )
 
         self.num_workers = num_workers
@@ -300,14 +309,15 @@ class MongoAspectModule(LightningDataModule):
         return self.dataset.batch_size
 
     def prepare_data(self) -> None:
-        pass
+        self.dataset.preload()  # runs on local rank 0 to cache metadata
 
     def setup(self, stage: str):
+        self.dataset.preload()  # runs on all ranks
         if self.sampler is None:
-            logger.info("Generating sampler")
+            logger.info("Generating distributed sampler")
             self.sampler = AspectDistributedSampler(self.dataset)
 
-        logger.info(f"Refreshing dataset clients for {stage}")
+        logger.debug(f"Refreshing dataset clients for {stage}")
         self.dataset.refresh_clients()
 
     def train_dataloader(self):

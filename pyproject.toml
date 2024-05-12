@@ -79,6 +79,7 @@ vae = [
 mongo = [
   "pyarrow >= 13.0.0, < 14.0.0",
   "pymongoarrow >= 1.1.0, < 1.2.0",
+  "zstandard >= 0.22.0",
 ]
 multinode = [
   'torchelastic >= 0.2.2, < 0.3.0',

@@ -41,6 +41,7 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
         pma_schema: Optional[Schema] = None,
         retries: int = 3,
         retry_delay: int = 5,
+        skip_preload: bool = False,
         **kwargs,
     ):
         self.image_key = image_key
@@ -79,7 +80,8 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
         else:
             self.img_load_fn = pil_crop_square
 
-        self.preload()
+        if not skip_preload:
+            self.preload()
 
     def __getitem__(self, index: int) -> SampleType:
         if self._first_getitem:
@@ -126,6 +128,7 @@ class MongoVAEModule(LightningDataModule):
         drop_last: bool = True,
     ):
         super().__init__()
+        self.prepare_data_per_node = True
         self.mongo_settings = get_mongo_settings(config_path)
 
         self.dataset = MongoVAEDataset(
@@ -145,6 +148,7 @@ class MongoVAEModule(LightningDataModule):
             pma_schema=pma_schema,
             retries=retries,
             retry_delay=retry_delay,
+            skip_preload=True,
         )
 
         self.num_workers = num_workers
@@ -157,9 +161,10 @@ class MongoVAEModule(LightningDataModule):
         return self.dataset.batch_size
 
     def prepare_data(self) -> None:
-        pass
+        self.dataset.preload()  # runs on local rank 0 to cache metadata
 
     def setup(self, stage: str):
+        self.dataset.preload()  # runs on all ranks
         logger.debug(f"Refreshing dataset clients for {stage}")
         self.dataset.refresh_clients()
 
