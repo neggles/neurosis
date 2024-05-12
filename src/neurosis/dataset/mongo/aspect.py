@@ -135,10 +135,6 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
         # call the superclasses' preload method
         super().preload()
 
-        # make batch_to_idx happen
-        if self.batch_size > 1:
-            self.batch_to_idx = list(self.get_batch_iterator())
-
         # assign aspect ratios to buckets
         self.assign_aspect()
 
@@ -154,6 +150,10 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
         if modified is True:
             self._bucket2idx = None
             self._idx2bucket = None
+
+        # make batch_to_idx happen
+        if self.batch_size > 1:
+            self.batch_to_idx = list(self.get_batch_iterator())
 
         logger.debug("Preload complete!")
         maybe_collect()
