@@ -90,6 +90,12 @@ all = [
   "neurosis[multinode]",
   "neurosis[vae]",
 ]
+novae = [
+  "neurosis[dev]",
+  "neurosis[extra]",
+  "neurosis[mongo]",
+  "neurosis[multinode]",
+]
 
 [project.scripts]
 neurosis = "neurosis.trainer.cli:main"
