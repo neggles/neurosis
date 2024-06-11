@@ -149,8 +149,8 @@ class DiffusionEngine(L.LightningModule):
         self.vae_encoder = model.encoder
         self.vae_decoder = model.decoder
         if not isinstance(model, FSDPAutoencoderKL):
-            self.vae_encoder.quant_conv.load_state_dict(model.quant_conv)
-            self.vae_decoder.post_quant_conv.load_state_dict(model.post_quant_conv)
+            self.vae_encoder.quant_conv.load_state_dict(model.quant_conv.state_dict())
+            self.vae_decoder.post_quant_conv.load_state_dict(model.post_quant_conv.state_dict())
         del model
 
         if compile:
