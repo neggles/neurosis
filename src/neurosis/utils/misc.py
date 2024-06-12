@@ -9,6 +9,7 @@ import torch
 from neurosis import is_debug
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 # https://github.com/python/cpython/issues/98363
@@ -95,13 +96,13 @@ def silence_hf_load_warnings():
 
 def str_to_dtype(dtype: str) -> torch.dtype:
     match dtype:
-        case "float32":
+        case "float32" | "fp32" | "f32":
             return torch.float32
-        case "float16":
+        case "float16" | "fp16" | "f16":
             return torch.float16
-        case "bfloat16":
+        case "bfloat16" | "bf16":
             return torch.bfloat16
-        case "float64":
+        case "float64" | "fp64":
             return torch.float64
         case _:
             if torch_dtype := getattr(torch, dtype, None):
