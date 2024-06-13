@@ -10,6 +10,7 @@ except ImportError:
 from functools import lru_cache
 from os import getenv
 from pathlib import Path
+from warnings import filterwarnings
 
 import pandas as pd
 from einops._torch_specific import allow_ops_in_compiled_graph
@@ -58,3 +59,7 @@ def get_dir(dirname: str = "data") -> Path:
         dirpath = Path.cwd().joinpath(dirname)
     dirpath.mkdir(parents=True, exist_ok=True)
     return dirpath.absolute()
+
+
+# shut
+filterwarnings("ignore", category=FutureWarning, message="`Transformer2DModelOutput` is deprecated")
