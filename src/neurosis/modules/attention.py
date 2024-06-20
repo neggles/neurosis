@@ -23,7 +23,7 @@ try:
     XFORMERS_VER = version.parse(xformers_version)
 except ImportError:
     XFORMERS_IS_AVAILABLE = False
-    logger.warn("xformers is not available, proceeding without it")
+    logger.debug("xformers is not available, proceeding without it")
 
 BACKEND_MAP = {
     SDPBackend.MATH: {

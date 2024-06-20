@@ -24,7 +24,7 @@ except ImportError:
     XFORMERS_IS_AVAILABLE = False
 
     xops = None
-    logger.info("xformers is not available, proceeding without it")
+    logger.debug("xformers is not available, proceeding without it")
 
 
 def get_timestep_embedding(timesteps: Tensor, embedding_dim: int) -> Tensor:
