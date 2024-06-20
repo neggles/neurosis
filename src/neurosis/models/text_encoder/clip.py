@@ -9,6 +9,7 @@ from einops import rearrange, repeat
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 from transformers import CLIPTextModel, CLIPTokenizer
+from transformers.models.clip import CLIPTextConfig
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.tokenization_utils import BatchEncoding
 
@@ -36,6 +37,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         layer_idx: Optional[int] = None,
         always_return_pooled: bool = False,
         extended_chunks: int = 0,
+        load_pretrained: bool = False,
         **kwargs,
     ):
         # clip-vit-base-patch32
@@ -45,7 +47,14 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
 
         self.tokenizer: CLIPTokenizer = CLIPTokenizer.from_pretrained(version)
         with silence_hf_load_warnings():
-            self.transformer: CLIPTextModel = CLIPTextModel.from_pretrained(version)
+            if load_pretrained:
+                logger.debug(f"Loading pretrained model weights from {version}")
+                self.transformer: CLIPTextModel = CLIPTextModel.from_pretrained(version)
+            else:
+                logger.debug(f"Loading CLIP config from {version} but skipping weights")
+                clip_config = CLIPTextConfig.from_pretrained(version)
+                self.transformer: CLIPTextModel = CLIPTextModel(clip_config)
+
         self.device = device
         self.max_length = max_length
         if freeze:
