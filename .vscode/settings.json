@@ -18,6 +18,12 @@
         "**/__pycache__": true,
         "**/*.egg-info": true
     },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/*.code-search": true,
+        "data/**": true
+    },
 
     "[shellscript]": {
         "files.eol": "\n",
