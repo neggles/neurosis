@@ -3,6 +3,7 @@ from abc import abstractmethod
 from io import BytesIO
 from os import PathLike, getenv, getpid
 from pathlib import Path
+from socket import getaddrinfo, gethostname
 from time import sleep
 from typing import Literal, Optional, Sequence
 
@@ -31,6 +32,12 @@ def mongo_worker_init(worker_id: int = -1):
     clear_fsspec()
     set_s3fs_opts()
 
+
+def get_node_name():
+    node_name = getenv("SLURMD_NODENAME")
+    if not node_name:
+        node_name = gethostname()
+    return node_name
 
 class BaseMongoDataset(Dataset):
     def __init__(
@@ -111,7 +118,7 @@ class BaseMongoDataset(Dataset):
         self._preload_done = False
 
         # cache stuff (for speeding up multiprocess loading)
-        self._cache_path = self.cache_dir.joinpath(self.settings.query_hash).with_suffix(".df")
+        self._cache_path = self.cache_dir.joinpath(f'{self.settings.query_hash}.{get_node_name()}').with_suffix(".df")
         self._cache_compression = {"method": "zstd", "level": 3, "threads": -1}
 
     def __len__(self):
