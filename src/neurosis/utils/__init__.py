@@ -23,7 +23,13 @@ from .sgm import (
     mean_flat,
 )
 from .system import (
+    get_next_dir,
+    get_node_name,
+    get_rank,
+    get_rank_str,
     maybe_collect,
+    prepend_node_name,
+    prepend_rank,
 )
 from .text import (
     np_text_decode,
@@ -43,6 +49,10 @@ __all__ = [
     "expand_dims_like",
     "extract_into_tensor",
     "get_nested_attribute",
+    "get_next_dir",
+    "get_node_name",
+    "get_rank_str",
+    "get_rank",
     "get_string_from_tuple",
     "is_power_of_two",
     "isheatmap",
@@ -59,6 +69,8 @@ __all__ = [
     "ndimage_to_u8_norm",
     "ndimage_to_u8",
     "np_text_decode",
+    "prepend_node_name",
+    "prepend_rank",
     "scale_module",
     "silence_hf_load_warnings",
     "timestep_embedding",

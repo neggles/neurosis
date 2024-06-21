@@ -3,7 +3,6 @@ from abc import abstractmethod
 from io import BytesIO
 from os import PathLike, getenv, getpid
 from pathlib import Path
-from socket import getaddrinfo, gethostname
 from time import sleep
 from typing import Literal, Optional, Sequence
 
@@ -21,7 +20,7 @@ from neurosis.dataset.base import BatchType, FilesystemType, SampleType
 from neurosis.dataset.mongo.settings import MongoSettings
 from neurosis.dataset.processing.transform import DataTransform
 from neurosis.dataset.utils import clear_fsspec, set_s3fs_opts
-from neurosis.utils import maybe_collect
+from neurosis.utils import get_node_name, maybe_collect
 from neurosis.utils.image import pil_ensure_rgb
 
 logger = logging.getLogger(__name__)
@@ -32,12 +31,6 @@ def mongo_worker_init(worker_id: int = -1):
     clear_fsspec()
     set_s3fs_opts()
 
-
-def get_node_name():
-    node_name = getenv("SLURMD_NODENAME")
-    if not node_name:
-        node_name = gethostname()
-    return node_name
 
 class BaseMongoDataset(Dataset):
     def __init__(
@@ -118,7 +111,9 @@ class BaseMongoDataset(Dataset):
         self._preload_done = False
 
         # cache stuff (for speeding up multiprocess loading)
-        self._cache_path = self.cache_dir.joinpath(f'{self.settings.query_hash}.{get_node_name()}').with_suffix(".df")
+        self._cache_path = self.cache_dir.joinpath(
+            f"{self.settings.query_hash}.{get_node_name()}"
+        ).with_suffix(".df")
         self._cache_compression = {"method": "zstd", "level": 3, "threads": -1}
 
     def __len__(self):
