@@ -10,10 +10,14 @@ import wandb
 from lightning.pytorch import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from PIL import Image
-from torch import Tensor
+from torch import (
+    Tensor,
+    distributed as dist,
+)
 
 from neurosis.trainer.common import BatchDictType, LogDictType, StepType
 from neurosis.utils.image import CaptionGrid, is_image_tensor, label_batch, numpy_to_pil, pt_to_pil
+from neurosis.utils.system import get_rank_str
 from neurosis.utils.text import np_text_decode
 
 logger = logging.getLogger(__name__)
@@ -37,6 +41,7 @@ class ImageLogger(Callback):
         accumulate_grad_batches: int = 1,
         label_img: bool = False,
         wandb_log_table: bool = False,
+        rank_zero_only: bool = False,
     ):
         super().__init__()
         self.every_n_train_steps = every_n_train_steps
@@ -48,6 +53,7 @@ class ImageLogger(Callback):
         self.enabled = enabled
         self.label_img = label_img
         self.wandb_log_table = wandb_log_table
+        self.rank_zero_only = rank_zero_only
 
         if self.max_images < 1 and self.enabled:
             raise ValueError("max_images must be >= 1 if disable=False")
@@ -171,10 +177,16 @@ class ImageLogger(Callback):
         pl_module: Optional[LightningModule] = None,
         trainer: Optional[Trainer] = None,
     ):
+        if self.rank_zero_only and dist.get_rank() > 0:
+            return
+
         save_dir = self.local_dir(trainer).joinpath("images", split)
         save_dir.mkdir(exist_ok=True, parents=True)
 
-        fstem = f"gs{step:06d}_e{epoch:06d}_b{batch_idx:06d}"
+        # work out the filename stem to use
+        fstem = f"gs{step:06d}_e{epoch:04d}_b{batch_idx:06d}"
+        if rank := get_rank_str() is not None:
+            fstem += f"_r{rank}"  # so we don't collide with other ranks
         title = fstem.replace("-", "").replace("_", " ").upper()
 
         # apply range scaling and clamping to images
