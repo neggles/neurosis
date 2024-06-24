@@ -196,7 +196,10 @@ class BaseMongoDataset(Dataset):
         # save cache
         logger.info(f"Saving dataset query cache to {self._cache_path}")
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.samples.to_pickle(self._cache_path, compression=self._cache_compression)
+        try:
+            self.samples.to_pickle(self._cache_path, compression=self._cache_compression)
+        except Exception:
+            logger.exception(f"Failed to save cache to {self._cache_path}, continuing...")
 
     def preload(self):
         self.refresh_clients()
