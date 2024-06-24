@@ -254,7 +254,10 @@ class ImageLogger(Callback):
                     if self.label_img:
                         val = label_batch(val, step, copy=True)
                     for idx, img in enumerate(val):
-                        img.save(save_dir / f"{fstem}_{k.replace('/', '_')}_{idx:02d}.png")
+                        try:
+                            img.save(save_dir / f"{fstem}_{k.replace('/', '_')}_{idx:02d}.png")
+                        except Exception:
+                            logger.exception(f"Failed to save {k} step {step} image {idx}, continuing")
                     add_to_both(f"{split}/{k}", [wandb.Image(x) for x in images[k]])
 
             except Exception:
