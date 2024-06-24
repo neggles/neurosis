@@ -51,16 +51,27 @@ def save_safetensors(
     path: PathLike,
     state_dict: OrderedDict,
     metadata: Optional[dict[str, str]] = None,
+    temp_dir: Optional[PathLike] = None,
 ) -> None:
     path = Path(path).resolve()
+    save_path = Path(temp_dir).resolve().joinpath(path.name) if temp_dir else path
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+
     try:
-        save_file(state_dict, path, metadata)
+        save_file(state_dict, save_path, metadata)
     except Exception as e:
         print(f"Failed to save SafeTensors checkpoint with metadata to {path}: {e}")
         print(f"Metadata was: {metadata}")
         print("Trying without metadata...")
-        save_file(state_dict, path)
+        save_file(state_dict, save_path)
         raise RuntimeError("Failed to save SafeTensors checkpoint metadata!") from e
+
+    if temp_dir:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with save_path.open("rb") as f:
+            with path.open("wb") as out_f:
+                out_f.write(f.read())
+        save_path.unlink()
 
     print(f"SafeTensors checkpoint saved to {path}")
 
@@ -125,6 +136,13 @@ def main(
             help="Include metadata in the SafeTensors checkpoint",
         ),
     ] = False,
+    temp_dir: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--temp-dir",
+            help="Temporary directory to use for saving the SafeTensors checkpoint before moving to the final location",
+        ),
+    ] = None,
 ):
     if fp16 and fp32:
         raise ValueError("Cannot cast to both FP16 and FP32 at the same time!")
@@ -166,7 +184,7 @@ def main(
 
     # save the SafeTensors checkpoint
     typer.echo("Saving SafeTensors checkpoint...")
-    save_safetensors(out_path, state_dict, metadata if with_metadata else None)
+    save_safetensors(out_path, state_dict, metadata if with_metadata else None, temp_dir=temp_dir)
 
     typer.echo("Done!")
     raise typer.Exit(0)
