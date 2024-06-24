@@ -41,7 +41,7 @@ class ImageLogger(Callback):
         accumulate_grad_batches: int = 1,
         label_img: bool = False,
         wandb_log_table: bool = False,
-        rank_zero_only: bool = False,
+        rank_zero_only: bool = True,
     ):
         super().__init__()
         self.every_n_train_steps = every_n_train_steps
