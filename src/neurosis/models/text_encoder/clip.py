@@ -9,8 +9,8 @@ from einops import rearrange, repeat
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 from transformers import CLIPTextModel, CLIPTokenizer
-from transformers.models.clip import CLIPTextConfig
 from transformers.modeling_outputs import BaseModelOutputWithPooling
+from transformers.models.clip import CLIPTextConfig
 from transformers.tokenization_utils import BatchEncoding
 
 from neurosis.modules.encoders.embedding import AbstractEmbModel
@@ -57,7 +57,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
 
         self.device = device
         self.max_length = max_length
-        if freeze:
+        if not self.is_trainable:
             self.freeze()
 
         self.layer = layer
@@ -216,7 +216,6 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         version: Optional[str] = "laion2b_s39b_b160k",
         device: Union[str, torch.device] = "cuda",
         max_length: int = 77,
-        freeze: bool = True,
         layer: str = "last",
         always_return_pooled: bool = False,
         legacy: bool = False,
@@ -229,9 +228,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
 
         with silence_hf_load_warnings():
             model, _, _ = open_clip.create_model_and_transforms(
-                arch,
-                device=torch.device("cpu"),
-                pretrained=version,
+                arch, device=torch.device("cpu"), pretrained=version
             )
         del model.visual
         self.model: open_clip.CLIP = model
@@ -244,7 +241,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
 
         self.device = torch.device(device)
         self.max_length = max_length
-        if freeze:
+        if not self.is_trainable:
             self.freeze()
 
         self.layer = layer
