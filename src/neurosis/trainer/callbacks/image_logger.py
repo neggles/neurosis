@@ -185,7 +185,7 @@ class ImageLogger(Callback):
 
         # work out the filename stem to use
         fstem = f"gs{step:06d}_e{epoch:04d}_b{batch_idx:06d}"
-        if rank := get_rank_str() is not None:
+        if rank := get_rank_str():
             fstem += f"_r{rank}"  # so we don't collide with other ranks
         title = fstem.replace("-", "").replace("_", " ").upper()
 
