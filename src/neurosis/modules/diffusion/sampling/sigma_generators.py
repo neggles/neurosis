@@ -95,13 +95,15 @@ class TanScheduleSigmaGenerator(SigmaGenerator):
         self,
         start_shift: float = 0.001,
         end_shift: float = 0.001,
+        scale: float = 1.0,
         clip: bool = True,
     ):
         self.start_shift = start_shift
         self.end_shift = end_shift
+        self.scale = scale
         self.clip = clip
 
-    def __call__(self, n_samples: int, rand=None):
+    def __call__(self, n_samples: int, rand: Optional[Tensor] = None):
         if rand is not None:
             rand = rand.to(torch.float64)
         else:
@@ -114,7 +116,7 @@ class TanScheduleSigmaGenerator(SigmaGenerator):
 
             half_pi_t = half_pi_t.clip(lower_bound, upper_bound)
 
-        return torch.tan(half_pi_t).to(torch.float32)
+        return torch.tan(half_pi_t).mul(self.scale).to(torch.float32)
 
 
 class RectifiedFlowSigmaGenerator(SigmaGenerator):
