@@ -1,5 +1,5 @@
 import logging
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from functools import partial
 from typing import Optional
 
@@ -80,7 +80,11 @@ class GeneralConditioner(nn.Module):
 
         self.embedders: list[AbstractEmbModel] = nn.ModuleList(embedders)
 
-    def forward(self, batch: dict, force_zero_embeddings: Optional[list] = None) -> dict:
+    def forward(
+        self,
+        batch: dict[str, Tensor | str | np.bytes_, np.ndarray],
+        force_zero_embeddings: Optional[list] = None,
+    ) -> dict:
         output = dict()
         if force_zero_embeddings is None:
             force_zero_embeddings = []
@@ -120,11 +124,33 @@ class GeneralConditioner(nn.Module):
                 out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
                 if hasattr(embedder, "input_key") and embedder.input_key in force_zero_embeddings:
                     emb = torch.zeros_like(emb)
+                elif embedder.ucg_rate > 0.0:
+                    emb = emb.mul(
+                        torch.bernoulli(
+                            torch.full((emb.shape[0],), 1.0 - embedder.ucg_rate, device=emb.device)
+                        ).reshape((-1,) + (1,) * (emb.dim() - 1))
+                    )
+
                 if out_key in output:
                     output[out_key] = torch.cat((output[out_key], emb), self.KEY2CATDIM[out_key])
                 else:
                     output[out_key] = emb
         return output
+
+    @contextmanager
+    def zero_ucg(self):
+        rates = []
+        shared_ucg = self.shared_ucg
+        self.shared_ucg = 0.0
+        for embedder in self.embedders:
+            rates.append(embedder.ucg_rate)
+            embedder.ucg_rate = 0.0
+        try:
+            yield None
+        finally:
+            self.shared_ucg = shared_ucg
+            for embedder, rate in zip(self.embedders, rates):
+                embedder.ucg_rate = rate
 
     def get_unconditional_conditioning(
         self,
@@ -136,19 +162,13 @@ class GeneralConditioner(nn.Module):
         if force_uc_zero_embeddings is None:
             force_uc_zero_embeddings = []
 
-        ucg_rates = [x.ucg_rate for x in self.embedders]
-        for embedder in self.embedders:
-            embedder.ucg_rate = 0.0
+        with self.zero_ucg():
+            c = self(batch_c, force_zero_embeddings=force_cond_zero_embeddings)
+            if batch_uc is None:
+                batch_uc = batch_c.copy()
+                batch_uc["caption"] = ([""] * len(batch_c["caption"])) if "caption" in batch_c else [""]
+            uc = self(batch_uc, force_zero_embeddings=force_uc_zero_embeddings)
 
-        c = self(batch_c, force_zero_embeddings=force_cond_zero_embeddings)
-        if batch_uc is None:
-            batch_uc = batch_c.copy()
-            batch_uc["caption"] = ([""] * len(batch_c["caption"])) if "caption" in batch_c else [""]
-
-        uc = self(batch_uc, force_zero_embeddings=force_uc_zero_embeddings)
-
-        for embedder, rate in zip(self.embedders, ucg_rates):
-            embedder.ucg_rate = rate
         return c, uc
 
 
