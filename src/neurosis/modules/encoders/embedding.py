@@ -105,7 +105,10 @@ class GeneralConditioner(nn.Module):
                         inputs = torch.tensor(
                             inputs, device=batch["image"].device, dtype=batch["image"].dtype
                         )
-                    emb_out = embedder(inputs)
+                    if embedder.input_key == "caption" and embedder.ucg_rate > 0.0:
+                        if torch.rand(1, device="cpu") < embedder.ucg_rate:
+                            inputs = [""] * len(inputs)
+                        emb_out = embedder(inputs)
 
                 elif getattr(embedder, "input_keys", None) is not None:
                     inputs = [batch[k] for k in embedder.input_keys]
@@ -124,7 +127,7 @@ class GeneralConditioner(nn.Module):
                 out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
                 if hasattr(embedder, "input_key") and embedder.input_key in force_zero_embeddings:
                     emb = torch.zeros_like(emb)
-                elif embedder.ucg_rate > 0.0:
+                elif embedder.ucg_rate > 0.0 and embedder.input_key != "caption":
                     emb = emb.mul(
                         torch.bernoulli(
                             torch.full((emb.shape[0],), 1.0 - embedder.ucg_rate, device=emb.device)
