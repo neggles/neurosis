@@ -6,8 +6,9 @@ from torch import Tensor
 
 from neurosis.modules.diffusion import Timestep
 from neurosis.modules.diffusion.model import Encoder
-from neurosis.modules.encoders.embedding import AbstractEmbModel
 from neurosis.modules.regularizers import DiagonalGaussianRegularizer
+
+from .embedding import AbstractEmbModel
 
 
 class ConcatTimestepEmbedderND(AbstractEmbModel):
