@@ -107,17 +107,18 @@ class RectifiedFlowComfyDiscretization(Discretization):
 
 
 class TanZeroSNRDiscretization(Discretization):
-    def __init__(self, start_shift: float = 0.001, end_shift: float = 0.001):
+    def __init__(self, start_shift: float = 0.001, end_shift: float = 0.001, scale: float = 1.0):
         super().__init__()
         self.start_shift = start_shift
         self.end_shift = end_shift
+        self.scale = scale
 
     def get_sigmas(self, n: int, device: str | torch.device = "cpu") -> Tensor:
         # these calcs need to be float64 or they'll overflow in intermediate steps
         half_pi_t = torch.acos(torch.zeros(1, dtype=torch.float64))[0]
         sigmas = torch.tan(
             torch.linspace(self.start_shift, half_pi_t - self.end_shift, n, dtype=torch.float64)
-        ).to(torch.float32)
+        ).mul(self.scale)
 
         # return flipped so largest sigma is first and cast to float32
         return sigmas.flip(0).to(device, dtype=torch.float32)
