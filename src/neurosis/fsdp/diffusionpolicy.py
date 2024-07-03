@@ -22,16 +22,13 @@ from neurosis.models.text_encoder import (
     FrozenOpenCLIPEmbedder2,
     FrozenT5Embedder,
 )
-from neurosis.modules.diffusion.model import (
-    Decoder,
-    Encoder,
-)
+from neurosis.modules.diffusion.model import Decoder, Encoder
 from neurosis.modules.diffusion.openaimodel import (
     SpatialTransformer,
     TimestepEmbedSequential,
     UNetModel,
 )
-from neurosis.modules.encoders.embedding import GeneralConditioner
+from neurosis.modules.encoders import GeneralConditioner
 from neurosis.utils.misc import str_to_dtype
 
 if TYPE_CHECKING:

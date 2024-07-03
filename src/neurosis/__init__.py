@@ -29,7 +29,6 @@ is_debug = getenv("NEUROSIS_DEBUG", None) is not None
 if is_debug is True:
     is_debug = getenv("NEUROSIS_DEBUG").lower() not in ("0", "false", "no")
 
-is_torchrun = getenv("TORCHELASTIC_RUN_ID", None) is not None
 local_rank = int(getenv("LOCAL_RANK", "0"))
 
 _ = _install_traceback(show_locals=is_debug, width=120, word_wrap=True)
