@@ -79,6 +79,7 @@ class GeneralConditioner(nn.Module):
             raise ValueError("no embedders were added! what is my purpose? why am I here? check your config!")
 
         self.embedders: list[AbstractEmbModel] = nn.ModuleList(embedders)
+        self.rng = np.random.default_rng()
 
     def forward(
         self,
@@ -105,10 +106,13 @@ class GeneralConditioner(nn.Module):
                         inputs = torch.tensor(
                             inputs, device=batch["image"].device, dtype=batch["image"].dtype
                         )
-                    if embedder.input_key == "caption" and embedder.ucg_rate > 0.0:
-                        if torch.rand(1, device="cpu") < embedder.ucg_rate:
-                            inputs = [""] * len(inputs)
-                        emb_out = embedder(inputs)
+
+                    if embedder.ucg_rate and embedder.input_key == "caption":
+                        for idx in range(len(inputs)):
+                            if self.rng.random() < embedder.ucg_rate and isinstance(inputs[idx], str):
+                                inputs[idx] = ""
+
+                    emb_out = embedder(inputs)
 
                 elif getattr(embedder, "input_keys", None) is not None:
                     inputs = [batch[k] for k in embedder.input_keys]
