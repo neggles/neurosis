@@ -24,22 +24,6 @@ def disabled_train(self: M, mode: bool = True) -> M:
     return self
 
 
-def get_string_from_tuple(s: str):
-    try:
-        # Check if the string starts and ends with parentheses
-        if s[0] == "(" and s[-1] == ")":
-            # Convert the string to a tuple
-            t = eval(s)
-            # Check if the type of t is tuple
-            if type(t) == tuple:
-                return t[0]
-            else:
-                pass
-    except Exception:
-        pass
-    return s
-
-
 def is_power_of_two(n) -> bool:
     return False if n <= 0 else bool((n & (n - 1)) == 0)
 
