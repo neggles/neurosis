@@ -1,4 +1,5 @@
 import logging
+import signal
 from os import getenv, isatty
 from pathlib import Path
 from typing import Annotated, Optional
@@ -10,6 +11,7 @@ import torch
 import typer
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.cli import ArgsType, LightningArgumentParser, LightningCLI
+from lightning.pytorch.plugins.environments import SLURMEnvironment
 from rich.traceback import install as install_traceback
 
 from neurosis import __version__, console, is_debug
@@ -117,6 +119,15 @@ def main(
         torch.backends.cudnn.allow_tf32 = allow_tf32
         logger.info(f"{'Enabled' if allow_tf32 else 'Disabled'} tf32 in cuDNN")
 
+    plugins = None
+    if getenv("SLURM_JOB_ID", None) and getenv("NEUROSIS_SLURM_SIGTERM", "0").lower() in ("1", "true", "yes"):
+        logger.info("Detected SLURM environment, enabling SIGTERM handler")
+        plugins.append(SLURMEnvironment(requeue_signal=signal.SIGTERM))
+
+    if len(plugins) == 0:
+        # reset to None if empty
+        plugins = None
+
     cli = DiffusionTrainerCli(  # type: ignore
         datamodule_class=None,
         subclass_mode_data=True,
@@ -125,6 +136,7 @@ def main(
         args=args,
         trainer_defaults=dict(
             enable_model_summary=False,
+            plugins=plugins,
         ),
         parser_kwargs=dict(
             default_env=True,
