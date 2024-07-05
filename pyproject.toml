@@ -104,9 +104,6 @@ neurosis = "neurosis.trainer.cli:main"
 build-backend = "setuptools.build_meta"
 requires = ["setuptools>=64", "wheel", "setuptools_scm>=8"]
 
-[tool.setuptools_scm]
-write_to = "src/neurosis/_version.py"
-
 [tool.setuptools.packages.find]
 namespaces = true
 where = ["src"]
@@ -173,6 +170,10 @@ trailing_comma_inline_array = true
 sort_first = [
   "project",
   "build-system",
-  "tool.setuptools-scm",
   "tool.setuptools",
 ]
+
+# needs to be last for CI reasons
+[tool.setuptools_scm]
+write_to = "src/neurosis/_version.py"
+version_scheme = "post-release"

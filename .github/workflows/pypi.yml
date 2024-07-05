@@ -46,6 +46,12 @@ jobs:
 
       - name: Install pypa/build
         run: python3 -m pip install --user build
+
+      - name: Override setuptools-scm to disable local versioning
+        run: |
+          git update-index --assume-unchanged pyproject.toml
+          echo 'local_scheme = "no-local-version"' >> pyproject.toml
+
       - name: Build a binary wheel and a source tarball
         run: python3 -m build -v
 
