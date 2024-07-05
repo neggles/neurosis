@@ -124,7 +124,6 @@ jobs:
       url: https://test.pypi.org/p/neurosis
     permissions:
       id-token: write
-    if: ${{ jobs.publish-to-pypi.outputs.status == 'skipped' }}
     steps:
       - name: Download all the dists
         uses: actions/download-artifact@v3
