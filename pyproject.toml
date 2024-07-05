@@ -77,7 +77,7 @@ vae = [
 ]
 mongo = [
   "pyarrow >= 13.0.0, < 17.0.0",
-  "pymongoarrow >= 1.5.0, < 1.6.0",
+  "pymongoarrow >= 1.4.0, < 1.6.0",
   "zstandard >= 0.22.0",
 ]
 multinode = [
