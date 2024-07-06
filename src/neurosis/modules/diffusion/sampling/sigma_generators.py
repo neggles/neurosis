@@ -111,7 +111,7 @@ class TanScheduleSigmaGenerator(SigmaGenerator):
         half_pi_t = torch.acos(torch.zeros(1, dtype=torch.float64)) * rand
 
         if self.clip:
-            lower_bound = torch.Tensor([self.start_shift]).to(torch.float64)
+            lower_bound = torch.tensor([self.start_shift], dtype=torch.float64)
             upper_bound = torch.acos(torch.zeros(1, dtype=torch.float64)) - self.end_shift
 
             half_pi_t = half_pi_t.clip(lower_bound, upper_bound)
