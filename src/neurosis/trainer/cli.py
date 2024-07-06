@@ -119,7 +119,7 @@ def main(
         torch.backends.cudnn.allow_tf32 = allow_tf32
         logger.info(f"{'Enabled' if allow_tf32 else 'Disabled'} tf32 in cuDNN")
 
-    plugins = None
+    plugins = []
     if getenv("SLURM_JOB_ID", None) and getenv("NEUROSIS_SLURM_SIGTERM", "0").lower() in ("1", "true", "yes"):
         logger.info("Detected SLURM environment, enabling SIGTERM handler")
         plugins.append(SLURMEnvironment(requeue_signal=signal.SIGTERM))
