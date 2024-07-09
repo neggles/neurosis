@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Sequence, Ty
 
 import lightning.pytorch as pl
 import torch
-from clip.model import ResidualAttentionBlock
 from lightning.fabric.plugins import CheckpointIO, ClusterEnvironment
 from lightning.fabric.plugins.collectives.torch_collective import default_pg_timeout
 from lightning.pytorch.plugins.precision import Precision
@@ -13,9 +12,9 @@ from torch.distributed.fsdp import MixedPrecision
 from torch.distributed.fsdp.wrap import ModuleWrapPolicy
 from torch.nn import Module
 from torch.nn.modules.batchnorm import _BatchNorm
-from transformers.models.clip.modeling_clip import CLIPEncoderLayer
+from transformers.models.clip.modeling_clip import CLIPAttention, CLIPEncoderLayer
 
-from neurosis.models.autoencoder import AutoencoderKL
+from neurosis.models.autoencoder import AutoencoderKL, FSDPAutoencoderKL
 from neurosis.models.autoencoder_hf import AutoencoderKL as HFAutoencoderKL
 from neurosis.models.text_encoder import (
     FrozenCLIPEmbedder,
@@ -36,13 +35,15 @@ if TYPE_CHECKING:
 
     _POLICY = Union[set[Type[Module]], Callable[[Module, bool, int], bool], ModuleWrapPolicy]
     _SHARDING_STRATEGY = Union[
-        ShardingStrategy, Literal["FULL_SHARD", "SHARD_GRAD_OP", "NO_SHARD", "HYBRID_SHARD"]
+        ShardingStrategy,
+        Literal["FULL_SHARD", "SHARD_GRAD_OP", "NO_SHARD", "HYBRID_SHARD", "_HYBRID_SHARD_ZERO2"],
     ]
 
 
 class DiffusionFsdpPolicy(ModuleWrapPolicy):
     def __init__(self):
         module_classes = {
+            CLIPAttention,
             CLIPEncoderLayer,
             Decoder,
             Encoder,
@@ -50,7 +51,6 @@ class DiffusionFsdpPolicy(ModuleWrapPolicy):
             FrozenOpenCLIPEmbedder2,
             FrozenT5Embedder,
             GeneralConditioner,
-            ResidualAttentionBlock,
             SpatialTransformer,
             TimestepEmbedSequential,
             UNetModel,
@@ -87,7 +87,7 @@ class SDXLMixedPrecision:
 
         if self.vae_fp32:
             fp32_classes.extend(
-                [AutoencoderKL, Decoder, Encoder, HFAutoencoderKL],
+                [AutoencoderKL, Decoder, Encoder, FSDPAutoencoderKL, HFAutoencoderKL],
             )
 
         fp32_classes = sorted(set(fp32_classes), key=lambda x: x.__name__)
