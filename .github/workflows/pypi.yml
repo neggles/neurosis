@@ -75,7 +75,7 @@ jobs:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          name: python-package-dist-*
+          pattern: python-package-dist-*
           path: dist/
           merge-multiple: true
 
@@ -100,7 +100,7 @@ jobs:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          name: python-package-dist-*
+          pattern: python-package-dist-*
           path: dist/
           merge-multiple: true
 
@@ -119,7 +119,7 @@ jobs:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          name: python-package-dist-*
+          pattern: python-package-dist-*
           path: dist/
           merge-multiple: true
 
