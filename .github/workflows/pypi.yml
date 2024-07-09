@@ -56,9 +56,9 @@ jobs:
         run: python3 -m build -v
 
       - name: Store the distribution packages
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: python-package-distributions
+          name: python-package-dist-${{ matrix.python }}
           path: dist/
 
   publish-to-pypi:
@@ -74,10 +74,12 @@ jobs:
       id-token: write
     steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: python-package-distributions
+          name: python-package-dist-*
           path: dist/
+          merge-multiple: true
+
       - name: Publish distribution 📦 to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
@@ -91,10 +93,11 @@ jobs:
       id-token: write
     steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: python-package-distributions
+          name: python-package-dist-*
           path: dist/
+          merge-multiple: true
 
       - name: Sign the dists with Sigstore
         uses: sigstore/gh-action-sigstore-python@v2.1.1
@@ -125,10 +128,12 @@ jobs:
       id-token: write
     steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: python-package-distributions
+          name: python-package-dist-*
           path: dist/
+          merge-multiple: true
+
       - name: Publish distribution 📦 to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

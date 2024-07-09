@@ -74,9 +74,6 @@ extra = [
   "adlfs >= 2024.4.0",
   "s3fs >= 2024.4.0",
 ]
-vae = [
-  "dreamsim @ git+https://github.com/neggles/dreamsim.git@dev#egg=dreamsim",
-]
 mongo = [
   "pyarrow >= 13.0.0, < 17.0.0",
   "pymongoarrow >= 1.4.0, < 1.6.0",
@@ -109,7 +106,10 @@ requires = ["setuptools>=64", "wheel", "setuptools_scm>=8"]
 [tool.setuptools.packages.find]
 namespaces = true
 where = ["src"]
-include = ["neurosis*"]
+include = [
+  "neurosis*",
+  "dreamsim",
+]
 exclude = ["neurosis.tests*"]
 
 [tool.setuptools.package-data]
