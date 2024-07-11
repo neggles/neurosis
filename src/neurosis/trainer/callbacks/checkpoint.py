@@ -1,7 +1,6 @@
 import logging
 import time
 from datetime import timedelta
-from functools import wraps
 from os import PathLike
 from pathlib import Path
 from typing import Any, Optional
@@ -9,29 +8,12 @@ from weakref import proxy
 
 from huggingface_hub import Repository
 from lightning import LightningModule, Trainer
-from lightning.pytorch.callbacks import Checkpoint, ModelCheckpoint
+from lightning.pytorch.callbacks import Checkpoint
 from lightning.pytorch.utilities import rank_zero_only
 from lightning.pytorch.utilities.exceptions import MisconfigurationException
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 
 logger = logging.getLogger(__name__)
-
-
-@wraps(ModelCheckpoint)
-def get_checkpoint_logger(ckpt_dir: PathLike, monitor: Optional[str] = None) -> ModelCheckpoint:
-    ckpt_dir = Path(ckpt_dir)
-    ckpt_dir.mkdir(exist_ok=True, parents=True)
-    save_top_k = 3 if monitor is not None else 1
-
-    return ModelCheckpoint(
-        repo_id=ckpt_dir,
-        filename="{epoch:06d}-{step:06d}",
-        verbose=True,
-        save_last=True,
-        save_on_train_epoch_end=True,
-        monitor=monitor,
-        save_top_k=save_top_k,
-    )
 
 
 class HFHubCheckpoint(Checkpoint):
