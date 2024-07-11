@@ -10,7 +10,7 @@ from neurosis.modules.diffusion.discretization import Discretization
 
 class SigmaGenerator(ABC):
     @abstractmethod
-    def __call__(self, n_samples: int, rand: Optional[Tensor] = None):
+    def __call__(self, n_samples: int, t: Optional[Tensor] = None):
         raise NotImplementedError("Abstract base class was called ;_;")
 
 
@@ -25,13 +25,13 @@ class EDMSigmaGenerator(SigmaGenerator):
         self.p_std = p_std
         self.scale = scale
 
-    def __call__(self, n_samples: int, rand: Optional[Tensor] = None):
-        if rand is not None:
-            rand = rand.to(torch.float32)
+    def __call__(self, n_samples: int, t: Optional[Tensor] = None):
+        if t is not None:
+            t = t.to(torch.float32)
         else:
-            rand = torch.randn((n_samples,), dtype=torch.float32)
+            t = torch.randn((n_samples,), dtype=torch.float32)
 
-        log_sigma = self.p_mean + (self.p_std * rand)
+        log_sigma = self.p_mean + (self.p_std * t)
         return log_sigma.exp() * self.scale
 
 
@@ -49,9 +49,9 @@ class DiscreteSigmaGenerator(SigmaGenerator):
     def idx_to_sigma(self, idx: int) -> Tensor:
         return self.sigmas[idx]
 
-    def __call__(self, n_samples: int, rand: Optional[Tensor] = None):
-        if rand is not None:
-            idx = torch.clamp(rand.long(), 0, self.num_idx - 1)
+    def __call__(self, n_samples: int, t: Optional[Tensor] = None):
+        if t is not None:
+            idx = torch.clamp(t.long(), 0, self.num_idx - 1)
         else:
             idx = torch.randint(0, self.num_idx, (n_samples,))
         return self.idx_to_sigma(idx)
@@ -103,12 +103,12 @@ class TanScheduleSigmaGenerator(SigmaGenerator):
         self.scale = scale
         self.clip = clip
 
-    def __call__(self, n_samples: int, rand: Optional[Tensor] = None):
-        if rand is not None:
-            rand = rand.to(torch.float64)
+    def __call__(self, n_samples: int, t: Optional[Tensor] = None):
+        if t is not None:
+            t = t.to(torch.float64)
         else:
-            rand = torch.rand((n_samples,), dtype=torch.float64)
-        half_pi_t = torch.acos(torch.zeros(1, dtype=torch.float64)) * rand
+            t = torch.rand((n_samples,), dtype=torch.float64)
+        half_pi_t = torch.acos(torch.zeros(1, dtype=torch.float64)) * t
 
         if self.clip:
             lower_bound = torch.tensor([self.start_shift], dtype=torch.float64)
@@ -130,14 +130,15 @@ class RectifiedFlowSigmaGenerator(SigmaGenerator):
         self.end_shift = end_shift
         self.clip = clip
 
-    def __call__(self, n_samples: int, rand=None):
-        if rand is not None:
-            rand = rand.to(torch.float64)
+    def __call__(self, n_samples: int, t=None):
+        if t is not None:
+            t = t.to(torch.float64)
         else:
-            rand = torch.rand((n_samples,), dtype=torch.float64)
-        t = rand
+            t = torch.rand((n_samples,), dtype=torch.float64)
+
         if self.clip:
             t = t.clip(self.start_shift, 1 - self.end_shift)
+
         sigma = t / (1 - t)
         return sigma.to(torch.float32)
 
@@ -153,13 +154,13 @@ class RectifiedFlowComfySigmaGenerator(SigmaGenerator):
         self.end_shift = end_shift
         self.clip = clip
 
-    def __call__(self, n_samples: int, rand=None):
-        if rand is not None:
-            rand = rand.to(torch.float64)
+    def __call__(self, n_samples: int, t=None):
+        if t is not None:
+            t = t.to(torch.float64)
         else:
-            rand = torch.rand((n_samples,), dtype=torch.float64)
-        t = rand
+            t = torch.rand((n_samples,), dtype=torch.float64)
+
         if self.clip:
             t = t.clip(self.start_shift, 1 - self.end_shift)
-        sigma = t
-        return sigma.to(torch.float32)
+
+        return t.to(torch.float32)

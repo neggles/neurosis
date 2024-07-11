@@ -29,10 +29,6 @@ class DiffusionLoss(ABC, nn.Module):
         self.noise_offset = min(max(noise_offset, 0.0), 1.0)
         self.noise_offset_chance = min(max(noise_offset_chance, 0.0), 1.0)
 
-    @abstractmethod
-    def get_loss(self, outputs: Tensor, target: Tensor, w: Tensor):
-        raise NotImplementedError("Abstract base class was called ;_;")
-
     def apply_noise_offset(self, noise: Tensor, inputs: Tensor) -> Tensor:
         if self.noise_offset <= 0:
             return noise
@@ -50,9 +46,10 @@ class DiffusionLoss(ABC, nn.Module):
         conditioner: GeneralConditioner,
         inputs: Tensor,
         batch: dict,
-    ) -> Tensor:
+        return_dict: bool = False,
+    ) -> Tensor | tuple[Tensor, dict[str, Tensor]]:
         cond = conditioner(batch)
-        return self._forward(network, denoiser, cond, inputs, batch)
+        return self._forward(network, denoiser, cond, inputs, batch, return_dict)
 
     @abstractmethod
     def _forward(
@@ -62,7 +59,12 @@ class DiffusionLoss(ABC, nn.Module):
         cond: dict,
         inputs: Tensor,
         batch: dict[str, Tensor],
-    ) -> Tensor:
+        return_dict: bool = False,
+    ) -> Tensor | tuple[Tensor, dict[str, Tensor]]:
+        raise NotImplementedError("Abstract base class was called ;_;")
+
+    @abstractmethod
+    def get_loss(self, outputs: Tensor, target: Tensor, w: Tensor):
         raise NotImplementedError("Abstract base class was called ;_;")
 
 
@@ -107,11 +109,14 @@ class StandardDiffusionLoss(DiffusionLoss):
         cond: dict,
         inputs: Tensor,
         batch: dict[str, Tensor],
-    ) -> Tensor:
+        return_dict: bool = False,
+    ) -> Tensor | tuple[Tensor, dict[str, Tensor]]:
         # get extra inputs keys
         extra_inputs = {k: batch[k] for k in batch if k in self.input_keys}
+        # gen timestep
+        t = torch.rand((inputs.shape[0],), dtype=torch.float64)
         # get sigmas
-        sigmas = self.sigma_generator(inputs.shape[0]).to(inputs)
+        sigmas = self.sigma_generator(inputs.shape[0], t).to(inputs)
         # get noise
         noise = torch.randn_like(inputs)
         # apply offset
@@ -141,7 +146,8 @@ class StandardDiffusionLoss(DiffusionLoss):
                 loss = self.get_loss(D_output, inputs, weight)
             case _:
                 raise ValueError(f"Unknown objective type: '{self.objective_type}'")
-
+        if return_dict:
+            return loss, {"sigmas": sigmas, "t": t}
         return loss
 
     def get_loss(self, outputs: Tensor, target: Tensor, weight: Tensor):

@@ -56,6 +56,7 @@ class DiffusionEngine(L.LightningModule):
         compile_kwargs: dict = {},
         vae_batch_size: Optional[int] = None,
         forward_hooks: list[LossHook] = [],
+        log_sigmas: bool = False,
     ):
         super().__init__()
         logger.info("Initializing DiffusionEngine")
@@ -83,6 +84,7 @@ class DiffusionEngine(L.LightningModule):
 
         self.loss_fn = loss_fn
         self.forward_hooks = forward_hooks
+        self.log_sigmas = log_sigmas
 
         self.use_ema = use_ema
         if self.use_ema:
@@ -190,8 +192,10 @@ class DiffusionEngine(L.LightningModule):
         z = self.scale_factor * z
         return z
 
-    def forward(self, x: Tensor, batch: dict[str, Tensor]) -> Tensor:
-        loss = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch)
+    def forward(
+        self, x: Tensor, batch: dict[str, Tensor], return_dict: bool = False
+    ) -> Tensor | tuple[Tensor, dict[str, Tensor]]:
+        loss = self.loss_fn(self.model, self.denoiser, self.conditioner, x, batch, return_dict)
         return loss
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int):
@@ -206,10 +210,14 @@ class DiffusionEngine(L.LightningModule):
         # add global step to batch
         batch["global_step"] = self.global_step
         # run the actual step
-        loss = self(latents, batch)
+        if self.log_sigmas:
+            loss, loss_dict = self(latents, batch, return_dict=True)
+            loss_dict = {f"train/{k}": loss_dict[k].detach().clone() for k in loss_dict.keys()}
+        else:
+            loss = self(latents, batch, return_dict=False)
+            loss_dict = {}
 
         # run any post-step hooks
-        loss_dict = {}
         for hook in self.forward_hooks:
             loss, loss_dict = hook(self, batch, loss, loss_dict)
 
