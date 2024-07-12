@@ -49,6 +49,7 @@ class AbstractEmbModel(nn.Module):
         # set requires_grad to False for all parameters
         self.requires_grad_(False)
 
+    @property
     def context(self):
         if self.is_trainable:
             return nullcontext
