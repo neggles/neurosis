@@ -1,5 +1,6 @@
 from .misc import (
     batched,
+    ensure_list,
     ndimage_to_f32,
     ndimage_to_u8,
     ndimage_to_u8_norm,
@@ -45,6 +46,7 @@ __all__ = [
     "conv_nd",
     "count_params",
     "disabled_train",
+    "ensure_list",
     "expand_dims_like",
     "extract_into_tensor",
     "get_nested_attribute",

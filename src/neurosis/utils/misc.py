@@ -12,6 +12,12 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
+def ensure_list(x):
+    if not isinstance(x, list):
+        x = [x]
+    return x
+
+
 # https://github.com/python/cpython/issues/98363
 def batched(iterable: Iterable[T], n: int) -> Generator[List[T], None, None]:
     "Batch data into lists of length n. The last batch may be shorter."
