@@ -216,7 +216,7 @@ class DiffusionEngine(L.LightningModule):
         # run the actual step
         if self.log_sigmas:
             loss, loss_dict = self(latents, batch, return_dict=True)
-            loss_dict = {f"train/{k}": loss_dict[k].detach().clone() for k in loss_dict.keys()}
+            loss_dict = {f"train/{k}": loss_dict[k].detach().mean() for k in loss_dict.keys()}
         else:
             loss = self(latents, batch, return_dict=False)
             loss_dict = {}
@@ -226,7 +226,7 @@ class DiffusionEngine(L.LightningModule):
             loss, loss_dict = hook(self, batch, loss, loss_dict)
 
         # log the adjusted loss
-        loss_dict.update({"train/loss": loss.detach().clone().mean()})
+        loss_dict.update({"train/loss": loss.detach().mean()})
 
         self.log_dict(loss_dict, prog_bar=True, on_step=True, on_epoch=False)
         return loss.mean()
