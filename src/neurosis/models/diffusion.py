@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from math import ceil
 from os import PathLike
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import lightning.pytorch as L
 import numpy as np
@@ -56,6 +56,8 @@ class DiffusionEngine(L.LightningModule):
         compile_kwargs: dict = {},
         vae_batch_size: Optional[int] = None,
         forward_hooks: list[LossHook] = [],
+        wandb_watch: Optional[Literal["gradients", "parameters", "all"]] = None,
+        wandb_watch_steps: int = -1,
         log_sigmas: bool = False,
     ):
         super().__init__()
@@ -84,6 +86,8 @@ class DiffusionEngine(L.LightningModule):
 
         self.loss_fn = loss_fn
         self.forward_hooks = forward_hooks
+        self.wandb_watch = wandb_watch
+        self.wandb_watch_steps = wandb_watch_steps
         self.log_sigmas = log_sigmas
 
         self.use_ema = use_ema
@@ -230,6 +234,9 @@ class DiffusionEngine(L.LightningModule):
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
             raise ValueError("Sampler and loss function need to be set for training.")
+        if self.wandb_watch_steps > 0:
+            for wandb_logger in [x for x in self.trainer.loggers if isinstance(x, WandbLogger)]:
+                wandb_logger.watch(self.model, log=self.wandb_watch or "all", log_freq=self.wandb_watch_steps)
 
     def on_train_batch_end(self, *args, **kwargs):
         if self.use_ema:

@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from itertools import chain
 from os import PathLike
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Literal, Optional
 from warnings import filterwarnings
 
 import torch
@@ -34,7 +34,8 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         input_key: str = "image",
         only_train_decoder: bool = False,
         diff_boost_factor: float = 3.0,
-        wandb_watch: int = -1,
+        wandb_watch: Optional[Literal["gradients", "parameters", "all"]] = None,
+        wandb_watch_steps: int = -1,
         ema_decay: Optional[float] = None,
         ema_steps: int = -1,
         ema_kwargs: dict = {},
@@ -53,6 +54,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         self.only_train_decoder = only_train_decoder
         self.diff_boost_factor = diff_boost_factor
         self.wandb_watch = wandb_watch
+        self.wandb_watch_steps = wandb_watch_steps
 
         self.loss: AutoencoderLoss = loss
 
@@ -149,9 +151,9 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         return self.vae(sample, sample_posterior, return_dict, generator)
 
     def on_train_start(self):
-        if self.wandb_watch > 0:
+        if self.wandb_watch_steps > 0:
             for wandb_logger in [x for x in self.trainer.loggers if isinstance(x, WandbLogger)]:
-                wandb_logger.watch(self.vae, log="all", log_freq=self.wandb_watch)
+                wandb_logger.watch(self.vae, log=self.wandb_watch or "all", log_freq=self.wandb_watch_steps)
 
     def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor:
         inputs: Tensor = self.get_input(batch)
@@ -164,7 +166,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         return loss.mean()
 
     def on_train_end(self) -> None:
-        if self.wandb_watch > 0:
+        if self.wandb_watch_steps > 0:
             for wandb_logger in [x for x in self.trainer.loggers if isinstance(x, WandbLogger)]:
                 wandb_logger.experiment.unwatch(self.vae)
 
