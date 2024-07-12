@@ -148,7 +148,7 @@ class CaptionGrid:
             t_wrapped, t_height = None, 0
         else:
             # handle title wrapping and height
-            t_lines = self.tfont.wrap(title, img_w)
+            t_lines = self.tfont.wrap(title, img_w * ncols)
             t_height = self.tfont.get_height(len(t_lines))
             t_wrapped = "\n".join(t_lines)
 
