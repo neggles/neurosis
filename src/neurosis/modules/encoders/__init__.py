@@ -8,12 +8,14 @@ from .embedding import (
     SpatialRescaler,
 )
 from .lowscale import LowScaleEncoder
+from .metadata import ConcatTimestepEmbedderND
 from .misc import IdentityEncoder
 
 __all__ = [
     "AbstractEmbModel",
     "ClassEmbedder",
     "ClassEmbedderForMultiCond",
+    "ConcatTimestepEmbedderND",
     "GeneralConditioner",
     "IdentityEncoder",
     "LowScaleEncoder",
