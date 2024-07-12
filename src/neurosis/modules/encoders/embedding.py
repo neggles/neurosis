@@ -49,6 +49,11 @@ class AbstractEmbModel(nn.Module):
         # set requires_grad to False for all parameters
         self.requires_grad_(False)
 
+    def context(self):
+        if self.is_trainable:
+            return nullcontext
+        return torch.no_grad
+
 
 class GeneralConditioner(nn.Module):
     OUTPUT_DIM2KEYS = {2: "vector", 3: "crossattn", 4: "concat", 5: "concat"}
@@ -92,8 +97,7 @@ class GeneralConditioner(nn.Module):
 
         embedder: AbstractEmbModel
         for embedder in self.embedders:
-            embedding_context = nullcontext if embedder.is_trainable else torch.no_grad
-            with embedding_context():
+            with embedder.context():
                 if getattr(embedder, "input_key", None) is not None:
                     inputs = batch[embedder.input_key]
                     if isinstance(inputs, list) and isinstance(inputs[0], (str, np.bytes_, np.ndarray)):
@@ -107,10 +111,9 @@ class GeneralConditioner(nn.Module):
                             inputs, device=batch["image"].device, dtype=batch["image"].dtype
                         )
 
-                    if embedder.ucg_rate and embedder.input_key == "caption":
-                        for idx in range(len(inputs)):
-                            if self.rng.random() < embedder.ucg_rate and isinstance(inputs[idx], str):
-                                inputs[idx] = ""
+                    if embedder.ucg_rate > 0.0 and embedder.input_key == "caption":
+                        if self.rng.random() < embedder.ucg_rate:
+                            inputs = [" "] * len(inputs)
 
                     emb_out = embedder(inputs)
 
