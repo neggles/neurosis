@@ -1,15 +1,17 @@
 import logging
 import math
-from functools import wraps
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 import torch
 from einops import rearrange, repeat
 from packaging import version
-from torch import FloatTensor, Tensor, nn
+from torch import Tensor, nn
 from torch.backends.cuda import SDPBackend, sdp_kernel
 from torch.nn import functional as F
 from torch.utils.checkpoint import checkpoint
+
+from neurosis.modules.diffusion.util import zero_module
+from neurosis.modules.layers import Normalize
 
 logger = logging.getLogger(__name__)
 
@@ -43,28 +45,6 @@ BACKEND_MAP = {
     },
     None: {"enable_math": True, "enable_flash": True, "enable_mem_efficient": True},
 }
-
-
-def uniq(arr: Iterable[Any]) -> list:
-    return list(set(arr))
-
-
-def max_neg_value(t: Tensor) -> FloatTensor:
-    return -torch.finfo(t.dtype).max
-
-
-def zero_module(module: nn.Module) -> nn.Module:
-    """
-    Zero out the parameters of a module and return it.
-    """
-    for p in module.parameters():
-        p.detach().zero_()
-    return module
-
-
-@wraps(nn.GroupNorm.__init__)
-def get_norm_layer(in_channels: int) -> nn.GroupNorm:
-    return nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
 
 # feedforward
@@ -173,7 +153,7 @@ class SpatialSelfAttention(nn.Module):
         super().__init__()
         self.in_channels = in_channels
 
-        self.norm = get_norm_layer(in_channels)
+        self.norm = Normalize(in_channels)
         self.q = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.k = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
@@ -614,24 +594,23 @@ class SpatialTransformer(nn.Module):
             f"constructing {self.__class__.__name__} of depth {depth} w/ {in_channels} channels and {n_heads} heads"
         )
 
-        if context_dim is not None and not isinstance(context_dim, (list)):
-            context_dim = [context_dim]
-        if context_dim is not None and isinstance(context_dim, list):
-            if depth != len(context_dim):
+        if context_dim is not None:
+            if not isinstance(context_dim, list):
+                context_dim = [context_dim]
+            if len(context_dim) != depth:
                 logger.debug(
                     f"{self.__class__.__name__}: Found context dims {context_dim} of depth {len(context_dim)}, "
                     f"which does not match the specified 'depth' of {depth}. Setting context_dim to {depth * [context_dim[0]]} now."
                 )
                 # depth does not match context dims.
-                assert all(
-                    map(lambda x: x == context_dim[0], context_dim)
-                ), "need homogenous context_dim to match depth automatically"
-                context_dim = depth * [context_dim[0]]
-        elif context_dim is None:
+                if not all((x == context_dim[0] for x in context_dim)):
+                    raise ValueError("need homogenous context_dim to match depth automatically")
+                context_dim = [context_dim[0]] * depth
+        else:
             context_dim = [None] * depth
 
         self.in_channels = in_channels
-        self.norm = get_norm_layer(in_channels)
+        self.norm = Normalize(in_channels)
 
         inner_dim = n_heads * d_head
         if not use_linear:

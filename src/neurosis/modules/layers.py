@@ -2,27 +2,9 @@ import torch
 from torch import Tensor, nn
 
 
-class GroupNorm32(nn.GroupNorm):
-    def __init__(
-        self,
-        num_channels: int,
-        eps: float = 1e-5,
-        affine: bool = True,
-        device=None,
-        dtype=None,
-    ) -> None:
-        super().__init__(
-            num_groups=32,
-            num_channels=num_channels,
-            eps=eps,
-            affine=affine,
-            device=device,
-            dtype=dtype,
-        )
-
-
-def normalization(channels: int) -> GroupNorm32:
-    return GroupNorm32(channels)
+class Normalize(nn.GroupNorm):
+    def __init__(self, in_channels: int, num_groups: int = 32):
+        super().__init__(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 
 
 class ActNorm(nn.Module):

@@ -1,7 +1,6 @@
 # pytorch_diffusion + derived encoder decoder
 import logging
 import math
-from functools import wraps
 from typing import Any, Optional, Sequence
 from warnings import warn
 
@@ -12,6 +11,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from neurosis.modules.attention import LinearAttention, MemoryEfficientCrossAttention
+from neurosis.modules.layers import Normalize
 from neurosis.modules.regularizers import DiagonalGaussianRegularizer
 
 logger = logging.getLogger(__name__)
@@ -46,11 +46,6 @@ def get_timestep_embedding(timesteps: Tensor, embedding_dim: int) -> Tensor:
     if embedding_dim % 2 == 1:  # zero pad
         emb = F.pad(emb, (0, 1, 0, 0))
     return emb
-
-
-@wraps(nn.GroupNorm.__init__)
-def get_norm_layer(in_channels: int) -> nn.GroupNorm:
-    return nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
 
 class Upsample(nn.Module):
@@ -103,11 +98,11 @@ class ResnetBlock(nn.Module):
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
 
-        self.norm1 = get_norm_layer(in_channels)
+        self.norm1 = Normalize(in_channels)
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
         if temb_channels > 0:
             self.temb_proj = nn.Linear(temb_channels, out_channels)
-        self.norm2 = get_norm_layer(out_channels)
+        self.norm2 = Normalize(out_channels)
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
         if self.in_channels != self.out_channels:
@@ -151,7 +146,7 @@ class AttnBlock(nn.Module):
         super().__init__()
         self.in_channels = in_channels
 
-        self.norm = get_norm_layer(in_channels)
+        self.norm = Normalize(in_channels)
         self.q = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.k = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
@@ -189,7 +184,7 @@ class MemoryEfficientAttnBlock(nn.Module):
         super().__init__()
         self.in_channels = in_channels
 
-        self.norm = get_norm_layer(in_channels)
+        self.norm = Normalize(in_channels)
         self.q = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.k = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
@@ -404,7 +399,7 @@ class Model(nn.Module):
             self.up.insert(0, up)  # prepend to get consistent order
 
         # end
-        self.norm_out = get_norm_layer(block_in)
+        self.norm_out = Normalize(block_in)
         self.conv_out = nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x: Tensor, t: Optional[Tensor] = None, context: Optional[Tensor] = None) -> Tensor:
@@ -539,7 +534,7 @@ class Encoder(nn.Module):
         )
 
         # end
-        self.norm_out = get_norm_layer(block_in)
+        self.norm_out = Normalize(block_in)
         self.conv_out = nn.Conv2d(
             block_in,
             2 * z_channels if double_z else z_channels,
@@ -698,7 +693,7 @@ class Decoder(nn.Module):
             self.up.insert(0, up)  # prepend to get consistent order
 
         # end
-        self.norm_out = get_norm_layer(block_in)
+        self.norm_out = Normalize(block_in)
         self.conv_out = nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
         self.max_batch_size = None
 

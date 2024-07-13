@@ -10,6 +10,7 @@ thanks!
 """
 
 import math
+from functools import wraps
 from typing import Any, Callable, Optional, Sequence
 
 import numpy as np
@@ -181,7 +182,7 @@ def zero_module(module: nn.Module) -> nn.Module:
     Zero out the parameters of a module and return it.
     """
     for p in module.parameters():
-        p.detach().zero_()
+        nn.init.zeros_(p)
     return module
 
 
@@ -201,45 +202,36 @@ def mean_flat(tensor: Tensor) -> Tensor:
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
 
-class GroupNorm32(nn.GroupNorm):
-    def forward(self, x: Tensor) -> Tensor:
-        return super().forward(x.float()).type(x.dtype)
-
-
-def normalization(channels: int) -> GroupNorm32:
-    """
-    Make a standard normalization layer.
-    :param channels: number of input channels.
-    :return: an nn.Module for normalization.
-    """
-    return GroupNorm32(32, channels)
-
-
+@wraps(nn.modules.conv._ConvNd)
 def conv_nd(dims, *args, **kwargs) -> nn.Conv1d | nn.Conv2d | nn.Conv3d:
     """
     Create a 1D, 2D, or 3D convolution module.
     """
-    if dims == 1:
-        return nn.Conv1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.Conv2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.Conv3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
+    match dims:
+        case 1:
+            return nn.Conv1d(*args, **kwargs)
+        case 2:
+            return nn.Conv2d(*args, **kwargs)
+        case 3:
+            return nn.Conv3d(*args, **kwargs)
+        case _:
+            raise ValueError(f"unsupported dimensions: {dims}")
 
 
+@wraps(nn.modules.pooling._AvgPoolNd)
 def avg_pool_nd(dims: int, *args, **kwargs) -> nn.AvgPool1d | nn.AvgPool2d | nn.AvgPool3d:
     """
     Create a 1D, 2D, or 3D average pooling module.
     """
-    if dims == 1:
-        return nn.AvgPool1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.AvgPool2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.AvgPool3d(*args, **kwargs)
-    else:
-        raise ValueError(f"unsupported dimensions: {dims}")
+    match dims:
+        case 1:
+            return nn.AvgPool1d(*args, **kwargs)
+        case 2:
+            return nn.AvgPool2d(*args, **kwargs)
+        case 3:
+            return nn.AvgPool3d(*args, **kwargs)
+        case _:
+            raise ValueError(f"unsupported dimensions: {dims}")
 
 
 class AlphaBlender(nn.Module):

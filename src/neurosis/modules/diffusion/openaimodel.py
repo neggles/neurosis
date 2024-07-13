@@ -13,10 +13,10 @@ from neurosis.modules.attention import SpatialTransformer
 from neurosis.modules.diffusion.util import (
     avg_pool_nd,
     conv_nd,
-    normalization,
     timestep_embedding,
     zero_module,
 )
+from neurosis.modules.layers import Normalize
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ class ResBlock(TimestepBlock):
             padding = kernel_size // 2
 
         self.in_layers = nn.Sequential(
-            normalization(channels),
+            Normalize(channels),
             nn.SiLU(),
             conv_nd(dims, channels, self.out_channels, kernel_size, padding=padding),
         )
@@ -280,7 +280,7 @@ class ResBlock(TimestepBlock):
             )
 
         self.out_layers = nn.Sequential(
-            normalization(self.out_channels),
+            Normalize(self.out_channels),
             nn.SiLU(),
             nn.Dropout(p=dropout),
             zero_module(
@@ -368,7 +368,7 @@ class AttentionBlock(nn.Module):
             ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
             self.num_heads = channels // num_head_channels
         self.use_checkpoint = use_checkpoint
-        self.norm = normalization(channels)
+        self.norm = Normalize(channels)
         self.qkv = conv_nd(1, channels, channels * 3, 1)
         if use_new_attention_order:
             # split qkv before split heads
@@ -796,7 +796,7 @@ class UNetModel(nn.Module):
                 self._feature_size += ch
 
         self.out = nn.Sequential(
-            normalization(ch),
+            Normalize(ch),
             nn.SiLU(),
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
