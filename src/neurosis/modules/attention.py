@@ -512,32 +512,21 @@ class BasicTransformerBlock(nn.Module):
         additional_tokens: Optional[Tensor] = None,
         n_times_crossframe_attn_in_self: int = 0,
     ) -> Tensor:
-        y = self.norm1(x)
         if self.disable_self_attn:
             x = x + self.attn1(
-                y,
+                self.norm1(x),
                 context=context,
                 additional_tokens=additional_tokens,
                 n_times_crossframe_attn_in_self=0,
             )
         else:
             x = x + self.attn1(
-                y,
+                self.norm1(x),
                 context=None,
                 additional_tokens=additional_tokens,
                 n_times_crossframe_attn_in_self=n_times_crossframe_attn_in_self,
             )
 
-        x = x + (
-            self.attn1(
-                self.norm1(x),
-                context=context if self.disable_self_attn else None,
-                additional_tokens=additional_tokens,
-                n_times_crossframe_attn_in_self=0
-                if self.disable_self_attn
-                else n_times_crossframe_attn_in_self,
-            )
-        )
         x = x + self.attn2(self.norm2(x), context=context, additional_tokens=additional_tokens)
         x = x + self.ff(self.norm3(x))
         return x
