@@ -11,7 +11,6 @@ from torch.nn import functional as F
 from torch.utils.checkpoint import checkpoint
 
 from neurosis.modules.diffusion.util import zero_module
-from neurosis.modules.layers import Normalize
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +152,7 @@ class SpatialSelfAttention(nn.Module):
         super().__init__()
         self.in_channels = in_channels
 
-        self.norm = Normalize(in_channels)
+        self.norm = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
         self.q = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.k = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
@@ -610,7 +609,7 @@ class SpatialTransformer(nn.Module):
             context_dim = [None] * depth
 
         self.in_channels = in_channels
-        self.norm = Normalize(in_channels)
+        self.norm = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
         inner_dim = n_heads * d_head
         if not use_linear:
