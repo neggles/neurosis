@@ -63,6 +63,7 @@ class GeneralConditioner(nn.Module):
     def __init__(
         self,
         emb_models: list[AbstractEmbModel],
+        shared_ucg: float = 0.0,
     ):
         super().__init__()
         embedders: list[AbstractEmbModel] = []
@@ -85,6 +86,7 @@ class GeneralConditioner(nn.Module):
             raise ValueError("no embedders were added! what is my purpose? why am I here? check your config!")
 
         self.embedders: list[AbstractEmbModel] = nn.ModuleList(embedders)
+        self.shared_ucg = shared_ucg
         self.rng = np.random.default_rng()
 
     def forward(
