@@ -20,6 +20,11 @@ from neurosis.modules.diffusion.util import (
 logger = logging.getLogger(__name__)
 
 
+class GroupNormF32(nn.GroupNorm):
+    def forward(self, x: Tensor) -> Tensor:
+        return super().forward(x.float()).type(x.dtype)
+
+
 class AttentionPool2d(nn.Module):
     """
     Adapted from CLIP: https://github.com/openai/CLIP/blob/main/clip/model.py
@@ -245,7 +250,7 @@ class ResBlock(TimestepBlock):
             padding = kernel_size // 2
 
         self.in_layers = nn.Sequential(
-            nn.GroupNorm(32, channels),
+            GroupNormF32(32, channels),
             nn.SiLU(),
             conv_nd(dims, channels, self.out_channels, kernel_size, padding=padding),
         )
@@ -279,7 +284,7 @@ class ResBlock(TimestepBlock):
             )
 
         self.out_layers = nn.Sequential(
-            nn.GroupNorm(32, self.out_channels),
+            GroupNormF32(32, self.out_channels),
             nn.SiLU(),
             nn.Dropout(p=dropout),
             zero_module(
@@ -367,7 +372,7 @@ class AttentionBlock(nn.Module):
             )
             self.num_heads = channels // num_head_channels
         self.use_checkpoint = use_checkpoint
-        self.norm = nn.GroupNorm(channels)
+        self.norm = GroupNormF32(32, channels)
         self.qkv = conv_nd(1, channels, channels * 3, 1)
         if use_new_attention_order:
             # split qkv before split heads
@@ -795,7 +800,7 @@ class UNetModel(nn.Module):
                 self._feature_size += ch
 
         self.out = nn.Sequential(
-            nn.GroupNorm(32, ch),
+            GroupNormF32(32, ch),
             nn.SiLU(),
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
