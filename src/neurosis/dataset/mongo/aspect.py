@@ -262,7 +262,8 @@ class MongoAspectModule(LightningDataModule):
         prefetch_factor: int = 2,
         pin_memory: bool = False,
         drop_last: bool = True,
-        extra_loader_kwargs: dict = {},
+        sampler_kwargs: dict = {},
+        loader_kwargs: dict = {},
         cache_dir: Optional[PathLike] = None,
     ):
         super().__init__()
@@ -300,7 +301,8 @@ class MongoAspectModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
         self.drop_last = drop_last
-        self.extra_loader_kwargs = extra_loader_kwargs
+        self.sampler_kwargs = sampler_kwargs
+        self.loader_kwargs = loader_kwargs
 
         self.sampler: AspectBucketSampler = None
 
@@ -315,7 +317,7 @@ class MongoAspectModule(LightningDataModule):
         self.dataset.preload()  # runs on all ranks
         if self.sampler is None:
             logger.info("Generating distributed sampler")
-            self.sampler = AspectDistributedSampler(self.dataset)
+            self.sampler = AspectDistributedSampler(self.dataset, **self.sampler_kwargs)
 
         logger.debug(f"Refreshing dataset clients for {stage}")
         self.dataset.refresh_clients()
@@ -331,7 +333,7 @@ class MongoAspectModule(LightningDataModule):
                 prefetch_factor=self.prefetch_factor,
                 worker_init_fn=mongo_worker_init,
                 persistent_workers=True,
-                **self.extra_loader_kwargs,
+                **self.loader_kwargs,
             )
         else:
             return DataLoader(
@@ -339,7 +341,7 @@ class MongoAspectModule(LightningDataModule):
                 batch_sampler=self.sampler,
                 collate_fn=collate_dict_stack,
                 pin_memory=self.pin_memory,
-                **self.extra_loader_kwargs,
+                **self.loader_kwargs,
             )
 
 
