@@ -5,6 +5,7 @@ from .misc import (
     ndimage_to_u8,
     ndimage_to_u8_norm,
     silence_hf_load_warnings,
+    tensor_dict_to_cpu,
 )
 from .sgm import (
     append_dims,
@@ -73,6 +74,7 @@ __all__ = [
     "prepend_rank",
     "scale_module",
     "silence_hf_load_warnings",
+    "tensor_dict_to_cpu",
     "timestep_embedding",
     "zero_module",
 ]

@@ -5,6 +5,7 @@ from typing import Generator, Iterable, Iterator, List, Optional, TypeVar
 
 import numpy as np
 import torch
+from torch import Tensor
 
 from neurosis import is_debug
 
@@ -16,6 +17,15 @@ def ensure_list(x):
     if not isinstance(x, list):
         x = [x]
     return x
+
+
+def tensor_dict_to_cpu(d: dict[str, Tensor]) -> dict[str, Tensor]:
+    for k, v in d.items():
+        if isinstance(v, Tensor):
+            d[k] = v.detach().clone().cpu()
+        elif isinstance(v, dict):
+            d[k] = tensor_dict_to_cpu(v)
+    return d
 
 
 # https://github.com/python/cpython/issues/98363
