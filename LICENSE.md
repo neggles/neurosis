@@ -2,7 +2,7 @@ The extensive modifications made to the original code are released/relicensed un
 
 GNU General Public License v3
 
-Copyright (c) 2023, Andi Powers-Holmes
+Copyright (c) 2023-2025, Andi Powers-Holmes
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
