@@ -362,9 +362,9 @@ class AttentionBlock(nn.Module):
         if num_head_channels == -1:
             self.num_heads = num_heads
         else:
-            assert (
-                channels % num_head_channels == 0
-            ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
+            assert channels % num_head_channels == 0, (
+                f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
+            )
             self.num_heads = channels // num_head_channels
         self.use_checkpoint = use_checkpoint
         self.norm = nn.GroupNorm(channels)

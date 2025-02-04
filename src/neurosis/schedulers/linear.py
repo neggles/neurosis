@@ -47,7 +47,7 @@ class LambdaWarmUpCosineScheduler2:
         cycle = self.find_in_interval(n)
         n = n - self.total_cycles[cycle]
         if (self.verbosity_interval > 0) and (n % self.verbosity_interval == 0):
-            logger.info(f"current step: {n}, last lr-multiplier: {self.last_f}, " f"current cycle {cycle}")
+            logger.info(f"current step: {n}, last lr-multiplier: {self.last_f}, current cycle {cycle}")
 
         f_min = self.f_min[cycle]
         f_max = self.f_max[cycle]
@@ -74,7 +74,7 @@ class LambdaLinearScheduler(LambdaWarmUpCosineScheduler2):
         cycle = self.find_in_interval(n)
         n = n - self.total_cycles[cycle]
         if (self.verbosity_interval > 0) and (n % self.verbosity_interval == 0):
-            logger.info(f"current step: {n}, last lr-multiplier: {self.last_f}, " f"current cycle {cycle}")
+            logger.info(f"current step: {n}, last lr-multiplier: {self.last_f}, current cycle {cycle}")
 
         f_min = self.f_min[cycle]
         f_max = self.f_max[cycle]

@@ -101,9 +101,9 @@ class GumbelQuantizer(AbstractQuantizer):
             self.unknown_index = self.re_embed
             self.re_embed = self.re_embed + 1
         else:
-            assert unknown_index == "random" or isinstance(
-                unknown_index, int
-            ), "unknown index needs to be 'random', 'extra' or any integer"
+            assert unknown_index == "random" or isinstance(unknown_index, int), (
+                "unknown index needs to be 'random', 'extra' or any integer"
+            )
             self.unknown_index = unknown_index  # "random" or "extra" or integer
         if self.remap is not None:
             logpy.info(
@@ -206,9 +206,9 @@ class VectorQuantizer(AbstractQuantizer):
             self.unknown_index = self.re_embed
             self.re_embed = self.re_embed + 1
         else:
-            assert unknown_index == "random" or isinstance(
-                unknown_index, int
-            ), "unknown index needs to be 'random', 'extra' or any integer"
+            assert unknown_index == "random" or isinstance(unknown_index, int), (
+                "unknown index needs to be 'random', 'extra' or any integer"
+            )
             self.unknown_index = unknown_index  # "random" or "extra" or integer
         if self.remap is not None:
             logpy.info(
@@ -349,9 +349,9 @@ class EMAVectorQuantizer(AbstractQuantizer):
             self.unknown_index = self.re_embed
             self.re_embed = self.re_embed + 1
         else:
-            assert unknown_index == "random" or isinstance(
-                unknown_index, int
-            ), "unknown index needs to be 'random', 'extra' or any integer"
+            assert unknown_index == "random" or isinstance(unknown_index, int), (
+                "unknown index needs to be 'random', 'extra' or any integer"
+            )
             self.unknown_index = unknown_index  # "random" or "extra" or integer
         if self.remap is not None:
             logpy.info(
