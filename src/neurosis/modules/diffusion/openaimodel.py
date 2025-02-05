@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class GroupNormF32(nn.GroupNorm):
     def forward(self, x: Tensor) -> Tensor:
-        return super().forward(x.float()).type(x.dtype)
+        return super().forward(x.float()).to(x.dtype)
 
 
 class AttentionPool2d(nn.Module):
