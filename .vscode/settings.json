@@ -40,8 +40,6 @@
             "source.organizeImports": "always"
         }
     },
-    "python.analysis.include": ["./src", "./scripts", "./tests"],
-    "python.analysis.extraPaths": ["./repos/**"],
 
     "[json]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",

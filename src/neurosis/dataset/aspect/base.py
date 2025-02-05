@@ -24,16 +24,16 @@ class AspectBucketDataset(Dataset):
         pil_max_png_bytes: int = 100 * (1024**2),  # 100 MB
         **kwargs,
     ):
-        self.buckets = buckets
-        self.samples: pd.DataFrame = None
+        self.buckets: AspectBucketList = buckets
+        self.samples: pd.DataFrame
 
         # be quiet, PIL
         Image.MAX_IMAGE_PIXELS = pil_max_image_pixels
         PngImagePlugin.MAX_TEXT_CHUNK = pil_max_png_bytes
 
         # Set up the DataFrame
-        self._bucket2idx: dict[int, np.ndarray] = None
-        self._idx2bucket: dict[int, int] = None
+        self._bucket2idx: dict[int, np.ndarray] | None = None
+        self._idx2bucket: dict[int, int] | None = None
 
         # set default transforms
         # set default transforms
@@ -50,16 +50,16 @@ class AspectBucketDataset(Dataset):
         if self.samples is None:
             raise ValueError("Cannot access bucket2idx before dataset is loaded.")
         if self._bucket2idx is None:
-            self._bucket2idx = {idx: frame.index.values for idx, frame in self.samples.groupby("bucket_idx")}
-        return self._bucket2idx
+            self._bucket2idx = {idx: frame.index.values for idx, frame in self.samples.groupby("bucket_idx")}  # type: ignore
+        return self._bucket2idx  # type: ignore
 
     @property
     def idx2bucket(self) -> dict[int, int]:
         if self.samples is None:
             raise ValueError("Cannot access idx2bucket before dataset is loaded.")
         if self._idx2bucket is None:
-            self._idx2bucket = {idx: bucket for bucket, idx in self.bucket2idx.items()}
-        return self._idx2bucket
+            self._idx2bucket = {idx: bucket for bucket, idx in self.bucket2idx.items()}  # type: ignore
+        return self._idx2bucket  # type: ignore
 
     @abstractmethod
     def get_batch_iterator(self):

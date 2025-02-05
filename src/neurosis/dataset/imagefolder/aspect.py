@@ -71,9 +71,9 @@ class ImageFolderDataset(AspectBucketDataset):
     def __len__(self):
         return len(self.samples)
 
-    def __getitem__(self, index: int) -> dict[str, Tensor]:
+    def __getitem__(self, index: int) -> dict[str, Tensor | str | tuple[int, ...]]:
         sample: pd.Series = self.samples.iloc[index]
-        bucket: AspectBucket = self.buckets[sample.bucket_idx]
+        bucket: AspectBucket = self.buckets[int(sample.bucket_idx)]  # type: ignore
         image, crop_coords = load_bucket_image_file(sample.image_path, bucket, self.resampling)
 
         return {
@@ -84,7 +84,7 @@ class ImageFolderDataset(AspectBucketDataset):
             "target_size_as_tuple": bucket.size,
         }
 
-    def __getitems__(self, indices: Sequence[int] | int) -> dict[str, Tensor | list[Tensor | np.ndarray]]:
+    def __getitems__(self, indices: Sequence[int] | int) -> dict[str, list[Tensor | str | tuple[int, ...]]]:
         if isinstance(indices, int):
             if self.batch_to_idx is not None:
                 indices = self.batch_to_idx[indices]
@@ -128,18 +128,18 @@ class ImageFolderDataset(AspectBucketDataset):
 
     def __clean_caption(self, caption: str) -> str:
         if self.process_tags:
-            caption = [clean_word(self.word_sep, x) for x in caption.split(", ")]
+            cap_list = [clean_word(self.word_sep, x) for x in caption.split(", ")]
 
             if self.shuffle_tags:
                 if self.shuffle_keep > 0:
-                    caption = (
-                        caption[: self.shuffle_keep]
-                        + np.random.permutation(caption[self.shuffle_keep :]).tolist()
+                    cap_list = (
+                        cap_list[: self.shuffle_keep]
+                        + np.random.permutation(cap_list[self.shuffle_keep :]).tolist()
                     )
                 else:
-                    caption = np.random.permutation(caption).tolist()
+                    cap_list = np.random.permutation(cap_list).tolist()
 
-            return self.tag_sep.join(caption).strip()
+            return self.tag_sep.join(cap_list).strip()
         else:
             return caption.strip()
 

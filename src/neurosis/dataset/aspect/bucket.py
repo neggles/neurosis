@@ -4,7 +4,7 @@ from collections import UserList
 from dataclasses import dataclass, field
 from itertools import product
 from math import sqrt
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -180,10 +180,10 @@ class AspectBucketList(UserList):
         # Save buckets for later.
         self.data = buckets
 
-    def __getitem__(self, i: int | slice) -> Union[AspectBucket, "AspectBucketList"]:
-        return self.data[i]
+    def __getitem__(self, i: int | slice) -> AspectBucket | list[AspectBucket]:
+        return self.data.__getitem__(i)
 
-    def bucket_idx(self, ratio: float) -> int:
+    def bucket_idx(self, ratio: float) -> int | AspectBucket | np.ndarray:
         """Returns the index of the bucket with the closest aspect ratio to the given ratio"""
         if ratio < 0.0:
             raise ValueError(f"ratio must be > 0, got {ratio}")
@@ -193,9 +193,9 @@ class AspectBucketList(UserList):
         """Returns the bucket with the closest aspect ratio to the given ratio"""
         if ratio < 0.0:
             raise ValueError(f"ratio must be > 0, got {ratio}")
-        return self.__bucket(ratio, return_index=False)
+        return self.__bucket(ratio, return_index=False)  # type: ignore # return_index=False will always return a bucket
 
-    def __bucket(self, ratio: float, return_index: bool = False):
+    def __bucket(self, ratio: float, return_index: bool = False) -> int | AspectBucket:
         """Get the actual bucket, or just the index of it."""
         # if square just return the square bucket
         if ratio == 1.0:
@@ -216,7 +216,7 @@ class AspectBucketList(UserList):
             # This avoids the incorrect aspect ratio bias used by the original NAI implementation.
             bucket_idx = np.interp(find_ratio, aspect_list, self.indices).round().astype(int)
 
-        return bucket_idx if return_index else self.data[bucket_idx]
+        return int(bucket_idx) if return_index else self.data[bucket_idx]
 
     @property
     def ratios(self) -> list[float]:

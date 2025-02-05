@@ -161,7 +161,8 @@ exclude = [
   "./typings",      # generated type stubs
 ]
 stubPath = "./typings"
-# reportMissingTypeStubs = "information"  # re-enable this once autogen of stubs actually works
+analyzeUnannotatedFunctions = true
+typeCheckingMode = "off"
 
 [tool.tomlsort]
 in_place = true

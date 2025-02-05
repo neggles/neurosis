@@ -1,6 +1,6 @@
 try:
     from ._version import (
-        version as __version__,
+        version as __version__,  # type: ignore
         version_tuple,
     )
 except ImportError:
@@ -22,12 +22,10 @@ from rich.traceback import install as _install_traceback
 Image.MAX_IMAGE_PIXELS = None
 del Image
 
-PACKAGE = __package__.replace("_", "-")
+PACKAGE = str(__package__ or "neurosis").replace("_", "-")
 PACKAGE_ROOT = Path(__file__).parent.parent
 
-is_debug = getenv("NEUROSIS_DEBUG", None) is not None
-if is_debug is True:
-    is_debug = getenv("NEUROSIS_DEBUG").lower() not in ("0", "false", "no")
+is_debug = getenv("NEUROSIS_DEBUG", "false").lower() not in ("0", "false", "no")
 
 local_rank = int(getenv("LOCAL_RANK", "0"))
 
