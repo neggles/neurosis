@@ -262,9 +262,3 @@ src/neurosis/_version.py
 
 # but keep examples
 !*.example
-
-comfy/
-folder_paths.py
-diffusion_sampler_local_test_cuda.py
-
-*.png
