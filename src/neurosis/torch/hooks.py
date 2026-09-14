@@ -8,4 +8,3 @@ class FreezeSliceHook(nn.Module):
 
     def forward(self, param: Tensor) -> None:
         param[self.slices].grad = None
-        pass

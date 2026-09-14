@@ -12,18 +12,18 @@ from .sigma_generators import (
     CosineScheduleSigmaGenerator,
     DiscreteSigmaGenerator,
     EDMSigmaGenerator,
-    SigmaGenerator,
-    TanScheduleSigmaGenerator,
     RectifiedFlowComfySigmaGenerator,
     RectifiedFlowSigmaGenerator,
+    SigmaGenerator,
+    TanScheduleSigmaGenerator,
 )
 
 __all__ = [
     "BaseDiffusionSampler",
     "CosineScheduleSigmaGenerator",
-    "DiscreteSigmaGenerator",
     "DPMPP2MSampler",
     "DPMPP2SAncestralSampler",
+    "DiscreteSigmaGenerator",
     "EDMSampler",
     "EDMSigmaGenerator",
     "EulerAncestralSampler",

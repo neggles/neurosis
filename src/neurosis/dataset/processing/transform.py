@@ -1,6 +1,5 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from ..base import SampleType
 
@@ -10,7 +9,7 @@ logger = logging.getLogger(__name__)
 class DataTransform(ABC):
     def __init__(
         self,
-        name: Optional[str] = None,
+        name: str | None = None,
         input_keys: list[str] = [],
         output_keys: list[str] = [],
         **kwargs,

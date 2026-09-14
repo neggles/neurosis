@@ -1,5 +1,5 @@
 import math
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import torch
 from scipy import integrate
@@ -31,7 +31,7 @@ def linear_multistep_coeff(order: int, t: list[int], i: int, j: int, epsrel: flo
 
 
 def get_ancestral_step(
-    sigma_from: Tensor, sigma_to: Tensor, eta: Optional[float | Tensor] = 1.0
+    sigma_from: Tensor, sigma_to: Tensor, eta: float | Tensor | None = 1.0
 ) -> tuple[Tensor, Tensor]:
     """Calculates the noise level (sigma_down) to step down to and the amount
     of noise to add (sigma_up) when doing an ancestral sampling step."""
