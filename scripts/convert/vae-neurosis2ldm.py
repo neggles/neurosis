@@ -5,7 +5,7 @@ from collections import OrderedDict
 from enum import Enum
 from os import PathLike
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import torch
 import typer
@@ -75,7 +75,7 @@ def load_pl(path: PathLike) -> OrderedDict:
 def save_safetensors(
     path: PathLike,
     state_dict: OrderedDict,
-    metadata: Optional[dict[str, str]] = None,
+    metadata: dict[str, str] | None = None,
 ) -> None:
     path = Path(path).resolve()
     save_file(state_dict, path, metadata)
@@ -86,7 +86,7 @@ def save_huggingface(
     state_dict: OrderedDict,
     config: dict[str, Any],
     push: bool = False,
-    repo_id: Optional[str] = None,
+    repo_id: str | None = None,
     push_kwargs: dict[str, Any] = {},
 ) -> None:
     path = Path(path).resolve()
@@ -113,10 +113,10 @@ def resolve_ckpt_path(path: PathLike) -> Path:
 
 def resolve_out_path(
     ckpt_path: Path,
-    out_path: Optional[Path],
+    out_path: Path | None,
     diffusers: bool = False,
     no_ckpt: bool = False,
-) -> tuple[Optional[Path], Optional[Path]]:
+) -> tuple[Path | None, Path | None]:
     if no_ckpt is True:
         diffusers = True
 
@@ -166,7 +166,7 @@ def main(
         ),
     ] = ...,
     out_path: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Argument(
             help="Path to save the converted model to, if directory, will use the source name. Must be directory for HF output",
             writable=True,
@@ -209,7 +209,7 @@ def main(
         ),
     ] = False,
     hf_repo_id: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--repo",
             "-R",

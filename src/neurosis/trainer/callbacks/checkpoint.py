@@ -3,7 +3,7 @@ import time
 from datetime import timedelta
 from os import PathLike
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from weakref import proxy
 
 from huggingface_hub import Repository
@@ -20,13 +20,13 @@ class HFHubCheckpoint(Checkpoint):
     def __init__(
         self,
         repo_id: str,
-        token: Optional[bool | str] = None,
+        token: bool | str | None = None,
         ckpt_name: str = "model",
         save_last: bool = False,
-        every_n_train_steps: Optional[int] = None,
-        every_n_epochs: Optional[int] = None,
-        train_time_interval: Optional[timedelta] = None,
-        save_on_train_epoch_end: Optional[bool] = None,
+        every_n_train_steps: int | None = None,
+        every_n_epochs: int | None = None,
+        train_time_interval: timedelta | None = None,
+        save_on_train_epoch_end: bool | None = None,
         convert_to_diffusers: bool = False,
         verbose: bool = False,
     ):
@@ -39,7 +39,7 @@ class HFHubCheckpoint(Checkpoint):
         self.save_last = save_last
         self._save_on_train_epoch_end = save_on_train_epoch_end
         self._last_global_step_saved = 0  # no need to save when no steps were taken
-        self._last_time_checked: Optional[float] = None
+        self._last_time_checked: float | None = None
         self.last_model_path = ""
 
         self.convert_to_diffusers = convert_to_diffusers
@@ -47,7 +47,7 @@ class HFHubCheckpoint(Checkpoint):
             raise NotImplementedError("Diffusers conversion is not yet implemented.")
 
         self._hf_repo: Repository = None
-        self._temp_dir: Optional[PathLike] = None
+        self._temp_dir: PathLike | None = None
 
         self.__init_triggers(every_n_train_steps, every_n_epochs, train_time_interval)
         self.__validate_init_configuration()
@@ -180,9 +180,9 @@ class HFHubCheckpoint(Checkpoint):
 
     def __init_triggers(
         self,
-        every_n_train_steps: Optional[int],
-        every_n_epochs: Optional[int],
-        train_time_interval: Optional[timedelta],
+        every_n_train_steps: int | None,
+        every_n_epochs: int | None,
+        train_time_interval: timedelta | None,
     ) -> None:
         # Default to running once after each validation epoch if neither
         # every_n_train_steps nor every_n_epochs is set
@@ -194,15 +194,15 @@ class HFHubCheckpoint(Checkpoint):
             every_n_epochs = every_n_epochs or 0
             every_n_train_steps = every_n_train_steps or 0
 
-        self._train_time_interval: Optional[timedelta] = train_time_interval
+        self._train_time_interval: timedelta | None = train_time_interval
         self._every_n_epochs: int = every_n_epochs
         self._every_n_train_steps: int = every_n_train_steps
 
     @property
-    def every_n_epochs(self) -> Optional[int]:
+    def every_n_epochs(self) -> int | None:
         return self._every_n_epochs
 
     def __warn_if_dir_not_empty(self, path: PathLike) -> None:
         path = Path(path)
-        if any((x for x in path.iterdir() if not x.name.startswith("."))):
+        if any(x for x in path.iterdir() if not x.name.startswith(".")):
             logger.warning(f"Temporary directory {path} is not empty, any files in it may be pushed to HF!")

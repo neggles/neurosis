@@ -10,8 +10,9 @@ thanks!
 """
 
 import math
+from collections.abc import Callable, Sequence
 from functools import wraps
-from typing import Any, Callable, Optional, Sequence
+from typing import Any
 
 import numpy as np
 import torch
@@ -278,7 +279,7 @@ class AlphaBlender(nn.Module):
         self,
         x_spatial: Tensor,
         x_temporal: Tensor,
-        image_only_indicator: Optional[Tensor] = None,
+        image_only_indicator: Tensor | None = None,
     ) -> Tensor:
         alpha = self.get_alpha(image_only_indicator)
         x = alpha.to(x_spatial.dtype) * x_spatial + (1.0 - alpha).to(x_spatial.dtype) * x_temporal

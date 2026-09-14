@@ -1,5 +1,4 @@
 from functools import partial
-from typing import Optional
 
 import numpy as np
 import torch
@@ -80,7 +79,7 @@ class LowScaleEncoder(nn.Module):
         self.register_buffer("sqrt_recip_alphas_cumprod", to_torch(np.sqrt(1.0 / alphas_cumprod)))
         self.register_buffer("sqrt_recipm1_alphas_cumprod", to_torch(np.sqrt(1.0 / alphas_cumprod - 1)))
 
-    def q_sample(self, x_start, t, noise: Optional[Tensor] = None):
+    def q_sample(self, x_start, t, noise: Tensor | None = None):
         noise = noise if noise is not None else torch.randn_like(x_start)
         return (
             extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
