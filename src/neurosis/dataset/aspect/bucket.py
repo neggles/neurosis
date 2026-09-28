@@ -4,7 +4,7 @@ from collections import UserList
 from dataclasses import dataclass, field
 from itertools import product
 from math import sqrt
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -20,8 +20,8 @@ def percent_diff(v1: int, v2: int) -> float:
 class AspectBucket:
     width: int
     height: int
-    square_px: Optional[int] = field(default=None, repr=False)
-    error: Optional[float] = field(init=False, default=None)
+    square_px: int | None = field(default=None, repr=False)
+    error: float | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         if self.width % 32 != 0 or self.height % 32 != 0:

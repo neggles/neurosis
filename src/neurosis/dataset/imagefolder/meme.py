@@ -1,7 +1,7 @@
 import logging
+from collections.abc import Generator
 from os import PathLike
 from pathlib import Path
-from typing import Generator, Optional
 
 import numpy as np
 import pandas as pd
@@ -40,7 +40,7 @@ class MemeAspectDataset(AspectBucketDataset):
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
         tags_per_img: int = 50,
-        prepend_tag: Optional[str] = None,
+        prepend_tag: str | None = None,
         prepend_rate: float = 0.0,
     ):
         super().__init__(buckets)
@@ -117,7 +117,9 @@ class MemeAspectDataset(AspectBucketDataset):
             n_samples = len(sample_ids)
             if n_samples >= self.batch_size:
                 continue
-            logger.warn(f"Bucket #{bucket_id} has less than one batch of samples, merging with next bucket.")
+            logger.warning(
+                f"Bucket #{bucket_id} has less than one batch of samples, merging with next bucket."
+            )
             if self.buckets[bucket_id].aspect < 1.0:
                 self.samples.loc[sample_ids, "bucket_idx"] = bucket_id + 1
 
@@ -218,7 +220,7 @@ class MemeAspectModule(LightningDataModule):
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
         clamp_orig: bool = True,
         tags_per_img: int = 50,
-        prepend_tag: Optional[str] = None,
+        prepend_tag: str | None = None,
         prepend_rate: float = 0.0,
         num_workers: int = 0,
         prefetch_factor: int = 2,

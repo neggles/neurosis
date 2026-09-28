@@ -1,5 +1,3 @@
-from typing import Optional
-
 from PIL import Image, ImageDraw
 
 from neurosis.data import get_image_font
@@ -7,8 +5,8 @@ from neurosis.data import get_image_font
 
 def label_image(
     image: Image.Image,
-    idx: Optional[int] = None,
-    step: Optional[int] = None,
+    idx: int | None = None,
+    step: int | None = None,
     idx_len: int = 2,
     step_len: int = 5,
     colour: str = "white",
