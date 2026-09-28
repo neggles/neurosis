@@ -2,7 +2,7 @@ import logging
 import signal
 from os import getenv, isatty
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 from warnings import filterwarnings
 
 import jsonargparse
@@ -90,7 +90,7 @@ class DiffusionTrainerCli(LightningCLI):
 @train_app.command(add_help_option=False)
 def main(
     args: Annotated[
-        Optional[ArgsType],
+        ArgsType | None,
         typer.Argument(help="Arguments to pass to the trainer."),
     ] = None,
 ):

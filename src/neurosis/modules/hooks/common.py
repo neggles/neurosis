@@ -1,6 +1,5 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import lightning.pytorch as L
 from torch import Tensor
@@ -13,7 +12,7 @@ class LossHook(ABC):
 
     def __init__(
         self,
-        name: Optional[str] = None,
+        name: str | None = None,
         **kwargs,
     ):
         self.name = name or self.__class__.__name__

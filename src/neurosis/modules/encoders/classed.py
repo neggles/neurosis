@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 from torch import Tensor, nn
 
@@ -33,7 +31,7 @@ class ClassEmbedder(AbstractEmbModel):
 
 
 class ClassEmbedderForMultiCond(ClassEmbedder):
-    def forward(self, batch: Tensor, key: Optional[str] = None, disable_dropout: bool = False) -> Tensor:
+    def forward(self, batch: Tensor, key: str | None = None, disable_dropout: bool = False) -> Tensor:
         out = batch
         key = key or self.key
         islist = isinstance(batch[key], list)
