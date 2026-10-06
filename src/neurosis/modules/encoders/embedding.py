@@ -1,7 +1,6 @@
 import logging
 from contextlib import contextmanager, nullcontext
 from functools import partial
-from typing import Optional
 
 import numpy as np
 import torch
@@ -15,20 +14,20 @@ logger = logging.getLogger(__name__)
 
 
 class AbstractEmbModel(nn.Module):
-    name: Optional[str]
-    input_key: Optional[str]
-    input_keys: Optional[list[str]]
+    name: str | None
+    input_key: str | None
+    input_keys: list[str] | None
     ucg_rate: float
     is_trainable: bool
-    base_lr: Optional[float]
+    base_lr: float | None
 
     def __init__(
         self,
-        name: Optional[str] = None,
-        input_key: Optional[str] = None,
-        ucg_rate: Optional[float] = 0.0,
-        is_trainable: Optional[bool] = None,
-        base_lr: Optional[float] = None,
+        name: str | None = None,
+        input_key: str | None = None,
+        ucg_rate: float | None = 0.0,
+        is_trainable: bool | None = None,
+        base_lr: float | None = None,
     ):
         super().__init__()
         if not hasattr(self, "is_trainable"):
@@ -90,7 +89,7 @@ class GeneralConditioner(nn.Module):
     def forward(
         self,
         batch: dict[str, Tensor | str | np.bytes_, np.ndarray],
-        force_zero_embeddings: Optional[list] = None,
+        force_zero_embeddings: list | None = None,
     ) -> dict:
         output = dict()
         if force_zero_embeddings is None:
@@ -166,9 +165,9 @@ class GeneralConditioner(nn.Module):
     def get_unconditional_conditioning(
         self,
         batch_c: dict,
-        batch_uc: Optional[dict] = None,
-        force_uc_zero_embeddings: Optional[list[str]] = None,
-        force_cond_zero_embeddings: Optional[list[str]] = None,
+        batch_uc: dict | None = None,
+        force_uc_zero_embeddings: list[str] | None = None,
+        force_cond_zero_embeddings: list[str] | None = None,
     ):
         if force_uc_zero_embeddings is None:
             force_uc_zero_embeddings = []
@@ -190,7 +189,7 @@ class SpatialRescaler(nn.Module):
         method: str = "bilinear",
         multiplier: float = 0.5,
         in_channels: int = 3,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         bias: bool = False,
         wrap_video: bool = False,
         kernel_size: int = 1,

@@ -2,7 +2,6 @@ import logging
 from enum import Enum
 from os import PathLike
 from pathlib import Path
-from typing import Optional
 
 import torch
 from dinov2 import DinoVisionTransformer
@@ -43,7 +42,7 @@ def hub_load_dinov2(
     return model
 
 
-def create_dinov2(config: DinoV2Config, ckpt_path: Optional[PathLike] = None) -> DinoVisionTransformer:
+def create_dinov2(config: DinoV2Config, ckpt_path: PathLike | None = None) -> DinoVisionTransformer:
     """
     Creates a DINOv2 model from a config and optionally loads weights from a checkpoint
     """

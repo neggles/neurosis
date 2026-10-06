@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import torch
 from lightning.pytorch import LightningModule, Trainer
@@ -49,7 +49,7 @@ class GPUMemoryUsage(Callback):
         self.device = device
 
         if self.device.type == "cuda":
-            self.device_props: "_CudaDeviceProperties" = torch.cuda.get_device_properties(self.device)  # type: ignore
+            self.device_props: _CudaDeviceProperties = torch.cuda.get_device_properties(self.device)  # type: ignore
             self.total_memory = self.device_props.total_memory
         else:
             self.device_props = {}
@@ -75,7 +75,7 @@ class GPUMemoryUsage(Callback):
                 self.enabled = False
         return False
 
-    def get_memory_usage(self, prefix: Optional[str] = None):
+    def get_memory_usage(self, prefix: str | None = None):
         if not torch.cuda.is_available():
             return {"index": -1, "total": -1, "free": -1}
         memory_stats = torch.cuda.memory_stats_as_nested_dict(self.device)
@@ -103,17 +103,15 @@ class GPUMemoryUsage(Callback):
         if self.on_batch_start and self.check_interval(trainer, batch_idx):
             stats_dict = self.get_memory_usage("train/gpu/memory")
             pl_module.log_dict(stats_dict, prog_bar=False, logger=True, on_step=True)
-        return
 
     def on_train_batch_end(
         self,
         trainer: Trainer,
         pl_module: LightningModule,
-        outputs: Union[Tensor, dict[str, Any]],
+        outputs: Tensor | dict[str, Any],
         batch: dict[str, Any],
         batch_idx: int,
     ) -> None:
         if self.on_batch_end and self.check_interval(trainer, batch_idx):
             stats_dict = self.get_memory_usage("train/gpu/memory")
             pl_module.log_dict(stats_dict, prog_bar=False, logger=True, on_step=True)
-        return

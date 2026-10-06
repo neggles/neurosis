@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 from numpy.random import permutation
@@ -9,7 +7,7 @@ from neurosis.dataset.utils import clean_word
 
 def shuffle_tags(
     tags: list[str] | np.ndarray | pd.Series,
-    keep: Optional[int] = None,
+    keep: int | None = None,
 ) -> list[str]:
     """
     Shuffle a tag list, optionally keeping some tags in place.
@@ -35,7 +33,7 @@ def clean_tag_list(
     tags: list[str] | np.ndarray | pd.Series,
     word_sep: str = "_",
     shuffle: bool = False,
-    keep: Optional[int] = None,
+    keep: int | None = None,
 ) -> list[str]:
     """
     Clean and (optionally) shuffle a list of tags.

@@ -1,6 +1,5 @@
 import logging
 from enum import Enum
-from typing import Optional
 
 import pandas as pd
 
@@ -18,11 +17,11 @@ class Rating(str, Enum):
 
 def how_lewd_is_this(
     scores: dict[str | Rating, float],
-    src_rating: Optional[Rating] = None,
-    sfw_tag: Optional[str] = None,
-    nsfw_tag: Optional[str] = "nsfw",
+    src_rating: Rating | None = None,
+    sfw_tag: str | None = None,
+    nsfw_tag: str | None = "nsfw",
     source_confidence: float = 0.75,
-) -> tuple[Optional[str], Rating]:
+) -> tuple[str | None, Rating]:
     """
     Determines the NSFW-ness of an image based on the provided scores and optional rating from the source.
 
@@ -73,7 +72,7 @@ def how_lewd_is_this(
             return sfw_tag, rating
 
 
-def make_loli_great_again(tags: pd.Series, rating: Optional[Rating] = None):
+def make_loli_great_again(tags: pd.Series, rating: Rating | None = None):
     """
     The goal of this function is to remove the NSFW implications of the 'loli' and 'shota' tags.
 
@@ -113,13 +112,13 @@ def make_loli_great_again(tags: pd.Series, rating: Optional[Rating] = None):
     tag_list = list(tags)
     modified = False
 
-    if "female_child" in tag_list or all((x in tag_list for x in ["child", "1girl"])):
+    if "female_child" in tag_list or all(x in tag_list for x in ["child", "1girl"]):
         modified = True
         tag_list.remove("female_child")
         if "loli" not in tag_list:
             tag_list.append("loli")
 
-    if "male_child" in tag_list or all((x in tag_list for x in ["child", "1boy"])):
+    if "male_child" in tag_list or all(x in tag_list for x in ["child", "1boy"]):
         modified = True
         tag_list.remove("male_child")
         if "shota" not in tag_list:
