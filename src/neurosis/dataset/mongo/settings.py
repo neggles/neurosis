@@ -3,7 +3,7 @@ from functools import cached_property
 from hashlib import sha1
 from os import PathLike
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, MongoDsn, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 
 class Query(BaseModel):
     filter: dict[str, Any] = Field(default_factory=dict)
-    projection: Optional[dict[str, Any]] = Field(None)
-    sort: Optional[list[tuple[str, int]]] = Field(None)
-    limit: Optional[int] = Field(None)
-    skip: Optional[int] = Field(None)
+    projection: dict[str, Any] | None = Field(None)
+    sort: list[tuple[str, int]] | None = Field(None)
+    limit: int | None = Field(None)
+    skip: int | None = Field(None)
 
     @computed_field
     @property
@@ -41,13 +41,13 @@ class Query(BaseModel):
 
 class MongoSettings(BaseSettings):
     uri: MongoDsn = Field(..., description="MongoDB URI")
-    username: Optional[str] = Field(None, description="Username for the user")
-    password: Optional[str] = Field(None, description="Password for the user")
+    username: str | None = Field(None, description="Username for the user")
+    password: str | None = Field(None, description="Password for the user")
 
-    authMechanism: Optional[str] = Field("SCRAM-SHA-256", description="Authentication mechanism")
-    authSource: Optional[str] = Field("admin", description="Database to authenticate against")
+    authMechanism: str | None = Field("SCRAM-SHA-256", description="Authentication mechanism")
+    authSource: str | None = Field("admin", description="Database to authenticate against")
     tls: bool = Field(False, description="Use TLS")
-    tlsInsecure: Optional[bool] = Field(True, description="Allow insecure TLS connections")
+    tlsInsecure: bool | None = Field(True, description="Allow insecure TLS connections")
 
     db_name: str = Field(..., description="Database to query", alias="database")
     coll_name: str = Field(..., description="Collection to query", alias="collection")

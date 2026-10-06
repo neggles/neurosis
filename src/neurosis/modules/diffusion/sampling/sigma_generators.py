@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import numpy as np
 import torch
@@ -10,7 +9,7 @@ from neurosis.modules.diffusion.discretization import Discretization
 
 class SigmaGenerator(ABC):
     @abstractmethod
-    def __call__(self, n_samples: int, t: Optional[Tensor] = None):
+    def __call__(self, n_samples: int, t: Tensor | None = None):
         raise NotImplementedError("Abstract base class was called ;_;")
 
 
@@ -25,7 +24,7 @@ class EDMSigmaGenerator(SigmaGenerator):
         self.p_std = p_std
         self.scale = scale
 
-    def __call__(self, n_samples: int, t: Optional[Tensor] = None):
+    def __call__(self, n_samples: int, t: Tensor | None = None):
         if t is not None:
             t = t.to(torch.float32)
         else:
@@ -49,7 +48,7 @@ class DiscreteSigmaGenerator(SigmaGenerator):
     def idx_to_sigma(self, idx: int) -> Tensor:
         return self.sigmas[idx]
 
-    def __call__(self, n_samples: int, t: Optional[Tensor] = None):
+    def __call__(self, n_samples: int, t: Tensor | None = None):
         if t is not None:
             idx = torch.clamp(t.long(), 0, self.num_idx - 1)
         else:
@@ -70,7 +69,7 @@ class CosineScheduleSigmaGenerator(SigmaGenerator):
     def __call__(
         self,
         n_samples: int,
-        t: Optional[torch.Tensor] = None,
+        t: torch.Tensor | None = None,
         shift: int = 1,
         return_logSNR: bool = False,
     ):
@@ -103,7 +102,7 @@ class TanScheduleSigmaGenerator(SigmaGenerator):
         self.scale = scale
         self.clip = clip
 
-    def __call__(self, n_samples: int, t: Optional[Tensor] = None):
+    def __call__(self, n_samples: int, t: Tensor | None = None):
         if t is not None:
             t = t.to(torch.float64)
         else:

@@ -1,5 +1,4 @@
 import math
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -100,11 +99,11 @@ class Adafactor(Optimizer):
     def __init__(
         self,
         params: Params,
-        lr: Optional[float] = None,
+        lr: float | None = None,
         eps: tuple[float, float] = (1e-30, 1e-3),
         clip_threshold: float = 1.0,
         decay_rate: float = -0.8,
-        beta1: Optional[float] = None,
+        beta1: float | None = None,
         weight_decay: float = 0.0,
         scale_parameter: bool = True,
         relative_step: bool = True,

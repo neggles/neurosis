@@ -1,4 +1,5 @@
-from typing import Any, Callable, Iterable, Union
+from collections.abc import Callable, Iterable
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -30,7 +31,7 @@ class HybridOptimizer(Optimizer):
         return {key: value for optimizer in self.optimizers for key, value in optimizer.state.items()}
 
     @property
-    def param_groups(self) -> list[dict[str, Union[Tensor, float, bool, Any]]]:
+    def param_groups(self) -> list[dict[str, Tensor | float | bool | Any]]:
         """Return the combined parameter groups for each optimizer in ``self.optimizers``."""
         return [element for optimizer in self.optimizers for element in optimizer.param_groups]
 
@@ -73,7 +74,7 @@ class HybridOptimizer(Optimizer):
 
     def state_dict(
         self,
-    ) -> list[dict[str, Union[Tensor, list[dict[str, Union[Tensor, float, bool, Any]]]]]]:
+    ) -> list[dict[str, Tensor | list[dict[str, Tensor | float | bool | Any]]]]:
         """
         Returns the state of the optimizer as a dictionary.
 
@@ -89,7 +90,7 @@ class HybridOptimizer(Optimizer):
 
     def load_state_dict(
         self,
-        state_dict: list[dict[str, Union[Tensor, list[dict[str, Union[Tensor, float, bool, Any]]]]]],
+        state_dict: list[dict[str, Tensor | list[dict[str, Tensor | float | bool | Any]]]],
     ) -> None:
         """
         Loads the optimizer state.

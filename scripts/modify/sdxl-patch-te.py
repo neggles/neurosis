@@ -4,7 +4,7 @@
 from collections import OrderedDict
 from os import PathLike
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import torch
 import typer
@@ -76,7 +76,7 @@ def main(
         ),
     ] = ...,
     out_path: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Argument(
             help="Path to save the SafeTensors checkpoint to (defaults to source with '_te' suffix)",
         ),

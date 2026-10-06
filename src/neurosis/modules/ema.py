@@ -1,6 +1,6 @@
 import logging
+from collections.abc import Generator
 from copy import deepcopy
-from typing import Generator, Optional
 
 import torch
 from torch import Tensor, nn
@@ -118,7 +118,7 @@ class EMA(nn.Module):
     def __init__(
         self,
         model: nn.Module,
-        ema_model: Optional[nn.Module] = None,  # if None, will be deepcopied from model
+        ema_model: nn.Module | None = None,  # if None, will be deepcopied from model
         beta: float = 0.9999,
         karras_beta: bool = False,  # if True, uses the karras time dependent beta
         update_after_step: int = 100,
@@ -299,7 +299,7 @@ class EMA(nn.Module):
             if name in self.ignore_names:
                 continue
 
-            if any((name.startswith(prefix) for prefix in self.ignore_startswith)):
+            if any(name.startswith(prefix) for prefix in self.ignore_startswith):
                 continue
 
             if name in self.no_ema_names:
@@ -314,7 +314,7 @@ class EMA(nn.Module):
             if name in self.ignore_names:
                 continue
 
-            if any((name.startswith(prefix) for prefix in self.ignore_startswith)):
+            if any(name.startswith(prefix) for prefix in self.ignore_startswith):
                 continue
 
             if name in self.no_ema_names:

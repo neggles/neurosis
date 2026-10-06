@@ -1,5 +1,6 @@
 from abc import abstractmethod
-from typing import Any, Iterator, Tuple
+from collections.abc import Iterator
+from typing import Any
 
 import torch
 from torch import Tensor, nn
@@ -12,7 +13,7 @@ class AbstractRegularizer(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
+    def forward(self, z: Tensor) -> tuple[Tensor, dict]:
         raise NotImplementedError("Abstract base class was called ;_;")
 
     @abstractmethod
@@ -28,7 +29,7 @@ class DiagonalGaussianRegularizer(AbstractRegularizer):
     def get_trainable_parameters(self) -> Iterator[Tensor]:
         yield from ()
 
-    def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
+    def forward(self, z: Tensor) -> tuple[Tensor, dict]:
         log = dict()
         posterior = DiagonalGaussianDistribution(z)
         if self.sample:

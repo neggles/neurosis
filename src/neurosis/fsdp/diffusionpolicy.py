@@ -1,6 +1,7 @@
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Sequence, Type, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
 import lightning.pytorch as pl
 import torch
@@ -33,7 +34,7 @@ from neurosis.utils.misc import str_to_dtype
 if TYPE_CHECKING:
     from torch.distributed.fsdp import CPUOffload, ShardingStrategy
 
-    _POLICY = Union[set[Type[Module]], Callable[[Module, bool, int], bool], ModuleWrapPolicy]
+    _POLICY = Union[set[type[Module]], Callable[[Module, bool, int], bool], ModuleWrapPolicy]
     _SHARDING_STRATEGY = Union[
         ShardingStrategy,
         Literal["FULL_SHARD", "SHARD_GRAD_OP", "NO_SHARD", "HYBRID_SHARD", "_HYBRID_SHARD_ZERO2"],
@@ -61,13 +62,13 @@ class DiffusionFsdpPolicy(ModuleWrapPolicy):
 
 @dataclass
 class SDXLMixedPrecision:
-    param_dtype: Optional[str | torch.dtype] = None
-    reduce_dtype: Optional[str | torch.dtype] = None
-    buffer_dtype: Optional[str | torch.dtype] = None
+    param_dtype: str | torch.dtype | None = None
+    reduce_dtype: str | torch.dtype | None = None
+    buffer_dtype: str | torch.dtype | None = None
     keep_low_precision_grads: bool = False
     cast_forward_inputs: bool = False
     cast_root_forward_inputs: bool = True
-    _module_classes_to_ignore: Sequence[Type[torch.nn.Module]] = (_BatchNorm,)
+    _module_classes_to_ignore: Sequence[type[torch.nn.Module]] = (_BatchNorm,)
     tenc_fp32: bool = False
     vae_fp32: bool = False
 
@@ -109,16 +110,16 @@ class SDXLFSDPStrategy(FSDPStrategy):
     def __init__(
         self,
         accelerator: Optional["pl.accelerators.Accelerator"] = None,
-        parallel_devices: Optional[list[torch.device]] = None,
-        cluster_environment: Optional[ClusterEnvironment] = None,
-        checkpoint_io: Optional[CheckpointIO] = None,
-        precision_plugin: Optional[Precision] = None,
-        process_group_backend: Optional[str] = None,
-        timeout: Optional[timedelta] = default_pg_timeout,
+        parallel_devices: list[torch.device] | None = None,
+        cluster_environment: ClusterEnvironment | None = None,
+        checkpoint_io: CheckpointIO | None = None,
+        precision_plugin: Precision | None = None,
+        process_group_backend: str | None = None,
+        timeout: timedelta | None = default_pg_timeout,
         cpu_offload: Union[bool, "CPUOffload", None] = None,
-        mixed_precision: Optional[SDXLMixedPrecision] = None,
+        mixed_precision: SDXLMixedPrecision | None = None,
         auto_wrap_policy: Optional["_POLICY"] = None,
-        activation_checkpointing: Optional[Union[Type[Module], list[Type[Module]]]] = None,
+        activation_checkpointing: type[Module] | list[type[Module]] | None = None,
         activation_checkpointing_policy: Optional["_POLICY"] = None,
         sharding_strategy: "_SHARDING_STRATEGY" = "FULL_SHARD",
         state_dict_type: Literal["full", "sharded"] = "full",

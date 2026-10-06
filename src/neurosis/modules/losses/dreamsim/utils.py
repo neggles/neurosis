@@ -72,7 +72,7 @@ def merge_dreamsim_lora(
     # get all lora weights for qkv layers, stripping the insane prefix
     group_weights = {k.replace(group_prefix, ""): v for k, v in lora_sd.items() if k.startswith(group_prefix)}
     # strip ".lora_X.weight" from keys to match against base model keys
-    group_layers = set([k.rsplit(".", 2)[0] for k in group_weights.keys()])
+    group_layers = set([k.rsplit(".", 2)[0] for k in group_weights])
 
     base_weights = base_model.state_dict()
     for key in [x for x in base_weights.keys() if "attn.qkv.weight" in x]:

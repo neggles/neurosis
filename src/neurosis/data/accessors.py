@@ -1,8 +1,9 @@
+from collections.abc import Generator
 from contextlib import contextmanager
 from functools import lru_cache
 from importlib import resources
 from io import BufferedReader
-from typing import Any, Generator
+from typing import Any
 
 from PIL import ImageFont
 from safetensors.torch import load_file as safetensors_load
