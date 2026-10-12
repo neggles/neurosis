@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from math import ceil
 from os import PathLike
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import lightning.pytorch as L
 import numpy as np
@@ -39,24 +39,24 @@ class DiffusionEngine(L.LightningModule):
         denoiser: Denoiser,
         first_stage_model: AutoencodingEngine,
         conditioner: GeneralConditioner,
-        sampler: Optional[BaseDiffusionSampler],
+        sampler: BaseDiffusionSampler | None,
         optimizer: OptimizerCallable,
         scheduler: LRSchedulerCallable,
-        loss_fn: Optional[DiffusionLoss],
-        ckpt_path: Optional[PathLike] = None,
+        loss_fn: DiffusionLoss | None,
+        ckpt_path: PathLike | None = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
         scale_factor: float = 1.0,
         disable_first_stage_autocast: bool = False,
         input_key: str = "jpg",
-        log_keys: Optional[list] = None,
+        log_keys: list | None = None,
         no_cond_log: bool = False,
         compile_model: bool = False,
         compile_vae: bool = False,
         compile_kwargs: dict = {},
-        vae_batch_size: Optional[int] = None,
+        vae_batch_size: int | None = None,
         forward_hooks: list[LossHook] = [],
-        wandb_watch: Optional[Literal["gradients", "parameters", "all"]] = None,
+        wandb_watch: Literal["gradients", "parameters", "all"] | None = None,
         wandb_watch_steps: int = -1,
         log_sigmas: bool = False,
     ):
@@ -139,7 +139,7 @@ class DiffusionEngine(L.LightningModule):
 
         logger.info(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
-            logger.warn(f"Missing Keys: {missing}")
+            logger.warning(f"Missing Keys: {missing}")
         if len(unexpected) > 0:
             logger.info(f"Unexpected Keys: {unexpected}")
 
@@ -299,9 +299,9 @@ class DiffusionEngine(L.LightningModule):
     def sample(
         self,
         cond: dict,
-        uc: Optional[dict] = None,
+        uc: dict | None = None,
         batch_size: int = 4,
-        shape: Optional[tuple | list] = None,
+        shape: tuple | list | None = None,
         **model_kwargs,
     ):
         randn = torch.randn(batch_size, *shape).to(self.device)
@@ -423,9 +423,9 @@ class DiffusionEngine(L.LightningModule):
 def get_unconditional_conditioning(
     conditioner: GeneralConditioner,
     batch_c: dict,
-    batch_uc: Optional[dict] = None,
-    force_uc_zero_embeddings: Optional[list[str]] = None,
-    force_cond_zero_embeddings: Optional[list[str]] = None,
+    batch_uc: dict | None = None,
+    force_uc_zero_embeddings: list[str] | None = None,
+    force_cond_zero_embeddings: list[str] | None = None,
 ):
     if force_uc_zero_embeddings is None:
         force_uc_zero_embeddings = []

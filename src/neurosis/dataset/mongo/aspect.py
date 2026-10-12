@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Generator
 from os import PathLike
-from typing import Generator, Literal, Optional
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -59,9 +60,9 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
         shuffle: bool = False,
         data_transforms: list[DataTransform] = [],
         fs_type: str | FilesystemType = "s3",
-        path_prefix: Optional[str] = None,
+        path_prefix: str | None = None,
         fsspec_kwargs: dict = {},
-        pma_schema: Optional[Schema] = None,
+        pma_schema: Schema | None = None,
         retries: int = 3,
         retry_delay: int = 5,
         skip_preload: bool = False,
@@ -108,7 +109,7 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             **kwargs,
         )
 
-        self.batch_to_idx: Optional[list[list[int]]] = None
+        self.batch_to_idx: list[list[int]] | None = None
         if not skip_preload:
             self.preload()
 
@@ -143,7 +144,9 @@ class MongoAspectDataset(BaseMongoDataset, AspectBucketDataset):
             n_samples = len(sample_ids)
             if n_samples >= self.batch_size:
                 continue
-            logger.warn(f"Bucket #{bucket_id} has less than one batch of samples, merging with next bucket.")
+            logger.warning(
+                f"Bucket #{bucket_id} has less than one batch of samples, merging with next bucket."
+            )
             if self.buckets[bucket_id].aspect < 1.0:
                 self.samples.loc[sample_ids, "bucket_idx"] = bucket_id + 1
 
@@ -253,9 +256,9 @@ class MongoAspectModule(LightningDataModule):
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
         fs_type: str | FilesystemType = "s3",
-        path_prefix: Optional[str] = None,
+        path_prefix: str | None = None,
         fsspec_kwargs: dict = {},
-        pma_schema: Optional[Schema] = None,
+        pma_schema: Schema | None = None,
         retries: int = 3,
         retry_delay: int = 5,
         num_workers: int = 0,
@@ -263,7 +266,7 @@ class MongoAspectModule(LightningDataModule):
         pin_memory: bool = False,
         drop_last: bool = True,
         extra_loader_kwargs: dict = {},
-        cache_dir: Optional[PathLike] = None,
+        cache_dir: PathLike | None = None,
     ):
         super().__init__()
         self.prepare_data_per_node = True
