@@ -1,6 +1,5 @@
 import logging
 import warnings
-from typing import Optional
 
 import numpy as np
 from torch.optim import Optimizer
@@ -19,7 +18,7 @@ class CosineAnnealingWarmupRestarts(LRScheduler):
         cycle_steps: int,
         lr_min: float | list[float] = 1e-6,
         lr_max: float | list[float] = 1e-3,
-        lr_start: Optional[float | list[float]] = None,
+        lr_start: float | list[float] | None = None,
         decay_factor: float = 0.9,
         last_epoch: int = -1,
         verbose: bool = False,
@@ -180,7 +179,7 @@ class LegacyCosineAnnealingWarmupRestarts(LRScheduler):
             output.append(base_lr + (max_lr - base_lr) * (1 + np.cos(t * np.pi)) / 2.0)
         return output
 
-    def step(self, epoch: Optional[int] = None):
+    def step(self, epoch: int | None = None):
         if epoch is None:
             epoch = self.last_epoch + 1
             self.step_in_cycle = self.step_in_cycle + 1
