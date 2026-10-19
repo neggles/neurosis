@@ -1,7 +1,6 @@
 import logging
 from functools import lru_cache
 from time import perf_counter
-from typing import Optional
 
 from lightning.pytorch import Callback, LightningModule, Trainer
 from pynvml import (
@@ -40,9 +39,9 @@ class ConflictAbortCallback(Callback):
         self.stopped_epoch = 0
         self.stopped_step = 0
 
-        self._pl_module: Optional[LightningModule] = None
-        self._trainer: Optional[Trainer] = None
-        self._stage: Optional[str] = None
+        self._pl_module: LightningModule | None = None
+        self._trainer: Trainer | None = None
+        self._stage: str | None = None
         self._nvml_ready = False
 
     @property

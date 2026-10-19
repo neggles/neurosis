@@ -1,10 +1,11 @@
 import logging
 from abc import abstractmethod
+from collections.abc import Sequence
 from io import BytesIO
 from os import PathLike, getenv, getpid
 from pathlib import Path
 from time import sleep
-from typing import Literal, Optional, Sequence
+from typing import Literal
 
 import pandas as pd
 from fsspec.implementations.local import LocalFileSystem
@@ -45,12 +46,12 @@ class BaseMongoDataset(Dataset):
         no_resize: bool = False,
         data_transforms: list[DataTransform] = [],
         fs_type: str | FilesystemType = "s3",
-        path_prefix: Optional[str] = None,
+        path_prefix: str | None = None,
         fsspec_kwargs: dict = {},
-        pma_schema: Optional[Schema] = None,
+        pma_schema: Schema | None = None,
         retries: int = 3,
         retry_delay: int = 5,
-        cache_dir: Optional[PathLike] = None,
+        cache_dir: PathLike | None = None,
         **kwargs,
     ):
         self.pid = getpid()
@@ -65,7 +66,7 @@ class BaseMongoDataset(Dataset):
         self.cache_dir = Path(cache_dir) if cache_dir is not None else Path.cwd().joinpath("temp")
 
         # for mapping fake-batch indices to real indices, if used
-        self.batch_to_idx: Optional[list[list[int]]] = None
+        self.batch_to_idx: list[list[int]] | None = None
 
         # used to trigger a refresh check on first get just to be triple sure
         self._first_getitem = True
