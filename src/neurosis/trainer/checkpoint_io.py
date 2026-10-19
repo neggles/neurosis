@@ -2,7 +2,7 @@ import gc
 import logging
 from io import BytesIO
 from os import PathLike
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from adlfs import AzureBlobFileSystem
@@ -20,7 +20,7 @@ class BlobCheckpointIO(TorchCheckpointIO):
         self.account_name = account_name
         self.anon = anon
         self.cred = DefaultAzureCredential()
-        self._fs: Optional[AzureBlobFileSystem] = None
+        self._fs: AzureBlobFileSystem | None = None
 
     @property
     def fs(self) -> AzureBlobFileSystem:
@@ -34,7 +34,7 @@ class BlobCheckpointIO(TorchCheckpointIO):
 
     @override
     def save_checkpoint(
-        self, checkpoint: dict[str, Any], path: PathLike, storage_options: Optional[Any] = None
+        self, checkpoint: dict[str, Any], path: PathLike, storage_options: Any | None = None
     ) -> None:
         buf = BytesIO()
         logger.debug("Serializing checkpoint")
@@ -46,7 +46,7 @@ class BlobCheckpointIO(TorchCheckpointIO):
         gc.collect()
 
     @override
-    def load_checkpoint(self, path: PathLike, map_location: Optional[MAP_LOCATION] = None) -> dict[str, Any]:
+    def load_checkpoint(self, path: PathLike, map_location: MAP_LOCATION | None = None) -> dict[str, Any]:
         if not self.fs.isfile(path):
             raise FileNotFoundError(f"Checkpoint file not found: {path}")
         with self.fs.open(path, "rb") as f:

@@ -5,7 +5,7 @@ from abc import abstractmethod
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import lightning as L
 import torch
@@ -34,12 +34,12 @@ class AbstractAutoencoder(L.LightningModule):
 
     def __init__(
         self,
-        ema_decay: Optional[float] = None,
-        monitor: Optional[str] = None,
+        ema_decay: float | None = None,
+        monitor: str | None = None,
         input_key: str = "jpg",
-        ckpt_path: Optional[str] = None,
+        ckpt_path: str | None = None,
         ignore_keys: tuple | list = tuple(),
-        base_lr: Optional[float] = None,
+        base_lr: float | None = None,
     ):
         super().__init__()
         self.encoder: Encoder
@@ -61,7 +61,7 @@ class AbstractAutoencoder(L.LightningModule):
         if version.parse(L.__version__) >= version.parse("2.0.0"):
             self.automatic_optimization = False
 
-    def init_from_ckpt(self, path: Path, ignore_keys: Union[tuple, list] = tuple()) -> None:
+    def init_from_ckpt(self, path: Path, ignore_keys: tuple | list = tuple()) -> None:
         path = Path(path)
         if path.suffix == ".safetensors":
             sd = load_safetensors(path)
@@ -91,7 +91,7 @@ class AbstractAutoencoder(L.LightningModule):
         missing, unexpected = self.load_state_dict(sd, strict=False)
         logger.info(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
-            logger.warn(f"Missing Keys: {missing}")
+            logger.warning(f"Missing Keys: {missing}")
         if len(unexpected) > 0:
             logger.info(f"Unexpected Keys: {unexpected}")
 
@@ -144,14 +144,14 @@ class AutoencodingEngine(AbstractAutoencoder):
         encoder: Encoder,
         decoder: Decoder,
         loss: nn.Module,
-        regularizer: Optional[AbstractRegularizer] = None,
-        optimizer_config: Optional[dict] = None,
+        regularizer: AbstractRegularizer | None = None,
+        optimizer_config: dict | None = None,
         lr_g_factor: float = 1.0,
-        optimizer: Optional[OptimizerCallable] = None,
-        scheduler: Optional[LRSchedulerCallable] = None,
+        optimizer: OptimizerCallable | None = None,
+        scheduler: LRSchedulerCallable | None = None,
         disc_start: int = 0,
         diff_boost_factor: float = 3.0,
-        additional_decode_keys: Optional[list[str]] = None,
+        additional_decode_keys: list[str] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -205,7 +205,7 @@ class AutoencodingEngine(AbstractAutoencoder):
         x: Tensor,
         return_reg_log: bool = False,
         unregularized: bool = False,
-    ) -> Union[Tensor, tuple[Tensor, dict]]:
+    ) -> Tensor | tuple[Tensor, dict]:
         z = self.encoder(x)
         if unregularized:
             return z, dict()
@@ -352,7 +352,7 @@ class AutoencodingEngine(AbstractAutoencoder):
                         pattern_params.append(param)
                         num_params += param.numel()
                 if len(pattern_params) == 0:
-                    logger.warn(f"Did not find parameters for pattern {pattern_}")
+                    logger.warning(f"Did not find parameters for pattern {pattern_}")
                 params.extend(pattern_params)
             groups.append({"params": params, **args})
         return groups, num_params
@@ -374,7 +374,7 @@ class AutoencodingEngine(AbstractAutoencoder):
         self,
         batch: dict,
         num_img: int = 1,
-        additional_log_kwargs: Optional[dict] = None,
+        additional_log_kwargs: dict | None = None,
         **kwargs,
     ) -> dict[str, Tensor]:
         x = self.get_input(batch)[:num_img]
@@ -431,8 +431,8 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
         self,
         *,
         embed_dim: int,
-        loss: Optional[nn.Module] = None,
-        regularizer: Optional[AbstractRegularizer] = None,
+        loss: nn.Module | None = None,
+        regularizer: AbstractRegularizer | None = None,
         ddconfig: dict = {},
         **kwargs,
     ):
@@ -466,7 +466,7 @@ class AutoencodingEngineLegacy(AutoencodingEngine):
         self.encoder.max_batch_size = self.max_batch_size
         self.decoder.max_batch_size = self.max_batch_size
 
-    def encode(self, x: Tensor, return_reg_log: bool = False) -> Union[Tensor, tuple[Tensor, dict]]:
+    def encode(self, x: Tensor, return_reg_log: bool = False) -> Tensor | tuple[Tensor, dict]:
         if self.max_batch_size is None:
             z = self.encoder(x)
             z = self.quant_conv(z)
@@ -511,7 +511,7 @@ class AutoencoderKL(AutoencodingEngineLegacy):
     def __init__(
         self,
         *,
-        regularizer: Optional[nn.Module] = None,
+        regularizer: nn.Module | None = None,
         train_decoder_only: bool = False,
         **kwargs,
     ):
@@ -528,10 +528,10 @@ class FSDPAutoencoderKL(AutoencodingEngineLegacy):
         self,
         *,
         embed_dim: int,
-        regularizer: Optional[nn.Module] = None,
+        regularizer: nn.Module | None = None,
         ddconfig: dict = {},
         loss: nn.Module = nn.Identity(),
-        standalone: Optional[Any] = None,
+        standalone: Any | None = None,
         **kwargs,
     ):
         self.embed_dim = embed_dim
@@ -539,7 +539,7 @@ class FSDPAutoencoderKL(AutoencodingEngineLegacy):
 
         if standalone is not None:
             # this keeps being False. I do not know why. it should not be anything.
-            logger.warn(f"standalone is {standalone} somehow")
+            logger.warning(f"standalone is {standalone} somehow")
 
         ckpt_path = kwargs.pop("ckpt_path", None)
         ignore_keys = kwargs.pop("ignore_keys", tuple())
@@ -565,7 +565,7 @@ class FSDPAutoencoderKL(AutoencodingEngineLegacy):
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys)
 
-    def init_from_ckpt(self, path: Path, ignore_keys: Union[tuple, list] = tuple()) -> None:
+    def init_from_ckpt(self, path: Path, ignore_keys: tuple | list = tuple()) -> None:
         path = Path(path)
         if path.suffix == ".safetensors":
             sd = load_safetensors(path)
@@ -599,11 +599,11 @@ class FSDPAutoencoderKL(AutoencodingEngineLegacy):
         missing, unexpected = self.load_state_dict(sd, strict=False)
         logger.info(f"Restored from {path} with {len(missing)} missing and {len(unexpected)} unexpected keys")
         if len(missing) > 0:
-            logger.warn(f"Missing Keys: {missing}")
+            logger.warning(f"Missing Keys: {missing}")
         if len(unexpected) > 0:
             logger.info(f"Unexpected Keys: {unexpected}")
 
-    def encode(self, x: Tensor, return_reg_log: bool = False) -> Union[Tensor, tuple[Tensor, dict]]:
+    def encode(self, x: Tensor, return_reg_log: bool = False) -> Tensor | tuple[Tensor, dict]:
         if self.max_batch_size is None:
             z = self.encoder(x)
         else:
@@ -663,9 +663,9 @@ class AEIntegerWrapper(nn.Module):
     def __init__(
         self,
         model: nn.Module,
-        shape: Optional[tuple[int, int] | list[int]] = (16, 16),
+        shape: tuple[int, int] | list[int] | None = (16, 16),
         regularization_key: str = "regularization",
-        encoder_kwargs: Optional[dict[str, Any]] = None,
+        encoder_kwargs: dict[str, Any] | None = None,
     ):
         super().__init__()
         self.model = model
@@ -687,7 +687,7 @@ class AEIntegerWrapper(nn.Module):
         indices = log["min_encoding_indices"]
         return rearrange(indices, "b ... -> b (...)")
 
-    def decode(self, indices: Tensor, shape: Optional[tuple | list] = None) -> Tensor:
+    def decode(self, indices: Tensor, shape: tuple | list | None = None) -> Tensor:
         # expect indices shape (b, s) with s = h*w
         shape = shape or self.shape
         if shape is not None:

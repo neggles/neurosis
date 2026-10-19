@@ -1,6 +1,6 @@
 import logging
+from collections.abc import Iterator
 from sys import maxsize
-from typing import Iterator, Optional
 
 import numpy as np
 import torch
@@ -149,7 +149,7 @@ class AutoencoderLPIPSWithDiscr(nn.Module):
         disc_weight: float = 1.0,
         disc_lambda_r1: float = 0.0,
         disc_loss: DiscriminatorLoss | str = DiscriminatorLoss.Hinge,
-        disc_kwargs: Optional[dict] = {},
+        disc_kwargs: dict | None = {},
         resize_input: bool = False,
         resize_target: bool = False,
         extra_log_keys: list[str] = [],

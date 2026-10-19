@@ -1,9 +1,10 @@
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
 from itertools import chain
 from os import PathLike
 from pathlib import Path
-from typing import Iterator, Literal, Optional
+from typing import Literal
 from warnings import filterwarnings
 
 import torch
@@ -34,9 +35,9 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         input_key: str = "image",
         only_train_decoder: bool = False,
         diff_boost_factor: float = 3.0,
-        wandb_watch: Optional[Literal["gradients", "parameters", "all"]] = None,
+        wandb_watch: Literal["gradients", "parameters", "all"] | None = None,
         wandb_watch_steps: int = -1,
-        ema_decay: Optional[float] = None,
+        ema_decay: float | None = None,
         ema_steps: int = -1,
         ema_kwargs: dict = {},
         ignore_keys: list[str] = [],
@@ -146,7 +147,7 @@ class DiffusersAutoencodingEngine(L.LightningModule):
         sample: Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[Generator] = None,
+        generator: Generator | None = None,
     ) -> DecoderOutput | Tensor:
         return self.vae(sample, sample_posterior, return_dict, generator)
 
