@@ -1,7 +1,7 @@
 import logging
+from collections.abc import Generator, Sequence
 from os import PathLike
 from pathlib import Path
-from typing import Generator, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -64,7 +64,7 @@ class ImageFolderDataset(AspectBucketDataset):
         logger.debug(f"Preloading dataset from '{self.folder}' ({recursive=})")
         # load meta
         self.preload()
-        self.batch_to_idx: Optional[list[list[int]]] = None
+        self.batch_to_idx: list[list[int]] | None = None
         if batch_size > 1:
             self.batch_to_idx = list(self.get_batch_iterator())
 
@@ -112,7 +112,9 @@ class ImageFolderDataset(AspectBucketDataset):
             n_samples = len(sample_ids)
             if n_samples >= self.batch_size:
                 continue
-            logger.warn(f"Bucket #{bucket_id} has less than one batch of samples, merging with next bucket.")
+            logger.warning(
+                f"Bucket #{bucket_id} has less than one batch of samples, merging with next bucket."
+            )
             if self.buckets[bucket_id].aspect < 1.0:
                 self.samples.loc[sample_ids, "bucket_idx"] = bucket_id + 1
 

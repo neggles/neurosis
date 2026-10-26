@@ -1,7 +1,8 @@
 # pytorch_diffusion + derived encoder decoder
 import logging
 import math
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 from warnings import warn
 
 import numpy as np
@@ -87,7 +88,7 @@ class ResnetBlock(nn.Module):
         self,
         *,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         conv_shortcut: bool = False,
         dropout: float = 0.0,
         temb_channels=512,
@@ -179,7 +180,6 @@ class MemoryEfficientAttnBlock(nn.Module):
     Note: this is a single-head self-attention operation
     """
 
-    #
     def __init__(self, in_channels: int):
         super().__init__()
         self.in_channels = in_channels
@@ -189,7 +189,7 @@ class MemoryEfficientAttnBlock(nn.Module):
         self.k = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.proj_out = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.attention_op: Optional[Any] = None
+        self.attention_op: Any | None = None
 
     def attention(self, h_: Tensor) -> Tensor:
         h_: Tensor = self.norm(h_)
@@ -202,11 +202,13 @@ class MemoryEfficientAttnBlock(nn.Module):
         q, k, v = map(lambda x: rearrange(x, "b c h w -> b (h w) c"), (q, k, v))
 
         q, k, v = map(
-            lambda t: t.unsqueeze(3)
-            .reshape(B, t.shape[1], 1, C)
-            .permute(0, 2, 1, 3)
-            .reshape(B * 1, t.shape[1], C)
-            .contiguous(),
+            lambda t: (
+                t.unsqueeze(3)
+                .reshape(B, t.shape[1], 1, C)
+                .permute(0, 2, 1, 3)
+                .reshape(B * 1, t.shape[1], C)
+                .contiguous()
+            ),
             (q, k, v),
         )
         out = xops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
@@ -402,7 +404,7 @@ class Model(nn.Module):
         self.norm_out = Normalize(block_in)
         self.conv_out = nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, x: Tensor, t: Optional[Tensor] = None, context: Optional[Tensor] = None) -> Tensor:
+    def forward(self, x: Tensor, t: Tensor | None = None, context: Tensor | None = None) -> Tensor:
         # assert x.shape[2] == x.shape[3] == self.resolution
         if context is not None:
             # assume aligned context, cat along channel axis

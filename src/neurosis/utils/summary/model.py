@@ -19,7 +19,6 @@
 import logging
 from collections import OrderedDict
 from itertools import chain
-from typing import Optional
 
 import torch
 from humanfriendly import format_size
@@ -47,7 +46,7 @@ class ModelSummary:
         self,
         model: nn.Module,
         max_depth: int = 1,
-        example_input: Optional[Tensor | dict[str, Tensor]] = None,
+        example_input: Tensor | dict[str, Tensor] | None = None,
     ) -> None:
         if not isinstance(max_depth, int) or max_depth < -1:
             raise ValueError(f"`max_depth` can be -1, 0 or > 0, got {max_depth}.")

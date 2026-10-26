@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Callable
 from enum import Enum
-from typing import Callable, Optional, TypeAlias
+from typing import TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -26,7 +27,7 @@ class NoBucketDataset(Dataset):
     def __init__(
         self,
         resolution: int | tuple[int, int],
-        pil_max_image_pixels: Optional[int] = None,
+        pil_max_image_pixels: int | None = None,
         pil_max_png_bytes: int = 100 * (1024**2),  # 100 MB
         **kwargs,
     ):
