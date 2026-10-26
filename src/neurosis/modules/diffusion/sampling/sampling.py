@@ -4,7 +4,6 @@ Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_dif
 
 import logging
 from abc import abstractmethod
-from typing import Optional
 
 import torch
 from torch import Tensor
@@ -30,8 +29,8 @@ class BaseDiffusionSampler:
     def __init__(
         self,
         discretization: Discretization,
-        guider: Optional[Guider] = None,
-        num_steps: Optional[int] = None,
+        guider: Guider | None = None,
+        num_steps: int | None = None,
         verbose: bool = False,
         device: str | torch.device = "cuda",
         rf_safeguard: bool = False,
@@ -51,8 +50,8 @@ class BaseDiffusionSampler:
         self,
         x: Tensor,
         cond: Tensor,
-        uc: Optional[Tensor] = None,
-        num_steps: Optional[int] = None,
+        uc: Tensor | None = None,
+        num_steps: int | None = None,
     ):
         num_steps = num_steps if num_steps is not None else self.num_steps
         if num_steps is None:
@@ -110,8 +109,8 @@ class BaseDiffusionSampler:
         denoiser: Denoiser,
         x: Tensor,
         cond: Tensor,
-        uc: Optional[Tensor] = None,
-        num_steps: Optional[int] = None,
+        uc: Tensor | None = None,
+        num_steps: int | None = None,
         **kwargs,
     ):
         raise NotImplementedError("Abstract base class was called ;_;")
@@ -126,7 +125,7 @@ class SingleStepDiffusionSampler(BaseDiffusionSampler):
         denoiser: Denoiser,
         x: Tensor,
         cond: Tensor,
-        uc: Optional[Tensor] = None,
+        uc: Tensor | None = None,
         *args,
         **kwargs,
     ):
@@ -161,7 +160,7 @@ class EDMSampler(SingleStepDiffusionSampler):
         denoiser: Denoiser,
         x: Tensor,
         cond: Tensor,
-        uc: Optional[Tensor] = None,
+        uc: Tensor | None = None,
         gamma: float = 0.0,
     ):
         sigma_hat = sigma * (gamma + 1.0)
@@ -182,8 +181,8 @@ class EDMSampler(SingleStepDiffusionSampler):
         denoiser: Denoiser,
         x: Tensor,
         cond: Tensor,
-        uc: Optional[Tensor] = None,
-        num_steps: Optional[int] = None,
+        uc: Tensor | None = None,
+        num_steps: int | None = None,
         **kwargs,
     ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps)
@@ -252,8 +251,8 @@ class AncestralSampler(SingleStepDiffusionSampler):
         denoiser: Denoiser,
         x: Tensor,
         cond: Tensor,
-        uc: Optional[Tensor] = None,
-        num_steps: Optional[int] = None,
+        uc: Tensor | None = None,
+        num_steps: int | None = None,
         **kwargs,
     ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps)
@@ -287,8 +286,8 @@ class LinearMultistepSampler(BaseDiffusionSampler):
         denoiser: Denoiser,
         x: Tensor,
         cond: Tensor,
-        uc: Optional[Tensor] = None,
-        num_steps: Optional[int] = None,
+        uc: Tensor | None = None,
+        num_steps: int | None = None,
         **kwargs,
     ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps)
@@ -435,8 +434,8 @@ class DPMPP2MSampler(BaseDiffusionSampler):
         denoiser: Denoiser,
         x: Tensor,
         cond: Tensor,
-        uc: Optional[Tensor] = None,
-        num_steps: Optional[int] = None,
+        uc: Tensor | None = None,
+        num_steps: int | None = None,
         **kwargs,
     ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(x, cond, uc, num_steps)

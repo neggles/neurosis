@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional, Union
+from typing import Any
 
 import kornia
 import numpy as np
@@ -30,11 +30,11 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
     def __init__(
         self,
         version: str = "openai/clip-vit-large-patch14",
-        device: Union[str, torch.device] = "cuda",
+        device: str | torch.device = "cuda",
         max_length: int = 77,
         freeze: bool = True,
         layer: str = "last",
-        layer_idx: Optional[int] = None,
+        layer_idx: int | None = None,
         always_return_pooled: bool = False,
         extended_chunks: int = 0,
         load_pretrained: bool = False,
@@ -85,7 +85,7 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         self.transformer = self.transformer.eval()
         super().freeze()
 
-    def forward(self, text: Union[str, list[str]]):
+    def forward(self, text: str | list[str]):
         # decode any numpy bytearrays and ensure text is a list
         text = np_text_decode(text, aslist=True)
 
@@ -213,8 +213,8 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
     def __init__(
         self,
         arch: str = "ViT-bigG-14",
-        version: Optional[str] = "laion2b_s39b_b160k",
-        device: Union[str, torch.device] = "cuda",
+        version: str | None = "laion2b_s39b_b160k",
+        device: str | torch.device = "cuda",
         max_length: int = 77,
         layer: str = "last",
         always_return_pooled: bool = False,
@@ -262,7 +262,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         self.model = self.model.eval()
         super().freeze()
 
-    def forward(self, text: Union[str, list[str]]) -> Tensor | tuple[Tensor, Tensor]:
+    def forward(self, text: str | list[str]) -> Tensor | tuple[Tensor, Tensor]:
         text = np_text_decode(text, aslist=True)
 
         # hijack the uncond rate for empty-prompt dropout
@@ -330,7 +330,7 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
         x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.model.text_projection
         return x
 
-    def text_transformer_forward(self, x: Tensor, attn_mask: Optional[Tensor] = None):
+    def text_transformer_forward(self, x: Tensor, attn_mask: Tensor | None = None):
         outputs = {}
         for i, r in enumerate(self.model.transformer.resblocks):
             if i == len(self.model.transformer.resblocks) - 1:
@@ -397,7 +397,7 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
         self,
         arch: str = "ViT-H-14",
         version: str = "laion2b_s32b_b79k",
-        device: Union[str, torch.device] = "cuda",
+        device: str | torch.device = "cuda",
         max_length: int = 77,
         freeze: bool = True,
         antialias: bool = True,
@@ -530,7 +530,7 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
             )
             if tokens is not None:
                 tokens = rearrange(tokens, "(b n) t d -> b t (n d)", n=self.max_crops)
-                logger.warn(
+                logger.warning(
                     f"You are running very experimental token-concat in {self.__class__.__name__}. "
                     f"I hope you know what you're doing!."
                 )

@@ -1,5 +1,4 @@
 import logging
-from typing import Union
 
 from torch import Tensor, nn
 
@@ -84,7 +83,7 @@ class DiscreteDenoiser(Denoiser):
         dists = sigma - self.sigmas[:, None]
         return dists.abs().argmin(dim=0).view(sigma.shape)
 
-    def idx_to_sigma(self, idx: Union[Tensor, int]) -> Tensor:
+    def idx_to_sigma(self, idx: Tensor | int) -> Tensor:
         return self.sigmas[idx]
 
     def possibly_quantize_sigma(self, sigma: Tensor) -> Tensor:

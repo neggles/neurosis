@@ -23,7 +23,7 @@ class ContinuousEDMSampler(DiffusionSampler2):
     def timestep(self, sigma: Tensor) -> Tensor:
         return 0.25 * sigma.log()
 
-    def sigma(self, timestep: int | float | Tensor) -> Tensor:
+    def sigma(self, timestep: float | Tensor) -> Tensor:
         return (timestep / 0.25).exp()
 
     def percent_to_sigma(self, percent: float) -> float:

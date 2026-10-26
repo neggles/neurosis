@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -26,7 +26,7 @@ class DiracDistribution(AbstractDistribution):
 
 
 class DiagonalGaussianDistribution(AbstractDistribution):
-    def __init__(self, parameters: Union[Parameter, list[Parameter]], deterministic: bool = False) -> None:
+    def __init__(self, parameters: Parameter | list[Parameter], deterministic: bool = False) -> None:
         self.parameters = parameters
         self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
         self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
@@ -40,7 +40,7 @@ class DiagonalGaussianDistribution(AbstractDistribution):
         x = self.mean + self.std * torch.randn(self.mean.shape).to(device=self.parameters.device)
         return x
 
-    def kl(self, other: Optional[Tensor] = None) -> Tensor:
+    def kl(self, other: Tensor | None = None) -> Tensor:
         if self.deterministic:
             return torch.tensor([0.0])
         else:
