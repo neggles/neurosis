@@ -4,7 +4,7 @@
 from collections import OrderedDict
 from os import PathLike
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import torch
 import typer
@@ -47,7 +47,7 @@ def load_ldm(path: PathLike) -> OrderedDict:
 def save_safetensors(
     path: PathLike,
     state_dict: OrderedDict,
-    metadata: Optional[dict[str, str]] = None,
+    metadata: dict[str, str] | None = None,
 ) -> None:
     path = Path(path).resolve()
     return save_file(state_dict, path, metadata)
@@ -62,7 +62,7 @@ def main(
         ),
     ] = ...,
     out_path: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Argument(
             help="Path to save the SafeTensors checkpoint to (defaults to source with .neurosis.safetensors suffix)",
         ),

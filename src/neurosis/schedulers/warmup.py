@@ -1,6 +1,5 @@
 import logging
 from bisect import bisect_left
-from typing import Optional
 
 import numpy as np
 from torch.optim import Optimizer
@@ -19,7 +18,7 @@ class CosineDecayWithWarmup(LRScheduler):
         decay_steps: int,  # number of steps to decay before hitting min_lr
         base_lr: float | list[float] = 1e-6,
         max_lr: float | list[float] = 1e-3,
-        min_lr: Optional[float | list[float]] = None,
+        min_lr: float | list[float] | None = None,
         last_epoch: int = -1,
         verbose: bool = False,
         step_interval: int = 1,  # used when accumulating gradients to make math easier
@@ -73,7 +72,7 @@ class CosineDecayWithWarmup(LRScheduler):
                 for min_lr, max_lr, _ in zip(self.min_lrs, self.max_lrs, self.optimizer.param_groups)
             ]
 
-    def step(self, epoch: Optional[int] = None) -> None:
+    def step(self, epoch: int | None = None) -> None:
         if epoch is None:
             self.last_epoch += 1
         else:
@@ -96,7 +95,7 @@ class CosineWarmupSchedule(AbstractLRSchedule):
         max_decay_steps: int,
         lr_min: float | list[float],
         lr_max: float | list[float],
-        lr_start: Optional[float | list[float]] = None,
+        lr_start: float | list[float] | None = None,
         verbose: bool = False,
     ):
         self.warm_up_steps = warm_up_steps
@@ -138,7 +137,7 @@ class CosineWarmupStagedSchedule(AbstractLRSchedule):
         verbose: bool = False,
         verbose_interval: int = 0,
     ):
-        if not all((isinstance(x, list) for x in (warm_up_steps, f_min, f_max, f_start, cycle_lengths))):
+        if not all(isinstance(x, list) for x in (warm_up_steps, f_min, f_max, f_start, cycle_lengths)):
             raise ValueError("all frequency stages must be lists")
 
         if not all([len(x) == len(warm_up_steps) for x in (f_min, f_max, f_start, cycle_lengths)]):

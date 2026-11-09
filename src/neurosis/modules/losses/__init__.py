@@ -8,8 +8,8 @@ from .patchgan import NLayerDiscriminator, weights_init
 from .perceptual import LPIPS
 
 __all__ = [
-    "HingeDiscLoss",
     "LPIPS",
+    "HingeDiscLoss",
     "NLayerDiscriminator",
     "VanillaDiscLoss",
     "apply_threshold_weight",

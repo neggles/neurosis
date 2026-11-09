@@ -2,7 +2,6 @@ import gc
 from os import getenv
 from pathlib import Path
 from socket import gethostname
-from typing import Optional
 
 import psutil
 from torch import distributed as dist
@@ -15,7 +14,6 @@ def maybe_collect(threshold: float = 75.0):
     """
     if psutil.virtual_memory().percent >= threshold:
         gc.collect()
-    return
 
 
 def get_next_dir(path: Path, prefix: str, sep: str = "_", offset: int = 0) -> Path:
@@ -46,13 +44,13 @@ def get_node_name() -> str:
     return node_name
 
 
-def get_rank() -> Optional[int]:
+def get_rank() -> int | None:
     if dist.is_available() and dist.is_initialized():
         return dist.get_rank()
     return None
 
 
-def get_rank_str(prefix: str = "") -> Optional[str]:
+def get_rank_str(prefix: str = "") -> str | None:
     if dist.is_available() and dist.is_initialized():
         n_ranks = dist.get_world_size()
         rank = dist.get_rank()

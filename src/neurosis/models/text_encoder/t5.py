@@ -1,5 +1,4 @@
 from os import PathLike
-from typing import Union
 
 from torch import Tensor
 from torch.amp import autocast
@@ -16,7 +15,7 @@ class FrozenT5Embedder(AbstractEmbModel):
 
     def __init__(
         self,
-        model_name_or_path: Union[str, PathLike] = "",
+        model_name_or_path: str | PathLike = "",
         max_length: int = 256,
         model_kwargs: dict = {},
         freeze: bool = True,
@@ -35,7 +34,7 @@ class FrozenT5Embedder(AbstractEmbModel):
         if freeze:
             self.freeze()
 
-    def forward(self, text: Union[str, list[str]]) -> Tensor:
+    def forward(self, text: str | list[str]) -> Tensor:
         batch_encoding: BatchEncoding = self.tokenizer(
             text,
             truncation=True,
@@ -52,7 +51,7 @@ class FrozenT5Embedder(AbstractEmbModel):
         z = output.last_hidden_state
         return z
 
-    def encode(self, text: Union[str, list[str]]) -> Tensor:
+    def encode(self, text: str | list[str]) -> Tensor:
         """Encode text into a latent representation."""
         return self(text)
 
@@ -64,7 +63,7 @@ class FrozenByT5Embedder(AbstractEmbModel):
 
     def __init__(
         self,
-        model_name_or_path: Union[str, PathLike] = "",
+        model_name_or_path: str | PathLike = "",
         max_length: int = 256,
         model_kwargs: dict = {},
         freeze: bool = True,
@@ -81,7 +80,7 @@ class FrozenByT5Embedder(AbstractEmbModel):
         if freeze:
             self.freeze()
 
-    def forward(self, text: Union[str, list[str]]) -> Tensor:
+    def forward(self, text: str | list[str]) -> Tensor:
         batch_encoding: BatchEncoding = self.tokenizer(
             text,
             truncation=True,
@@ -97,6 +96,6 @@ class FrozenByT5Embedder(AbstractEmbModel):
         z = output.last_hidden_state
         return z
 
-    def encode(self, text: Union[str, list[str]]) -> Tensor:
+    def encode(self, text: str | list[str]) -> Tensor:
         """Encode text into a latent representation."""
         return self(text)

@@ -2,10 +2,10 @@ from .losses import GeneralLPIPSWithDiscriminator, LatentLPIPS, VQLPIPSWithDiscr
 from .regularizers import AbstractRegularizer, DiagonalGaussianDistribution, DiagonalGaussianRegularizer
 
 __all__ = [
-    "GeneralLPIPSWithDiscriminator",
-    "LatentLPIPS",
-    "VQLPIPSWithDiscriminator",
     "AbstractRegularizer",
     "DiagonalGaussianDistribution",
     "DiagonalGaussianRegularizer",
+    "GeneralLPIPSWithDiscriminator",
+    "LatentLPIPS",
+    "VQLPIPSWithDiscriminator",
 ]

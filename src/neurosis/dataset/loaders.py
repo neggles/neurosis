@@ -1,8 +1,9 @@
 import logging
+from collections.abc import Generator
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Generator, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -22,18 +23,18 @@ logger = logging.getLogger(__name__)
 class S3ImageLoader:
     def __init__(
         self,
-        s3fs: Optional[S3FileSystem] = None,
+        s3fs: S3FileSystem | None = None,
         *,
         s3fs_kwargs: dict = {},
-        bucket_name: Optional[str] = None,  # bucket to load images from
+        bucket_name: str | None = None,  # bucket to load images from
         input_key: str = "s3_path",
         output_key: str = "image",
         drop_column: bool = False,  # drop the input key column from the batch after loading
         skip_errors: bool = True,  # skip images that fail to load, by dropping them from the batch
         parallel: bool = False,  # Enable parallelism (requires s3fs_kwargs)
-        error_log: Optional[PathLike] = None,  # where to write out images that fail to load (optional)
+        error_log: PathLike | None = None,  # where to write out images that fail to load (optional)
     ):
-        from PIL import Image, PngImagePlugin  # noqa: F401
+        from PIL import Image, PngImagePlugin
 
         if s3fs is None and s3fs_kwargs is None:
             raise ValueError("Either s3fs or s3fs_kwargs must be provided (empty dict is ok)")
@@ -95,7 +96,7 @@ class S3ImageLoader:
     def get_images(
         self,
         paths: list[str],
-        bucket: Optional[AspectBucket] = None,
+        bucket: AspectBucket | None = None,
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
     ) -> Generator[tuple[Tensor, tuple[int, int]] | np.ndarray | None, Any, None]:
         for image_path in paths:
@@ -130,7 +131,7 @@ class S3ImageLoader:
     def get_batched(
         self,
         paths: list[str],
-        bucket: Optional[AspectBucket] = None,
+        bucket: AspectBucket | None = None,
         resampling: Image.Resampling = Image.Resampling.BICUBIC,
     ) -> Generator[tuple[Tensor, tuple[int, int]] | np.ndarray | None, Any, None]:
         results: dict[str, bytes] = self.fs.cat(paths, on_error="return")

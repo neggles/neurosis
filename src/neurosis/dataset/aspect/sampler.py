@@ -1,6 +1,7 @@
 import logging
 import math
-from typing import Iterator, Optional, TypeVar
+from collections.abc import Iterator
+from typing import TypeVar
 
 import torch
 from torch.utils.data import DistributedSampler, Sampler
@@ -28,8 +29,8 @@ class AspectDistributedSampler(DistributedSampler):
     def __init__(
         self,
         dataset: AspectBucketDataset,
-        num_replicas: Optional[int] = None,
-        rank: Optional[int] = None,
+        num_replicas: int | None = None,
+        rank: int | None = None,
         shuffle: bool = True,
         seed: int = 0,
         drop_last: bool = False,

@@ -12,18 +12,18 @@ from .denoiser_weighting import (
     DenoiserWeighting,
     EDMWeighting,
     EpsWeighting,
-    UnitWeighting,
-    RectifiedFlowWeighting,
     RectifiedFlowComfyWeighting,
+    RectifiedFlowWeighting,
+    UnitWeighting,
 )
 from .discretization import (
     Discretization,
     EDMcDiscretization,
     EDMDiscretization,
     LegacyDDPMDiscretization,
-    TanZeroSNRDiscretization,
     RectifiedFlowComfyDiscretization,
     RectifiedFlowDiscretization,
+    TanZeroSNRDiscretization,
 )
 from .loss import DiffusionLoss, StandardDiffusionLoss
 from .model import (
@@ -54,6 +54,8 @@ from .wrappers import IdentityWrapper, OpenAIWrapper
 __all__ = [
     "AttnBlock",
     "BaseDiffusionSampler",
+    "DPMPP2MSampler",
+    "DPMPP2SAncestralSampler",
     "Decoder",
     "Denoiser",
     "DenoiserPreconditioning",
@@ -62,14 +64,12 @@ __all__ = [
     "DiscreteDenoiser",
     "DiscreteSigmaGenerator",
     "Discretization",
-    "DPMPP2MSampler",
-    "DPMPP2SAncestralSampler",
-    "EDMcDiscretization",
     "EDMDiscretization",
     "EDMPreconditioning",
     "EDMSampler",
     "EDMSigmaGenerator",
     "EDMWeighting",
+    "EDMcDiscretization",
     "Encoder",
     "EpsPreconditioning",
     "EpsWeighting",

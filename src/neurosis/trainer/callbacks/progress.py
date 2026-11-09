@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from lightning.pytorch.callbacks.progress import RichProgressBar
 from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
@@ -44,6 +44,6 @@ class NeurosisProgressBar(RichProgressBar):
         refresh_rate: int = 1,
         leave: bool = False,
         theme: RichProgressBarTheme = NeurosisProgressTheme(),
-        console_kwargs: Optional[dict[str, Any]] = None,
+        console_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(refresh_rate, leave, theme, console_kwargs)
