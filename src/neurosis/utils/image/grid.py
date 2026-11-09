@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from math import ceil, sqrt
 from textwrap import TextWrapper
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -95,8 +95,8 @@ def wrap_captions(
 class CaptionGrid:
     def __init__(
         self,
-        font: Optional[FontWrapper | FreeTypeFont | int] = None,
-        tfont: Optional[FontWrapper | FreeTypeFont | int] = None,
+        font: FontWrapper | FreeTypeFont | int | None = None,
+        tfont: FontWrapper | FreeTypeFont | int | None = None,
     ):
         if font is None:
             font = get_image_font(size=18)
@@ -127,8 +127,8 @@ class CaptionGrid:
         self,
         images: list[Image.Image],
         captions: list[str | bytes],
-        title: Optional[str | bytes] = None,
-        ncols: Optional[int] = None,
+        title: str | bytes | None = None,
+        ncols: int | None = None,
     ) -> Image.Image:
         if len(images) == 0:
             raise ValueError("Must provide at least one image!")

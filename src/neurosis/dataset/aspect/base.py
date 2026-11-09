@@ -1,6 +1,6 @@
 import logging
 from abc import abstractmethod
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,7 @@ class AspectBucketDataset(Dataset):
     def __init__(
         self,
         buckets: AspectBucketList,
-        pil_max_image_pixels: Optional[int] = None,
+        pil_max_image_pixels: int | None = None,
         pil_max_png_bytes: int = 100 * (1024**2),  # 100 MB
         **kwargs,
     ):

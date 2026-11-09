@@ -1,4 +1,4 @@
-from typing import Literal, Optional, TypeAlias
+from typing import Literal, TypeAlias
 
 from torch import ByteTensor, Tensor
 
@@ -28,7 +28,7 @@ class StringTensor(Tensor):
     def __str__(self) -> str:
         return self.to_string()
 
-    def to_string(self, encoding: Optional[str] = None):
+    def to_string(self, encoding: str | None = None):
         return bytes(self.data).decode(encoding or self.encoding).split("\x00", maxsplit=1)[0]
 
     def tensor(self) -> Tensor:

@@ -1,6 +1,6 @@
 import logging
 from os import PathLike
-from typing import Literal, Optional
+from typing import Literal
 
 import pandas as pd
 import torch
@@ -36,9 +36,9 @@ class MongoVAEDataset(BaseMongoDataset, NoBucketDataset):
         data_transforms: list[DataTransform] = [],
         no_resize: bool = False,
         fs_type: str | FilesystemType = "s3",
-        path_prefix: Optional[str] = None,
+        path_prefix: str | None = None,
         fsspec_kwargs: dict = {},
-        pma_schema: Optional[Schema] = None,
+        pma_schema: Schema | None = None,
         retries: int = 3,
         retry_delay: int = 5,
         skip_preload: bool = False,
@@ -117,9 +117,9 @@ class MongoVAEModule(LightningDataModule):
         shuffle: bool = False,
         no_resize: bool = False,
         fs_type: str | FilesystemType = "s3",
-        path_prefix: Optional[str] = None,
+        path_prefix: str | None = None,
         fsspec_kwargs: dict = {},
-        pma_schema: Optional[Schema] = None,
+        pma_schema: Schema | None = None,
         retries: int = 3,
         retry_delay: int = 5,
         num_workers: int = 0,

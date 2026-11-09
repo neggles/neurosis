@@ -1,7 +1,8 @@
 import logging
+from collections.abc import Generator, Iterable, Iterator
 from contextlib import contextmanager
 from itertools import islice
-from typing import Generator, Iterable, Iterator, List, Optional, TypeVar
+from typing import TypeVar
 
 import numpy as np
 import torch
@@ -19,7 +20,7 @@ def ensure_list(x):
 
 
 # https://github.com/python/cpython/issues/98363
-def batched(iterable: Iterable[T], n: int) -> Generator[List[T], None, None]:
+def batched(iterable: Iterable[T], n: int) -> Generator[list[T], None, None]:
     "Batch data into lists of length n. The last batch may be shorter."
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
@@ -29,7 +30,7 @@ def batched(iterable: Iterable[T], n: int) -> Generator[List[T], None, None]:
         yield batch
 
 
-def ndimage_to_f32(x: np.ndarray, zero_min: Optional[bool] = None) -> np.ndarray:
+def ndimage_to_f32(x: np.ndarray, zero_min: bool | None = None) -> np.ndarray:
     zero_min = x.min() >= 0 if zero_min is None else zero_min
 
     if zero_min:
@@ -42,7 +43,7 @@ def ndimage_to_f32(x: np.ndarray, zero_min: Optional[bool] = None) -> np.ndarray
     return x.astype(np.float32)
 
 
-def ndimage_to_u8(x: np.ndarray, zero_min: Optional[bool] = None) -> np.ndarray:
+def ndimage_to_u8(x: np.ndarray, zero_min: bool | None = None) -> np.ndarray:
     zero_min = x.min() >= 0 if zero_min is None else zero_min
 
     if zero_min is True:

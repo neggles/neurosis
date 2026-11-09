@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Iterator, Optional, Union
+from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 import torch
@@ -35,9 +36,9 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         learn_logvar: bool = False,
         rec_loss_type: str = "l2",
         rec_weight: float = 1.0,
-        regularization_weights: Union[None, dict[str, float]] = None,
-        additional_log_keys: Optional[list[str]] = None,
-        discriminator_config: Optional[dict] = None,
+        regularization_weights: None | dict[str, float] = None,
+        additional_log_keys: list[str] | None = None,
+        discriminator_config: dict | None = None,
     ):
         super().__init__()
         self.dims = dims
@@ -212,7 +213,7 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
     def get_nll_loss(
         self,
         rec_loss: Tensor,
-        weights: Optional[float | Tensor] = None,
+        weights: float | Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
 
@@ -233,9 +234,9 @@ class GeneralLPIPSWithDiscriminator(nn.Module):
         global_step: int,
         regularization_log: dict = {},
         optimizer_idx: int = 0,
-        last_layer: Optional[ParameterDict] = None,
+        last_layer: ParameterDict | None = None,
         split: str = "train",
-        weights: Optional[Tensor] = None,
+        weights: Tensor | None = None,
     ) -> tuple[Tensor, dict]:
         if self.scale_input_to_tgt_size:
             inputs = F.interpolate(inputs, recons.shape[2:], mode="bicubic", antialias=True)

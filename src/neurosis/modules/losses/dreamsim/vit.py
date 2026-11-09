@@ -17,8 +17,9 @@ https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision
 """
 
 import math
+from collections.abc import Callable, Sequence
 from functools import partial
-from typing import Callable, Final, Optional, Sequence
+from typing import Final
 
 import torch
 from torch import Tensor, nn
@@ -41,7 +42,7 @@ class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
 
     def __init__(self, drop_prob: float = 0.0, scale_by_keep: bool = True):
-        super(DropPath, self).__init__()
+        super().__init__()
         self.drop_prob = drop_prob
         self.scale_by_keep = scale_by_keep
 
@@ -63,8 +64,8 @@ class Mlp(nn.Module):
     def __init__(
         self,
         in_features: int,
-        hidden_features: Optional[int] = None,
-        out_features: Optional[int] = None,
+        hidden_features: int | None = None,
+        out_features: int | None = None,
         act_layer: Callable[[], nn.Module] = nn.GELU,
         drop: float = 0.0,
     ):
@@ -93,7 +94,7 @@ class Attention(nn.Module):
         dim: int,
         num_heads: int = 8,
         qkv_bias: bool = False,
-        qk_scale: Optional[float] = None,
+        qk_scale: float | None = None,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
     ):

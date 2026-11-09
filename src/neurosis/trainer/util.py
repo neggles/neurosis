@@ -1,7 +1,7 @@
 import logging
 from inspect import Parameter, signature
 from pathlib import Path
-from typing import Any, Optional, Type
+from typing import Any
 
 import lightning.pytorch as L
 import torch
@@ -46,7 +46,7 @@ class AddRankFilter(logging.Filter):
         return True
 
 
-def instantiate_compile_class(class_type: Type[L.LightningModule], *args, **kwargs) -> L.LightningModule:
+def instantiate_compile_class(class_type: type[L.LightningModule], *args, **kwargs) -> L.LightningModule:
     compile_kwargs = kwargs.pop("compile_kwargs", None)
 
     module = class_type(*args, **kwargs)
@@ -59,8 +59,8 @@ def instantiate_compile_class(class_type: Type[L.LightningModule], *args, **kwar
 class EMATracker:
     def __init__(
         self,
-        alpha: Optional[float] = None,
-        steps: Optional[int] = None,
+        alpha: float | None = None,
+        steps: int | None = None,
     ):
         super().__init__()
         self._value = None

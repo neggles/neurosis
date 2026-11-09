@@ -1,6 +1,6 @@
 import logging
 from os import PathLike
-from typing import Literal, Optional
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -43,9 +43,9 @@ class MongoSquareDataset(BaseMongoDataset, NoBucketDataset):
         shuffle: bool = False,
         data_transforms: list[DataTransform] = [],
         fs_type: str | FilesystemType = "s3",
-        path_prefix: Optional[str] = None,
+        path_prefix: str | None = None,
         fsspec_kwargs: dict = {},
-        pma_schema: Optional[Schema] = None,
+        pma_schema: Schema | None = None,
         retries: int = 3,
         retry_delay: int = 5,
         skip_preload: bool = False,
@@ -161,9 +161,9 @@ class MongoSquareModule(LightningDataModule):
         shuffle_tags: bool = True,
         shuffle_keep: int = 0,
         fs_type: str | FilesystemType = "s3",
-        path_prefix: Optional[str] = None,
+        path_prefix: str | None = None,
         fsspec_kwargs: dict = {},
-        pma_schema: Optional[Schema] = None,
+        pma_schema: Schema | None = None,
         retries: int = 3,
         retry_delay: int = 5,
         num_workers: int = 0,
