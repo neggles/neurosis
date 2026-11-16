@@ -15,7 +15,6 @@ def weights_init(m: nn.Module):
         # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
         nn.init.normal_(m.weight.data, 1.0, init_gain)
         nn.init.constant_(m.bias.data, 0.0)
-    return
 
 
 class NLayerDiscriminator(nn.Module):

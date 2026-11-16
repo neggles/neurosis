@@ -1,8 +1,7 @@
 from datetime import datetime
-from typing import Optional
 
 
-def booru_score_tag(score_up: int, score_down: int = 0) -> Optional[str]:
+def booru_score_tag(score_up: int, score_down: int = 0) -> str | None:
     """Map the up/down score of an image to a quality tag."""
     score = score_up - score_down
     match score:

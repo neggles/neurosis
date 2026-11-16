@@ -6,7 +6,7 @@ import json
 from collections import OrderedDict
 from os import PathLike
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import torch
 import typer
@@ -50,8 +50,8 @@ def load_pl(path: PathLike) -> tuple[OrderedDict, dict]:
 def save_safetensors(
     path: PathLike,
     state_dict: OrderedDict,
-    metadata: Optional[dict[str, str]] = None,
-    temp_dir: Optional[PathLike] = None,
+    metadata: dict[str, str] | None = None,
+    temp_dir: PathLike | None = None,
 ) -> None:
     path = Path(path).resolve()
     save_path = Path(temp_dir).resolve().joinpath(path.name) if temp_dir else path
@@ -68,9 +68,8 @@ def save_safetensors(
 
     if temp_dir:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with save_path.open("rb") as f:
-            with path.open("wb") as out_f:
-                out_f.write(f.read())
+        with save_path.open("rb") as f, path.open("wb") as out_f:
+            out_f.write(f.read())
         save_path.unlink()
 
     print(f"SafeTensors checkpoint saved to {path}")
@@ -107,7 +106,7 @@ def main(
         ),
     ] = ...,
     out_path: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Argument(
             help="Path to save the SafeTensors checkpoint to (defaults to source with .safetensors suffix)",
         ),
@@ -137,7 +136,7 @@ def main(
         ),
     ] = False,
     temp_dir: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--temp-dir",
             help="Temporary directory to use for saving the SafeTensors checkpoint before moving to the final location",

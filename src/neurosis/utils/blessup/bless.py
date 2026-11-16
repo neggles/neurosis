@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Callable, Optional
+from typing import Annotated
 
 import torch
 import typer
@@ -90,7 +91,7 @@ def main(
         ),
     ],
     output_path: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Argument(
             help="Path to save the blessed model; defaults to <source_path>.blessed.safetensors",
         ),

@@ -1,10 +1,11 @@
 import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from functools import partial
 from os import getpid
 from pathlib import Path
 from socket import gethostname
-from typing import Any, Callable, Iterable, Optional, Union
+from typing import Any
 from warnings import warn
 
 import torch.autograd.profiler as prof
@@ -58,13 +59,13 @@ class ProfilerSchedule:
 
 @dataclass
 class KinetoProfilerArgs:
-    activities: Optional[list[ProfilerActivity]] = None
+    activities: list[ProfilerActivity] | None = None
     record_shapes: bool = True
     profile_memory: bool = True
     with_stack: bool = True
     with_flops: bool = False
     with_modules: bool = True
-    experimental_config: Optional[_ExperimentalConfig] = None
+    experimental_config: _ExperimentalConfig | None = None
 
     def keys(self) -> Iterable[str]:
         return self.__match_args__
@@ -82,8 +83,8 @@ class KinetoProfilerArgs:
 class NeurosisProfiler(Profiler):
     def __init__(
         self,
-        dirpath: Optional[Union[str, Path]] = None,
-        filename: Optional[str] = None,
+        dirpath: str | Path | None = None,
+        filename: str | None = None,
         create_run_dir: bool = False,
         capture_names: bool = False,
         capture_depth: int = -1,
@@ -109,15 +110,15 @@ class NeurosisProfiler(Profiler):
         if self._capture_names is True and self._capture_depth < 0:
             warn("Capturing all module names can result in 10-100GB trace files! Good luck...", UserWarning)
 
-        self.profiler: Optional[kineto_profile] = None
+        self.profiler: kineto_profile | None = None
         self.function_events: dict[str, prof.EventList] = {}
 
-        self._lightning_module: Optional[LightningModule] = None  # set by ProfilerConnector
+        self._lightning_module: LightningModule | None = None  # set by ProfilerConnector
         self._recording_map: dict[str, prof.record_function] = {}
-        self._name_recorder: Optional[RecordModuleNames] = None
+        self._name_recorder: RecordModuleNames | None = None
 
     @override
-    def setup(self, stage: str, local_rank: Optional[int] = None, log_dir: Optional[str] = None) -> None:
+    def setup(self, stage: str, local_rank: int | None = None, log_dir: str | None = None) -> None:
         super().setup(stage=stage, local_rank=local_rank, log_dir=log_dir)
         if not self.filename:
             self.filename = f"{gethostname()}-{self.local_rank}-{getpid()}"
@@ -131,7 +132,7 @@ class NeurosisProfiler(Profiler):
                 self.profiler = profiler
 
     @override
-    def teardown(self, stage: Optional[str]) -> None:
+    def teardown(self, stage: str | None) -> None:
         # clean up recording map
         for k in self._recording_map.keys():
             self.stop(k)
@@ -187,14 +188,14 @@ class NeurosisProfiler(Profiler):
         recorded_stats = {"records": table}
         return self._stats_to_str(recorded_stats)
 
-    def _get_trace_handler(self, action_name: Optional[str] = None) -> Callable:
+    def _get_trace_handler(self, action_name: str | None = None) -> Callable:
         return tensorboard_trace_handler(
             dir_name=str(self.dirpath.resolve()),
             worker_name=self._prepare_filename(action_name=action_name, extension=""),
             use_gzip=self._use_gzip,
         )
 
-    def _init_profiler(self, stage: Optional[str] = None) -> None:
+    def _init_profiler(self, stage: str | None = None) -> None:
         stage = stage or self._stage
         if stage is None:
             return
@@ -209,7 +210,7 @@ class NeurosisProfiler(Profiler):
                 **self._profiler_kwargs,
             )
 
-    def _delete_profiler(self, stage: Optional[str] = None) -> None:
+    def _delete_profiler(self, stage: str | None = None) -> None:
         stage = stage or self._stage
         if stage is None:
             return
