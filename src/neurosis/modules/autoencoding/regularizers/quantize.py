@@ -1,6 +1,7 @@
 import logging
 from abc import abstractmethod
-from typing import Iterator, Literal, Optional, Tuple, Union
+from collections.abc import Iterator
+from typing import Literal
 
 import numpy as np
 import torch
@@ -18,9 +19,9 @@ class AbstractQuantizer(AbstractRegularizer):
         super().__init__()
         # Define these in your init
         # shape (N,)
-        self.used: Optional[Tensor]
+        self.used: Tensor | None
         self.re_embed: int
-        self.unknown_index: Union[Literal["random"], int]
+        self.unknown_index: Literal["random"] | int
 
     def remap_to_used(self, inds: Tensor) -> Tensor:
         assert self.used is not None, "You need to define used indices for remap"
@@ -49,7 +50,7 @@ class AbstractQuantizer(AbstractRegularizer):
         return back.reshape(ishape)
 
     @abstractmethod
-    def get_codebook_entry(self, indices: Tensor, shape: Optional[Tuple[int, ...]] = None) -> Tensor:
+    def get_codebook_entry(self, indices: Tensor, shape: tuple[int, ...] | None = None) -> Tensor:
         raise NotImplementedError("Abstract base class was called ;_;")
 
     def get_trainable_parameters(self) -> Iterator[torch.nn.Parameter]:
@@ -73,7 +74,7 @@ class GumbelQuantizer(AbstractQuantizer):
         straight_through: bool = True,
         kl_weight: float = 5e-4,
         temp_init: float = 1.0,
-        remap: Optional[str] = None,
+        remap: str | None = None,
         unknown_index: str = "random",
         loss_key: str = "loss/vq",
     ) -> None:
@@ -112,8 +113,8 @@ class GumbelQuantizer(AbstractQuantizer):
             )
 
     def forward(
-        self, z: Tensor, temp: Optional[float] = None, return_logits: bool = False
-    ) -> Tuple[Tensor, dict]:
+        self, z: Tensor, temp: float | None = None, return_logits: bool = False
+    ) -> tuple[Tensor, dict]:
         # force hard = True when we are in eval mode, as we must quantize.
         # actually, always true seems to work
         hard = self.straight_through if self.training else True
@@ -176,7 +177,7 @@ class VectorQuantizer(AbstractQuantizer):
         n_e: int,
         e_dim: int,
         beta: float = 0.25,
-        remap: Optional[str] = None,
+        remap: str | None = None,
         unknown_index: str = "random",
         sane_index_shape: bool = False,
         log_perplexity: bool = False,
@@ -219,7 +220,7 @@ class VectorQuantizer(AbstractQuantizer):
         self.sane_index_shape = sane_index_shape
         self.log_perplexity = log_perplexity
 
-    def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
+    def forward(self, z: Tensor) -> tuple[Tensor, dict]:
         do_reshape = z.ndim == 4
         if do_reshape:
             #     # reshape z -> (batch, height, width, channel) and flatten
@@ -271,7 +272,7 @@ class VectorQuantizer(AbstractQuantizer):
 
         return z_q, loss_dict
 
-    def get_codebook_entry(self, indices: Tensor, shape: Optional[Tuple[int, ...]] = None) -> Tensor:
+    def get_codebook_entry(self, indices: Tensor, shape: tuple[int, ...] | None = None) -> Tensor:
         # shape specifying (batch, height, width, channel)
         if self.remap is not None:
             assert shape is not None, "Need to give shape for remap"
@@ -326,7 +327,7 @@ class EMAVectorQuantizer(AbstractQuantizer):
         beta: float,
         decay: float = 0.99,
         eps: float = 1e-5,
-        remap: Optional[str] = None,
+        remap: str | None = None,
         unknown_index: str = "random",
         loss_key: str = "loss/vq",
     ):
@@ -359,7 +360,7 @@ class EMAVectorQuantizer(AbstractQuantizer):
                 f"Using {self.unknown_index} for unknown indices."
             )
 
-    def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
+    def forward(self, z: Tensor) -> tuple[Tensor, dict]:
         # reshape z -> (batch, height, width, channel) and flatten
         # z, 'b c h w -> b h w c'
         z = rearrange(z, "b c h w -> b h w c")
@@ -416,7 +417,7 @@ class VectorQuantizerWithInputProjection(VectorQuantizer):
         n_codes: int,
         codebook_dim: int,
         beta: float = 1.0,
-        output_dim: Optional[int] = None,
+        output_dim: int | None = None,
         **kwargs,
     ):
         super().__init__(n_codes, codebook_dim, beta, **kwargs)
@@ -427,7 +428,7 @@ class VectorQuantizerWithInputProjection(VectorQuantizer):
         else:
             self.proj_out = nn.Identity()
 
-    def forward(self, z: Tensor) -> Tuple[Tensor, dict]:
+    def forward(self, z: Tensor) -> tuple[Tensor, dict]:
         rearr = False
         in_shape = z.shape
 

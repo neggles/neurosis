@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import torch
 from torch import Tensor, nn
@@ -8,9 +7,9 @@ from torch import Tensor, nn
 class DiffusionSampler2(ABC, nn.Module):
     sigmas: Tensor
     log_sigmas: Tensor
-    sigma_data: Optional[float | Tensor]
+    sigma_data: float | Tensor | None
 
-    def set_sigmas(self, sigmas: Tensor, sigma_data: Optional[float | Tensor] = None):
+    def set_sigmas(self, sigmas: Tensor, sigma_data: float | Tensor | None = None):
         self.sigma_data = sigma_data
         self.register_buffer("sigmas", sigmas)
         self.register_buffer("log_sigmas", sigmas.log())
@@ -28,7 +27,7 @@ class DiffusionSampler2(ABC, nn.Module):
         raise NotImplementedError("Abstract base class was called ;_;")
 
     @abstractmethod
-    def sigma(self, timestep: int | float | Tensor) -> Tensor:
+    def sigma(self, timestep: float | Tensor) -> Tensor:
         raise NotImplementedError("Abstract base class was called ;_;")
 
     def percent_to_sigma(self, percent: float) -> float:

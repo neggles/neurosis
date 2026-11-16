@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from einops import rearrange, repeat
@@ -101,7 +101,7 @@ class SelfAttention(nn.Module):
         dim: int,
         num_heads: int = 8,
         qkv_bias: bool = False,
-        qk_scale: Optional[float] = None,
+        qk_scale: float | None = None,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
         attn_mode: str = "xformers",
@@ -188,11 +188,11 @@ class CrossAttention(nn.Module):
     def __init__(
         self,
         query_dim: int,
-        context_dim: Optional[int] = None,
+        context_dim: int | None = None,
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
-        backend: Optional[SDPBackend] = None,
+        backend: SDPBackend | None = None,
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -214,9 +214,9 @@ class CrossAttention(nn.Module):
     def forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
-        additional_tokens: Optional[Tensor] = None,
+        context: Tensor | None = None,
+        mask: Tensor | None = None,
+        additional_tokens: Tensor | None = None,
         n_times_crossframe_attn_in_self: int = 0,
     ) -> Tensor:
         h = self.heads
@@ -263,7 +263,7 @@ class MemoryEfficientCrossAttention(nn.Module):
     def __init__(
         self,
         query_dim: int,
-        context_dim: Optional[int] = None,
+        context_dim: int | None = None,
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
@@ -288,14 +288,14 @@ class MemoryEfficientCrossAttention(nn.Module):
             nn.Linear(inner_dim, query_dim),
             nn.Dropout(dropout) if dropout else nn.Identity(),
         )
-        self.attention_op: Optional[Any] = None
+        self.attention_op: Any | None = None
 
     def forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
-        additional_tokens: Optional[Tensor] = None,
+        context: Tensor | None = None,
+        mask: Tensor | None = None,
+        additional_tokens: Tensor | None = None,
         n_times_crossframe_attn_in_self: int = 0,
     ):
         if additional_tokens is not None:
@@ -325,11 +325,13 @@ class MemoryEfficientCrossAttention(nn.Module):
 
         b, _, _ = q.shape
         q, k, v = map(
-            lambda t: t.unsqueeze(3)
-            .reshape(b, t.shape[1], self.heads, self.dim_head)
-            .permute(0, 2, 1, 3)
-            .reshape(b * self.heads, t.shape[1], self.dim_head)
-            .contiguous(),
+            lambda t: (
+                t.unsqueeze(3)
+                .reshape(b, t.shape[1], self.heads, self.dim_head)
+                .permute(0, 2, 1, 3)
+                .reshape(b * self.heads, t.shape[1], self.dim_head)
+                .contiguous()
+            ),
             (q, k, v),
         )
 
@@ -370,9 +372,9 @@ class TorchSDPCrossAttention(MemoryEfficientCrossAttention):
     def forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
-        additional_tokens: Optional[Tensor] = None,
+        context: Tensor | None = None,
+        mask: Tensor | None = None,
+        additional_tokens: Tensor | None = None,
         n_times_crossframe_attn_in_self: int = 0,
     ):
         if additional_tokens is not None:
@@ -435,7 +437,7 @@ class BasicTransformerBlock(nn.Module):
         checkpoint: bool = True,
         disable_self_attn: bool = False,
         attn_mode: str = "softmax",
-        sdp_backend: Optional[SDPBackend] = None,
+        sdp_backend: SDPBackend | None = None,
     ):
         super().__init__()
         if attn_mode not in self.ATTENTION_MODES:
@@ -475,8 +477,8 @@ class BasicTransformerBlock(nn.Module):
     def forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
-        additional_tokens: Optional[Tensor] = None,
+        context: Tensor | None = None,
+        additional_tokens: Tensor | None = None,
         n_times_crossframe_attn_in_self: int = 0,
     ) -> Tensor:
         if self.checkpoint:
@@ -487,8 +489,8 @@ class BasicTransformerBlock(nn.Module):
     def _forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
-        additional_tokens: Optional[Tensor] = None,
+        context: Tensor | None = None,
+        additional_tokens: Tensor | None = None,
         n_times_crossframe_attn_in_self: int = 0,
     ) -> Tensor:
         if self.disable_self_attn:
@@ -550,14 +552,14 @@ class BasicTransformerSingleLayerBlock(nn.Module):
     def forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
+        context: Tensor | None = None,
     ) -> Tensor:
         return checkpoint(self._forward, (x, context), self.parameters(), self.checkpoint)
 
     def _forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
+        context: Tensor | None = None,
     ) -> Tensor:
         x = self.attn1(self.norm1(x), context=context) + x
         x = self.ff(self.norm2(x)) + x
@@ -581,12 +583,12 @@ class SpatialTransformer(nn.Module):
         d_head: int,
         depth: int = 1,
         dropout: float = 0.0,
-        context_dim: Optional[int | list[int]] = None,
+        context_dim: int | list[int] | None = None,
         disable_self_attn: bool = False,
         use_linear: bool = False,
         attn_type: str = "softmax",
         use_checkpoint: bool = True,
-        sdp_backend: Optional[SDPBackend] = None,
+        sdp_backend: SDPBackend | None = None,
     ):
         super().__init__()
         logger.debug(
@@ -602,7 +604,7 @@ class SpatialTransformer(nn.Module):
                     f"which does not match the specified 'depth' of {depth}. Setting context_dim to {depth * [context_dim[0]]} now."
                 )
                 # depth does not match context dims.
-                if not all((x == context_dim[0] for x in context_dim)):
+                if not all(x == context_dim[0] for x in context_dim):
                     raise ValueError("need homogenous context_dim to match depth automatically")
                 context_dim = [context_dim[0]] * depth
         else:
@@ -642,7 +644,7 @@ class SpatialTransformer(nn.Module):
     def forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
+        context: Tensor | None = None,
     ) -> Tensor:
         # note: if no context is given, cross-attention defaults to self-attention
         if not isinstance(context, list):
@@ -674,7 +676,7 @@ class SimpleTransformer(nn.Module):
         depth: int,
         heads: int,
         dim_head: int,
-        context_dim: Optional[int] = None,
+        context_dim: int | None = None,
         dropout: float = 0.0,
         checkpoint: bool = True,
     ):
@@ -696,7 +698,7 @@ class SimpleTransformer(nn.Module):
     def forward(
         self,
         x: Tensor,
-        context: Optional[Tensor] = None,
+        context: Tensor | None = None,
     ) -> Tensor:
         for layer in self.layers:
             x = layer(x, context)
