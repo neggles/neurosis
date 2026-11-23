@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import torch
 from einops import rearrange
 from torch import Tensor
@@ -43,7 +41,7 @@ class GaussianEncoder(Encoder, AbstractEmbModel):
         self.weight = weight
         self.flatten_output = flatten_output
 
-    def forward(self, x) -> Tuple[dict[str, Tensor], Tensor]:
+    def forward(self, x) -> tuple[dict[str, Tensor], Tensor]:
         z = super().forward(x)
         z, log = self.posterior(z)
         log["loss"] = log["kl_loss"]

@@ -1,12 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
 
 import torch
 from torch import Tensor
 
 
 class DenoiserPreconditioning(ABC):
-    def __call__(self, sigma: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def __call__(self, sigma: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         return self.get_c_skip(sigma), self.get_c_out(sigma), self.get_c_in(sigma), self.get_c_noise(sigma)
 
     @abstractmethod

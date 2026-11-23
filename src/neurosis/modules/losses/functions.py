@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
@@ -101,7 +99,7 @@ class BatchNLLLoss(nn.Module):
 
     def __init__(
         self,
-        weight: Optional[Tensor] = None,
+        weight: Tensor | None = None,
         ignore_index: int = -100,
         reduction: str = "mean",
     ):
@@ -110,7 +108,7 @@ class BatchNLLLoss(nn.Module):
             raise ValueError(f"Unknown reduction mode: {reduction}")
 
         self.register_buffer("weight", weight)
-        self.weight: Optional[Tensor]
+        self.weight: Tensor | None
 
         self.reduction = reduction
         self.ignore_index = ignore_index
