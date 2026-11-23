@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import Optional, Union
 from warnings import warn
 
 import numpy as np
@@ -73,7 +72,7 @@ class ImageLogger(Callback):
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         self.__trainer = trainer
 
-    def local_dir(self, trainer) -> Optional[Path]:
+    def local_dir(self, trainer) -> Path | None:
         tgt_dir = None
         for pl_logger in trainer.loggers:
             if pl_logger.save_dir is not None:
@@ -129,8 +128,8 @@ class ImageLogger(Callback):
         self,
         images: list[Image.Image],
         captions: list[str],
-        title: Optional[str] = None,
-        ncols: Optional[int] = None,
+        title: str | None = None,
+        ncols: int | None = None,
     ) -> Image.Image:
         if len(images) != len(captions):
             raise ValueError("Number of images and captions must match!")
@@ -174,8 +173,8 @@ class ImageLogger(Callback):
         step: int = ...,
         epoch: int = ...,
         batch_idx: int = ...,
-        pl_module: Optional[LightningModule] = None,
-        trainer: Optional[Trainer] = None,
+        pl_module: LightningModule | None = None,
+        trainer: Trainer | None = None,
     ):
         if self.rank_zero_only and dist.get_rank() > 0:
             return
@@ -323,7 +322,7 @@ class ImageLogger(Callback):
         self,
         trainer: Trainer,
         pl_module: LightningModule,
-        batch: Union[Tensor, dict[str, Tensor]],
+        batch: Tensor | dict[str, Tensor],
         batch_idx: int,
         split: str = "train",
         before_start: bool = False,

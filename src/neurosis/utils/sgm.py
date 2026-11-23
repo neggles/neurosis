@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Callable
 from textwrap import wrap as text_wrap
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 import torch
@@ -31,7 +32,6 @@ def is_power_of_two(n) -> bool:
 def autocast(f: Callable, enabled=True):
     def wrapper(*args, **kwargs):
         # Placeholder code
-        pass
 
         # Call the original function
         return f(*args, **kwargs)

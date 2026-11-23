@@ -1,7 +1,7 @@
 import logging
 import math
 from abc import abstractmethod
-from typing import Iterable, Optional, Union
+from collections.abc import Iterable
 
 import torch
 from einops import rearrange
@@ -30,7 +30,7 @@ class AttentionPool2d(nn.Module):
         spacial_dim: int,
         embed_dim: int,
         num_heads_channels: int,
-        output_dim: Optional[int] = None,
+        output_dim: int | None = None,
     ):
         super().__init__()
         self.positional_embedding = nn.Parameter(torch.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5)
@@ -72,10 +72,10 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         self,
         x: Tensor,
         emb: Tensor,
-        context: Optional[Tensor] = None,
-        image_only_indicator: Optional[Tensor] = None,
-        time_context: Optional[int] = None,
-        num_video_frames: Optional[int] = None,
+        context: Tensor | None = None,
+        image_only_indicator: Tensor | None = None,
+        time_context: int | None = None,
+        num_video_frames: int | None = None,
     ):
         for layer in self:
             if isinstance(layer, TimestepBlock) or (
@@ -107,7 +107,7 @@ class Upsample(nn.Module):
         channels: int,
         use_conv: bool,
         dims: int = 2,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         padding: int = 1,
         third_up: bool = False,
         kernel_size: int = 3,
@@ -157,7 +157,7 @@ class Downsample(nn.Module):
         channels: int,
         use_conv: bool,
         dims: int = 2,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         padding: int = 1,
         third_down: bool = False,
     ):
@@ -218,7 +218,7 @@ class ResBlock(TimestepBlock):
         channels: int,
         emb_channels: int,
         dropout: float,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         use_conv: bool = False,
         use_scale_shift_norm: bool = False,
         dims: int = 2,
@@ -495,10 +495,10 @@ class UNetModel(nn.Module):
         num_res_blocks: int,
         attention_resolutions: int | list[int] | tuple[int, ...],
         dropout: float = 0.0,
-        channel_mult: Union[list, list] = (1, 2, 4, 8),
+        channel_mult: list = (1, 2, 4, 8),
         conv_resample: bool = True,
         dims: int = 2,
-        num_classes: Optional[list[int, str] | str] = None,
+        num_classes: list[int, str] | str | None = None,
         use_checkpoint: bool = False,
         num_heads: int = -1,
         num_head_channels: int = -1,
@@ -506,14 +506,14 @@ class UNetModel(nn.Module):
         use_scale_shift_norm: bool = False,
         resblock_updown: bool = False,
         transformer_depth: int | list[int] = 1,
-        context_dim: Optional[int] = None,
-        disable_self_attentions: Optional[list[bool]] = None,
-        num_attention_blocks: Optional[list[int]] = None,
+        context_dim: int | None = None,
+        disable_self_attentions: list[bool] | None = None,
+        num_attention_blocks: list[int] | None = None,
         disable_middle_self_attn: bool = False,
         disable_middle_transformer: bool = False,
         use_linear_in_transformer: bool = False,
         spatial_transformer_attn_type: str = "softmax",
-        adm_in_channels: Optional[int] = None,
+        adm_in_channels: int | None = None,
     ):
         super().__init__()
 
@@ -565,7 +565,7 @@ class UNetModel(nn.Module):
                 raise ValueError(
                     "num_attention_blocks should be greater than or equal to num_res_blocks at each level"
                 )
-            logger.warn(
+            logger.warning(
                 f"Constructor of UNetModel received num_attention_blocks={num_attention_blocks}. "
                 f"This option has LESS priority than attention_resolutions {attention_resolutions}, "
                 f"i.e., in cases where num_attention_blocks[i] > 0 but 2**i not in attention_resolutions, "
@@ -803,9 +803,9 @@ class UNetModel(nn.Module):
     def forward(
         self,
         x: Tensor,
-        timesteps: Optional[Tensor] = None,
-        context: Optional[Tensor] = None,
-        y: Optional[Tensor] = None,
+        timesteps: Tensor | None = None,
+        context: Tensor | None = None,
+        y: Tensor | None = None,
         **kwargs,
     ) -> Tensor:
         """

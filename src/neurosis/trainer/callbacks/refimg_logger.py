@@ -1,7 +1,7 @@
 import logging
 from os import PathLike
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from diffusers import AutoencoderKL
@@ -62,12 +62,12 @@ class ReferenceModelImageLogger(ImageLogger):
         batch_size: int = 1,
         accumulate_grad_batches: int = 1,
         label_img: bool = False,
-        ref_cls: Optional[str] = None,
-        ref_ckpt: Optional[str] = None,
+        ref_cls: str | None = None,
+        ref_ckpt: str | None = None,
         ref_device: str = "cpu",
         ref_compile: bool = False,
         ref_compile_opts: dict = {"mode": "reduce-overhead"},
-        ref_data_path: Optional[PathLike] = None,
+        ref_data_path: PathLike | None = None,
         *args,
         **kwargs,
     ):
@@ -92,8 +92,8 @@ class ReferenceModelImageLogger(ImageLogger):
 
         # load ref model if provided
         self.ref_model: AutoencoderKL = None
-        self.ref_cls: Optional[str] = ref_cls
-        self.ref_ckpt: Optional[Path] = Path(ref_ckpt) if ref_ckpt is not None else None
+        self.ref_cls: str | None = ref_cls
+        self.ref_ckpt: Path | None = Path(ref_ckpt) if ref_ckpt is not None else None
         self.ref_compile: bool = ref_compile
         self.ref_compile_opts: dict = ref_compile_opts
 
@@ -107,8 +107,8 @@ class ReferenceModelImageLogger(ImageLogger):
         self.ref_device: torch.device = torch.device(ref_device)
 
         # for comparing MSE over time with a static test batch
-        self.ref_data: Optional[ReferenceData] = None
-        self.ref_data_path: Optional[Path] = Path(ref_data_path) if ref_data_path is not None else None
+        self.ref_data: ReferenceData | None = None
+        self.ref_data_path: Path | None = Path(ref_data_path) if ref_data_path is not None else None
         if self.enabled:
             self.load_ref_model()
             if self.ref_data is None and self.ref_data_path is not None:
@@ -153,7 +153,7 @@ class ReferenceModelImageLogger(ImageLogger):
         step: int = ...,
         epoch: int = ...,
         batch_idx: int = ...,
-        pl_module: Optional[LightningModule] = None,
+        pl_module: LightningModule | None = None,
     ):
         # hijack the log_local method to add our extra ref model images
         images = self.vae_reference_recons(images, num_img=self.max_images)
